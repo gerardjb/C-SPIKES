@@ -1,0 +1,52 @@
+{
+    "data":{
+        "sampling_frequency":1000
+    },
+
+    "BM":{
+        "bm_sigma":3e-2
+    },
+
+    "priors":{
+		"G_tot mean": 6.04700454e-05, 
+		"G_tot sd": 2.19532707469859e-05, 
+		"gamma mean": 745.194622, 
+		"gamma sd": 297.9185320960182, 
+		"DCaT mean": 1.44641501e-05, 
+		"DCaT sd": 5.9729132333285e-06, 
+		"Rf mean": 5.10813469, 
+		"Rf sd": 1.67644275247169, 
+		"gam_in mean": 5.0730276513, 
+		"gam_in sd" : 1.5332034078503969, 
+		"gam_out mean": 5.01002741382, 
+		"gam_out sd": 1.50682279831255665, 
+        "alpha rate 0": 1,
+        "beta rate 0": 20,
+        "alpha rate 1":10,
+        "beta rate 1": 10,
+        "alpha w01": 10,
+        "beta w01": 100,
+        "alpha w10": 10,
+        "beta w10": 100,
+        "alpha sigma2": 2,
+        "beta sigma2": 0.005
+    },
+
+    "proposals":{
+        "G_tot prop sd":0.5e-5,
+        "gamma prop sd":40,
+        "DCaT prop sd":2e-6,
+        "Rf prop sd":1
+    },
+
+    "MCMC":{
+        "seed":2,
+        "niter":1000,
+        "nparticles":1000,
+        "SAMPLE_PARAMETERS":true
+    },
+
+    "ODE":{
+        "time step mode":1
+    }
+}

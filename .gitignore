@@ -1,0 +1,37 @@
+# python dev stuff
+__pycache__
+*.py[cod]
+*bin/
+*build/
+*dist/
+*env/
+*.obj/
+
+# C
+*.so
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Data
+Ground_truth/*
+
+vcpkg/
+
+.vscode/
+
+sample_data/output/
+
+src/spike_find/_version.py
+
+profiles/
+
+# Outputs for syn_gen and cascade
+Pretrained_models/*
+Ground_truth/*
+
+# Outputs for pgas test, when run outside of pytest.
+tests/sample_data/output/
+
+# Ignore slurm output files if any of those get made
+slurm-*.out

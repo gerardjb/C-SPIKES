@@ -1,0 +1,101 @@
+# Hackathon scope proposal
+## Profiling
+- Profile effects of code optimization relative to commit cd08407
+## Optimizations in PGAS algortihm
+- In fixedStep_LA
+	- (per David, 6/6 communication) not evaluating pow(x, y) unnecessarily and not reallocating a full G matrix for each setGmat. The pow one in particular is important because it is the main hotspot right now. It is called 2 times each in flux() and setGmat().
+		- You can squeeze some performance out by calculating once and passing into these functions. Even more if you replace the pow altogether with exp(y <times> log (x)) , since x is the same for both invocations you can same another call by evaluating log(x) and reusing it. Thiese changes give a little less than 2x speedup by measurements and do not change the final parameters. Though, I have heard the replacement of pow like this can be platform dependent in performance so I don't know.
+	-  GCamP model evolve method is not thread safe because it stores Gmat and state on the instance
+- In SMC class
+	- (per David 6/6) Flame graph shows that around 81% of execution time is spent in SMC::move_and_weight_GTS, this is what we should target for parallelization
+	- The randomization at the end of move_and_weight_GTS will be execution order dependent (this is probably true for move_and_weight as well)
+- Optimization I'm currently working on include:
+	- Profiling reduction of iterations of the Gibbs sampler algorithm by increasing particle number to load into the GPU kernel
+	- Profiling reduction in numerical integration time by increasing fixedStep_LA step time
+## Optimization for CASCADE routine
+- Remove constraints on inclusion of training data
+- Reduce overhead size of matrix used for training data correspond to size of actual input synthetic data
+# Notes for Particle Gibbs with ancestor sampling
+## Algorithm
+- Further details about the algorithm and implementation can be found at https://elifesciences.org/reviewed-preprints/94723 as well as https://www.biorxiv.org/content/10.1101/2022.04.05.487201v2.full.pdf
+- The algorithm at a high level consists of a Gibbs sampler: ![Algorithm 1](https://github.com/gerardjb/TEST2/blob/main/images/Algorithm1.png.png)
+	- where *X* is a collection of latent state variables (see "Particle" class attributes) over timesteps 1:T, *&Kappa;* indicates the PGAS kernel, N is the number of particles created for the filter, and *&theta;* is the collection of time-indpendent paramters that control how the state variables evolve from one time step to the next.
+	- PGAS thus consists of cycling between sampling state space trajectories conditioned on fixed time-independent parameters and then sampling parameters condition on the resultant trajectories iteratively
+- The PGAS SMC-based transition kernel: ![Algorithm 2](https://github.com/gerardjb/TEST2/blob/main/images/Algorithm2.png.png)
+	- where *&rho;* is the proposal distribution, *&mu;<sup>&theta;</sup>*(*X<sub>1</sub>*) is the intitial state, *g<sup>&theta;</sup>* is the probability of observing F at time t conditioned on X, *f<sup>&theta;</sup>* is the one step transition probability for the latent states
+	- In addition to the above, it's probably useful to point out that the final step of to return the PGAS kernel calculation is a backward pass through the particle system where:
+		- Ancestory lineage is traces back from a particle at time T drawn from the probability distribution established by the importance weights calculated at that step
+		- The calcium state variable is collapsed to a single data-compatible scalar at each time point as the full state is uneccesary for comparisons in the parameter sampling phase
+## Key Classes
+### In particle.cpp
+-  Particle: 
+	- Description: a class to handle particle creation and change
+	- attributes:
+		- C (GCaMP/cell states, size=12, note that this is replaced by DFF (size 1) when passed out of PGAS method)
+		- S (spikes per time bin)
+		- B (Gaussian random walk)
+		- burst (a two state system indicating high or low firing rate stored as rates r)
+		- ancestor (particle index for $this trajectory's last parent)
+		- logWeight (log of the particle importance weight)
+- Trajectory:
+	- Description: a class to handle draws of time series trajectories from the biophysical model
+	- methods
+		- constructor (creates properly sized state variables for use in the SMC class methods)
+- SMC:
+	- Description: a class to handle the sequential monte carlo procedures
+	- key attributes:
+		- model (instantiation of the GCaMP/calcium latent state model)
+		- nparticles (number of particles created in the PGAS filter)
+		- TIME (number of time steps in the data passed into the SMC constructor)
+		- rng (random number generator process created from the gsl_rng library with optional seed that can be passed into the constructor)
+		- particleSystem (array of size TIME x nparticles)
+		- log_probs (log probability matrix over all firing rate states and allowable spike number set by maxspikes)
+		- probs (probability distribution normalized from log_probs for setting firing rate state in both move_and_weight methods and spike number in the non-GTS version)
+		- lf (reference particle-specific part of the distribution reference particle is resampled from at each time point after the first)
+		- Z (importance weight for each set for each particle in the move_and_weight methods)
+		- z (*note the lower case*, in SMC::move_and_weight acts as coefficients collection terms for eqns 23 and 24)
+		- rdisc (discrete probability distribution from gsl_ran_discrete_preproc method used for various random draws)
+		- ar_disc (as rdisc, but used specifically for drawing the ancestor index for the reference particle)
+		- maxspikes (used in SMC::move_and_weight for setting size of probs matrix to allow specification of probabilities over all spike/firing state combinations)
+		- counts (used in SMC::sampleParameters for tracking the number of times firing state transitions for determining empirical probabilities of the transisiton matrix (wbb))
+		- which_b0 (used in SMC::samplePatameters for tracking the numbers of spike emitted in the high (r1) or low (r0) firing rate state for setting rates the firing rate states correspond to)
+		- res (used in SMC::sampleParameters for tracking residuals over Y, C, and B for allowing adjustments to sigma2 (i.e., the observation noise model))
+		- var_selec (used in SMC::sampleParameters as a way to allow (or not) resampling of cell model parameters based on narrow gamma-distributed proposals)
+	- methods:
+		- constructor (two versions, one used does random number seed setting, GCaMP model initialization, data loading, and parameter parsing/setting)
+		- rmu (sets 1:N-1 particles initial state according to equation 15 in the paper - note the Nth particle is alreay set by the previous reference trajectory)
+		- logF (returns the refernce trace-specific component of the importance weight calculation for calculating the ancestor of the reference particle at each time step)
+		- move_and_weight_GTS (advances the model one time step and calculates importance sampling weights on each particle and its ancestor from the previous timestep)
+			- GTS is the active method when known spike times are given to populate S for each Particle
+		- move_and_weight (same as the GTS version except that spike times are sampled as part of the procedure)
+		- sampleParameters (used in the parameter sampling phase of the Gibbs sampling procedure (see Algorithm 1))
+		-PF (an old version of the PGAS filter still included but not currently used)
+		-PGAS (implementation of the PGAS kernel (see Algorithm 2))
+-Utils
+	- Description: houses a series of functions used for distribution normalization
+	- methods:
+		- w_from_logW (converts log weights to normalized weights (i.e. they sum to ~one) by passing whoel distribution out by refernce)
+		- Z_from_logW (converts log weights to a normalization factor for the optimal proposal distribution for reducing the variance of importance weights - this term is also derived as the importance weight itself for all non-reference particles (see eqns. 18, 25, 26))
+### Model parameters
+- spike production params
+	- wbb (probability of firing rate state transition (state referred to as "burst") - 2 x 2 matrix of probability of transitioning between state r0 and r1; updates in SMC::sampleParameters as gamma distribution with parameters updated by empirical transition probabilities)
+	- r0, r1 (low and high Poisson firing rates in a two state system used to drive draws on S. Updates similarly as wbb)
+	- *&sigma~2~* (std of the observation noise model. Updates with inverse gamma prior)
+- Cell params (all cell params update with Metropolis Hastings acceptance rule with exploration driven by multiplicative factor selected from a narrow (&alpha;=1000,&beta;=10) gamma distribution)
+	- G_tot (total concetration of indicator)
+	- gamma (extrusion rate (Michaelis Menten) internal to external cellular space)
+	- DCaT (total calcium influx per spike)
+	- Rf (dynamic range of sensor)
+	- gam_in (rate of cytoplasm to internal store flux (Michaelis Menten))
+	- gam_out (rate of internal store to cytoplasm flux (Michaelis Menten))
+- Baseline
+	- bm_sigma (std of the Brownian motion model implemented for the baseline fluorescence slow random walk)
+- Booleans
+	- SAMPLE_PARAMETERS (causes entry into the parameter sampling phase of the Gibbs sampler algorithm)
+	- KNOWN_SPIKES (sets if we're training priors for parameters by giving specified spike times or doing full Bayesian inference to include the S state)
+- GCaMP model params
+	- Together govern the bimolecular and intramolecular dynamics of GCaMPs self- and calcium interactions. These are not changed in the algorithm
+# Places to change code for ease of use
+- In SMC constructor, need one of two things:
+	- a method for extending maxlen to allow start and stop times for the sample to read In
+	- a process in the python code that extracts the relevant data piece and adjustments to the SMC constructor (or a new constructor variant) to allow direct passing of data
