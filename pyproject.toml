@@ -13,9 +13,9 @@ authors = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "numpy==1.19.5",
+    "numpy",
     "scipy",
-    "matplotlib==3.6.0",
+    "matplotlib",
     "tensorflow",  # pip install CPU and GPU tensorflow
     "h5py",
     "ruamel.yaml",
