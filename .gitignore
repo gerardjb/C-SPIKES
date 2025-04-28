@@ -9,6 +9,8 @@ __pycache__
 
 # C
 *.so
+*.o
+*.a
 
 # Jupyter Notebook
 .ipynb_checkpoints
