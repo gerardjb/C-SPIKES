@@ -2,7 +2,7 @@
 #Importing project packages and required libraries
 import numpy as np
 import build.pgas_bound as pgas
-from src.spike_find.syn_gen import synth_gen
+from src.c_spikes.syn_gen import synth_gen
 import matplotlib.pyplot as plt
 import scipy.io as sio
 import os
@@ -169,7 +169,7 @@ if recalc_synth:
 if retrain_and_infer:
     ## Package checks for cascade
     print("Current directory: {}".format(os.getcwd()))
-    from src.spike_find.cascade2p import checks, utils, cascade
+    from src.c_spikes.cascade2p import checks, utils, cascade
     print("\nChecks for packages:")
     checks.check_packages()
 
@@ -204,12 +204,12 @@ if retrain_and_infer:
     cascade.create_model_folder( cfg )
 
     ## Train a model based on config contents
-    from spike_find.cascade2p import models
+    from c_spikes.cascade2p import models
     model_name = cfg['model_name']
     cascade.train_model( model_name, model_type=models.choose_model(model_choice) )
 
     # ## Use trained model to perform inference on the original dataset
-    from spike_find.cascade2p.utils_discrete_spikes import infer_discrete_spikes
+    from c_spikes.cascade2p.utils_discrete_spikes import infer_discrete_spikes
     spike_prob = cascade.predict(model_name, np.reshape(fluo_data, (1, len(fluo_data))))
 
     '''
