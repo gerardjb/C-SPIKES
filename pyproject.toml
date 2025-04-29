@@ -1,3 +1,4 @@
+# 
 [build-system]
 requires = ["scikit-build-core", "pybind11"]
 build-backend = "scikit_build_core.build"
@@ -21,6 +22,7 @@ dependencies = [
     "ruamel.yaml",
 ]
 
+# invoked via, e.g., "pip install -e .[test,dev]"
 [project.optional-dependencies]
  test = [
    "pytest >=6",
@@ -49,14 +51,14 @@ dependencies = [
  minimum-version = "0.4"
  cmake.args = ['-DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake', '-DCMAKE_BUILD_TYPE=RelWithDebInfo']
  build-dir = "build/{wheel_tag}"
- metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
- sdist.include = ["src/spike_find/_version.py"]
+ metadata.version.provider = "scikit_build_core.metadata.setuptools_scm" # gets versions dynamically from git tags
+ sdist.include = ["src/spike_find/_version.py"] # persistent storage of version without git history (as below)
  
  
  [tool.setuptools_scm]
  write_to = "src/spike_find/_version.py"
  
- 
+ # Prep across platforms/hardware/OS with unit tests
  [tool.cibuildwheel]
  test-command = "pytest {project}/tests"
  test-extras = ["test"]

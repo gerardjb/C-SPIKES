@@ -486,7 +486,16 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
     double dBCa_dt, dCa_dt, dCa_in_dt, Gflux, Cflux;
 
     // Generate timesteps, prep calcium vect
-    arma::vec timesteps = arma::regspace(time_vect(0), fine_dt, time_vect(time_vect.n_elem - 1));
+
+    // regspace will not be inclusize of the last time value, we need to go one increment further so that we
+    // can interpolate later.
+    double t_end = time_vect(time_vect.n_elem - 1);
+    double t_start = time_vect(0);
+    int M = (int)floor((t_end-t_start)/fine_dt);
+    double new_t_end = t_start+(M+1)*fine_dt;
+
+//    arma::vec timesteps = arma::regspace(time_vect(0), fine_dt, time_vect(time_vect.n_elem - 1));
+    arma::vec timesteps = arma::regspace(time_vect(0), fine_dt, new_t_end);
     size_t num_steps = timesteps.n_elem;
     arma::vec calcium_input(timesteps.n_elem, arma::fill::zeros);
 
@@ -561,8 +570,8 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
     }
 
     // For direct comparison of c++ to python stored values
-    cout<<"G_interp.row(0)"<<G_interp.row(0)<<endl;
-    cout<<"G_interp.row(200)"<<G_interp.row(200)<<endl;
+    //cout<<"G_interp.row(0)"<<G_interp.row(0)<<endl;
+    //cout<<"G_interp.row(200)"<<G_interp.row(200)<<endl;
 }
 
 //

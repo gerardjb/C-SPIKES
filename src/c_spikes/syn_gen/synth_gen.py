@@ -29,9 +29,8 @@ class synth_gen():
     noise_dir="gt_noise_dir", GCaMP_model=None, tag="default", plot_on=False,use_noise=True,noise_val=2):
     
     # Get current directory of this file, prepend to noise_dir
-    current_dir = os.path.dirname(os.path.realpath(__file__))
     self.noise_dir = noise_dir
-    full_noise_path = os.path.join(current_dir, self.noise_dir)
+    full_noise_path = self.noise_dir
 
     # Synth data settings
     self.spike_rate = spike_rate
@@ -65,7 +64,7 @@ class synth_gen():
     spike_params = self.spike_params
     
     # Set generator parameters
-    print(f"spike_params[0] = {spike_params[0]}")
+    #print(f"spike_params[0] = {spike_params[0]}")
     smoothtime = spike_params[0]
     rnonzero = spike_params[1]
     
@@ -74,7 +73,7 @@ class synth_gen():
     nsub = 20
     dt = smoothtime / nsub
     T = np.ceil(T)
-    print(f"T = {T} and dt = {dt}")
+    #print(f"T = {T} and dt = {dt}")
     nt = int(np.ceil(T / dt))
     x = np.random.randn(nt + 2 * nsub)
     tau = np.array([nsub, 0])
@@ -149,14 +148,14 @@ class synth_gen():
     if cell_parmas:
       self.cell_params = cell_params
   
-  def generate(self,Cparams=None,tag=None):
+  def generate(self,Cparams=None,tag=None,output_folder="."):
     """
       This generates the actual synthetic data. Need to add some randomization stuff
     """
     #Make dir to hold the synthetic data
     self.tag = tag if tag else self.tag
-    synth_dir = os.path.join("Ground_truth", f"synth_{self.tag}")
-    print(synth_dir)
+    synth_dir = os.path.join(output_folder, "Ground_truth", f"synth_{self.tag}")
+    #print(synth_dir)
     os.makedirs(synth_dir,exist_ok=True)
     
     #Pass in Cparams and initialize the model
@@ -176,9 +175,16 @@ class synth_gen():
       keys = CAttached[0][0].dtype.descr
       
       for ii in np.arange(len(CAttached[0])):
+        existing_fields = CAttached[0][ii].dtype.names
+        new_fields = []
+        if 'fluo_mean' not in existing_fields:
+            new_fields.append(('fluo_mean', '|O'))
+        if 'events_AP' not in existing_fields:
+            new_fields.append(('events_AP', '|O'))
+
         # Add new field for noise + simulation
         new_inner_dtype = np.dtype(CAttached[0][ii].dtype.descr + \
-        [('fluo_mean', '|O')] + [('events_AP','|O')])
+          new_fields)
         
         #Set up structure to hold fluo_mean
         inner_array = CAttached[0][ii]
@@ -195,7 +201,7 @@ class synth_gen():
 
         #Check standardized noise and toss if over criterion
         if self.use_noise:
-          frame_rate = 1/np.mean(np.diff(time))
+          frame_rate = 1/np.mean(np.diff(time.flatten()))
           standard_noise = self.calculate_standardized_noise(noise.T,frame_rate.T)
           if standard_noise>self.noise_val:
             break
@@ -218,14 +224,14 @@ class synth_gen():
           break
         
         CAttached[0][ii] = new_inner_array
-        print("CAttached[0][ii].dtype.descr = ",CAttached[0][ii].dtype.descr)
+        #print("CAttached[0][ii].dtype.descr = ",CAttached[0][ii].dtype.descr)
       
       basename = os.path.basename(file)
       file_name, extension = os.path.splitext(basename)
       fname = 'rate='+str(self.spike_rate) + 'param='+str(self.spike_params[0])+ '_'+ str(self.spike_params[1]) +\
         file_name + extension
       save_path = os.path.join(synth_dir, fname)
-      print("save_path = ", save_path)
+      print("syn_gen save_path = ", save_path)
       sio.savemat(save_path, {'CAttached': CAttached})
       
       # reset the model (might want to add this to the end of the c++ method to reduce exposure

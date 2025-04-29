@@ -34,6 +34,7 @@ import os
 import time
 import numpy as np
 import warnings
+from pathlib import Path
 from . import config, utils
 
 
@@ -66,7 +67,7 @@ def train_model(
     Returns
     --------
     None
-        All results are saved in the folder model_name as .h5 files containing the trained model
+        All results are saved in the folder model_name as .keras files containing the trained model
 
     """
     import tensorflow.keras
@@ -157,12 +158,14 @@ def train_model(
 
             if cfg["sampling_rate"] > 30:
 
-                windowsize_suggestion = int(np.power(cfg["sampling_rate"] / 30, 0.25) * 64)
+                cfg["windowsize"] = int(np.power(cfg["sampling_rate"] / 30, 0.25) * 64)
+                # write again the config file to update the adjusted window size value
+                config.write_config(cfg, os.path.join(model_path, "config.yaml"))
 
                 print(
-                    "Window size should be enlarged to "
-                    + str(windowsize_suggestion)
-                    + " time points (if not done already) due to the high calcium imaging sampling rate ("
+                    "Window size enlarged to "
+                    + str(cfg["windowsize"])
+                    + " time points due to the high calcium imaging sampling rate("
                     + str(cfg["sampling_rate"])
                     + ")."
                 )
@@ -182,6 +185,8 @@ def train_model(
                 replicas=1,
                 causal_kernel=cfg["causal_kernel"],
             )
+
+            print('The length of X is ',len(X))
 
             model = utils.define_model(
                 filter_sizes=cfg["filter_sizes"],
@@ -208,9 +213,7 @@ def train_model(
             )
 
             # save model
-            file_name = "Model_NoiseLevel_{}_Ensemble_{}.h5".format(
-                int(noise_level), ensemble
-            )
+            file_name = f"Model_NoiseLevel_{noise_level}_Ensemble_{ensemble}.keras"
             model.save(os.path.join(model_path, file_name))
             print("Saved model:", file_name)
 
@@ -223,7 +226,7 @@ def train_model(
 
 
 def predict(
-    model_name, traces, model_folder="Pretrained_models", threshold=0, padding=np.nan, verbosity=1
+    model_name, traces, model_folder="Pretrained_models", threshold=0, padding=np.nan
 ):
 
     """Use a specific trained neural network ('model_name') to predict spiking activity for calcium traces ('traces')
@@ -241,7 +244,7 @@ def predict(
     ------------
     model_name : str
         Name of the model, e.g. 'Universal_30Hz_smoothing100ms'
-        This name has to correspond to the folder in which the config.yaml and .h5 files are stored which define
+        This name has to correspond to the folder in which the config.yaml and .keras files are stored which define
         the trained model
 
     traces : 2d numpy array (neurons x nr_timepoints)
@@ -262,10 +265,6 @@ def predict(
     padding : 0 or np.nan
         Value which is inserted for datapoints, where no prediction can be made (because of window around timepoint of prediction)
         Default value: np.nan, another recommended value would be 0 which circumvents some problems with following analysis.
-
-    vebosity : 0 or 1
-        If set to 0, the output of predict() during inference in the console is suppressed
-        Default value: 1
 
     Returns
     --------
@@ -301,8 +300,6 @@ def predict(
 
     # extract values from config file into variables
     verbose = cfg["verbose"]
-    if verbosity == 0:
-      verbose = 0
     training_data = cfg["training_datasets"]
     ensemble_size = cfg["ensemble_size"]
     batch_size = cfg["batch_size"]
@@ -335,8 +332,7 @@ def predict(
         + str(int(1000 * smoothing))
         + " milliseconds. \n \n"
     )
-    if verbose:
-        print(model_description)
+    print(model_description)
 
     if verbose:
         print("Loaded model was trained at frame rate {} Hz".format(sampling_rate))
@@ -350,13 +346,12 @@ def predict(
     # calculate noise levels for each trace
     trace_noise_levels = utils.calculate_noise_levels(traces, sampling_rate)
 
-    if verbose:
-        print(
-            "Noise levels (mean, std; in standard units): "
-            + str(int(np.nanmean(trace_noise_levels * 100)) / 100)
-            + ", "
-            + str(int(np.nanstd(trace_noise_levels * 100)) / 100)
-        )
+    print(
+        "Noise levels (mean, std; in standard units): "
+        + str(int(np.nanmean(trace_noise_levels * 100)) / 100)
+        + ", "
+        + str(int(np.nanstd(trace_noise_levels * 100)) / 100)
+    )
 
     # Get model paths as dictionary (key: noise_level) with lists of model
     # paths for the different ensembles
@@ -370,10 +365,6 @@ def predict(
     )
     Y_predict = np.zeros((XX.shape[0], XX.shape[1]))
 
-    # Compute difference of noise levels between each neuron and each model; find the best fit
-    differences = np.array(trace_noise_levels)[:,None] - np.array(noise_levels_model)[None,:]
-    best_model_for_each_neuron = np.argmin(np.abs(differences),axis=1)
-    
     # Use for each noise level the matching model
     for i, model_noise in enumerate(noise_levels_model):
 
@@ -381,8 +372,16 @@ def predict(
             print("\nPredictions for noise level {}:".format(model_noise))
 
         # select neurons which have this noise level:
-        neuron_idx = np.where(best_model_for_each_neuron == i)[0]
-        
+        if i == 0:  # lowest noise
+            neuron_idx = np.where(trace_noise_levels < model_noise + 0.5)[0]
+        elif i == len(noise_levels_model) - 1:  # highest noise
+            neuron_idx = np.where(trace_noise_levels >= model_noise - 0.5)[0]
+        else:
+            neuron_idx = np.where(
+                (trace_noise_levels >= model_noise - 0.5)
+                & (trace_noise_levels < model_noise + 0.5)
+            )[0]
+
         if len(neuron_idx) == 0:  # no neurons were selected
             if verbose:
                 print("\tNo neurons for this noise level")
@@ -510,7 +509,7 @@ def create_model_folder(config_dictionary, model_folder="Pretrained_models"):
     if not os.path.exists(model_path):
         # create folder
         try:
-            os.mkdir(model_path)
+            os.makedirs(model_path,exist_ok=True)
             print('Created new directory "{}"'.format(os.path.abspath(model_path)))
         except:
             print(model_path + " already exists")
@@ -538,12 +537,12 @@ def get_model_paths(model_path):
     """
     import glob, re
 
-    all_models = glob.glob(os.path.join(model_path, "*.h5"))
+    all_models = glob.glob(os.path.join(model_path, "*.keras"))
     all_models = sorted(all_models)  # sort
 
     # Exception in case no model was found to catch this mistake where it happened
     if len(all_models) == 0:
-        m = 'No models (*.h5 files) were found in the specified folder "{}".'.format(
+        m = 'No models (*.keras files) were found in the specified folder "{}".'.format(
             os.path.abspath(model_path)
         )
         raise Exception(m)
