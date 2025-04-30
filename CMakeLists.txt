@@ -12,6 +12,12 @@ file(GLOB PGAS_SRCS CONFIGURE_DEPENDS src/c_spikes/pgas/*.cpp)
 
 pybind11_add_module(pgas_bound MODULE src/c_spikes/pgas/bindings.cpp ${PGAS_SRCS})
 
+# Added to handle LD_LIBRARY_PATH issues I was running into on della
+set_target_properties(pgas_bound PROPERTIES
+    INSTALL_RPATH "$ORIGIN:\$ORIGIN/../lib"
+    BUILD_WITH_INSTALL_RPATH TRUE
+)
+
 target_include_directories(pgas_bound PRIVATE src/c_spikes/pgas)
 
 target_link_libraries(pgas_bound PRIVATE armadillo JsonCpp::JsonCpp GSL::gsl GSL::gslcblas)
