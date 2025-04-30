@@ -14,7 +14,7 @@ pybind11_add_module(pgas_bound MODULE src/c_spikes/pgas/bindings.cpp ${PGAS_SRCS
 
 # Added to handle LD_LIBRARY_PATH issues I was running into on della
 set_target_properties(pgas_bound PROPERTIES
-    INSTALL_RPATH "$ORIGIN:\$ORIGIN/../lib"
+    INSTALL_RPATH "$ORIGIN:\$ORIGIN/../vcpkg"
     BUILD_WITH_INSTALL_RPATH TRUE
 )
 
