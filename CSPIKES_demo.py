@@ -1,7 +1,7 @@
 #%%
 #Importing project packages and required libraries
 import numpy as np
-import build.pgas_bound as pgas
+import c_spikes.pgas.pgas_bound as pgas
 from src.c_spikes.syn_gen import synth_gen
 import matplotlib.pyplot as plt
 import scipy.io as sio
