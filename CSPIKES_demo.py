@@ -66,7 +66,7 @@ binary_spikes = np.float64(spike_times_2_binary(spike_times,time1))
 # Run the particle Gibbs sampler to extract cell parameters
 ## Setting up parameters for the particle gibbs sampler
 tag="test_param_out"
-Gparam_file="src/spike_find/pgas/20230525_gold.dat"
+Gparam_file="src/c_spikes/pgas/20230525_gold.dat"
 
 # Set file name for Cparams
 param_sample_file = os.path.join("pgas_output","param_samples_"+tag+".dat")
