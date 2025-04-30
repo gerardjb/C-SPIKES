@@ -52,11 +52,11 @@ dependencies = [
  cmake.args = ['-DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake', '-DCMAKE_BUILD_TYPE=RelWithDebInfo']
  build-dir = "build/{wheel_tag}"
  metadata.version.provider = "scikit_build_core.metadata.setuptools_scm" # gets versions dynamically from git tags
- sdist.include = ["src/spike_find/_version.py"] # persistent storage of version without git history (as below)
+ sdist.include = ["src/c_spikes/_version.py"] # persistent storage of version without git history (as below)
  
- 
+ # Ensure proper version capture regardless of git file access
  [tool.setuptools_scm]
- write_to = "src/spike_find/_version.py"
+ write_to = "src/c_spikes/_version.py"
  
  # Prep across platforms/hardware/OS with unit tests
  [tool.cibuildwheel]
