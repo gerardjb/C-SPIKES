@@ -69,7 +69,7 @@ tag="test_param_out"
 Gparam_file="src/c_spikes/pgas/20230525_gold.dat"
 
 # Set file name for Cparams
-param_sample_file = os.path.join("pgas_output","param_samples_"+tag+".dat")
+param_sample_file = os.path.join("results","param_samples_"+tag+".dat")
 
 """
     Here will be the PGAS run for spike extraction and demo use (plotting, etc.)
@@ -80,7 +80,7 @@ if recalc_pgas:
         time=time1,
         data=data1,
         constants_file="parameter_files/constants_GCaMP8_soma.json",
-        output_folder="pgas_output",
+        output_folder="results",
         column=1,
         tag=tag,
         niter=2,
@@ -111,7 +111,7 @@ if recalc_Cparams:
         time=time1,
         data=data1,
         constants_file="parameter_files/constants_GCaMP3_soma.json",
-        output_folder="pgas_output",
+        output_folder="results",
         column=1,
         tag=tag,
         niter=2,
