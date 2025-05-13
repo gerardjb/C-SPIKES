@@ -28,6 +28,10 @@ src/spike_find/_version.py
 
 profiles/
 
+results/
+
+
+
 # Outputs for syn_gen and cascade
 Pretrained_models/*
 Ground_truth/*
@@ -65,6 +69,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+src/c_spikes/_version.py
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
