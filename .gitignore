@@ -30,7 +30,9 @@ profiles/
 
 results/
 
+gt_noise_dir/
 
+gt_data/
 
 # Outputs for syn_gen and cascade
 Pretrained_models/*
