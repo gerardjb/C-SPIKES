@@ -10,7 +10,6 @@ find_package(OpenMP REQUIRED)
 
 file(GLOB PGAS_SRCS CONFIGURE_DEPENDS src/c_spikes/pgas/*.cpp)
 
-#set(CMAKE_INSTALL_RPATH $ORIGIN)
 
 # Tell CMake where vcpkg lives
 set(CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/vcpkg" CACHE STRING "")
@@ -22,12 +21,6 @@ set(CMAKE_INSTALL_RPATH      "${_vpkglib}")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 pybind11_add_module(pgas_bound MODULE src/c_spikes/pgas/bindings.cpp ${PGAS_SRCS})
-
-# Added to handle LD_LIBRARY_PATH issues I was running into on della
-#set_target_properties(pgas_bound PROPERTIES
-#    INSTALL_RPATH "$ORIGIN:\$ORIGIN/../../vcpkg/installed/x64-linux/lib"
-#    BUILD_WITH_INSTALL_RPATH TRUE
-#)
 
 target_include_directories(pgas_bound PRIVATE src/c_spikes/pgas)
 
