@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "c_spikes"
-version = "0.1.0"
+#version = "0.1.0"
 license.file = "LICENSE"
 requires-python = ">=3.8"
 description = "End-to-end fluorescence to spike inference procedure"
