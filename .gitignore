@@ -25,7 +25,7 @@ vcpkg/
 
 sample_data/output/
 
-src/spike_find/_version.py
+src/c_spikes/_version.py
 
 profiles/
 
