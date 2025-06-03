@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.15...3.26)
 
+# I added Fortran here. For some reason, fortran in armadillo wasn't linking
+# properly without this. I don't know why.
 project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION} LANGUAGES CXX Fortran)
 
 find_package(pybind11 CONFIG REQUIRED)

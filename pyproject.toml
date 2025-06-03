@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 name = "c_spikes"
 #version = "0.1.0"
 license.file = "LICENSE"
-requires-python = ">=3.8"
+requires-python = ">=3.8" # Current happy place looks to be 3.10 across all the CUDAs and the torches and that
 description = "End-to-end fluorescence to spike inference procedure"
 authors = [
     { name = "Gerard Joey Broussard", email = "gerardjb@princeton.edu" },
@@ -20,6 +20,8 @@ dependencies = [
     "tensorflow",  # pip install CPU and GPU tensorflow
     "h5py",
     "ruamel.yaml",
+    "torch >= 2",  # the version suggested by the ENS2 authors not comaptible - use >2 instead
+    "tqdm == 4.64.0"    # Also ENS2-specific. Works, but may want to relax pin at some point
 ]
 
 # invoked via, e.g., "pip install -e .[test,dev]"

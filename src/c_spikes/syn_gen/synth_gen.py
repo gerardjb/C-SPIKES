@@ -26,7 +26,7 @@ from scipy.stats import norm
 
 class synth_gen():
   def __init__(self, spike_rate=2, spike_params=[5, 0.5],cell_params=[30e-6, 10e2, 1e-5, 5, 30, 10],
-    noise_dir="gt_noise_dir", GCaMP_model=None, tag="default", plot_on=False,use_noise=True,noise_val=2):
+    noise_dir="gt_noise_dir", GCaMP_model=None, tag="default", plot_on=False,use_noise=False,noise_val=2):
     
     # Get current directory of this file, prepend to noise_dir
     self.noise_dir = noise_dir
@@ -46,7 +46,12 @@ class synth_gen():
     self.noise_val = noise_val
     
     # Load the GCaMP_model
-    self.gcamp = GCaMP_model
+    if not GCaMP_model:
+      import c_spikes.pgas.pgas_bound as pgas
+
+      self.gcamp = pgas.GCaMP(Gparams,cell_params)
+    else:
+      self.gcamp = GCaMP_model
     
     #For QC plots
     self.plot_on = plot_on
@@ -58,22 +63,22 @@ class synth_gen():
     
   def spk_gen(self,T):
     """
-    Generate a simulated spike train.
+    Generate a simulated spike train. Based loosely on pocedures described by Deneux et al., 2016.
+    
+    TODO: need more flexibilty around bursting here
     """
     spike_rate = self.spike_rate
     spike_params = self.spike_params
     
     # Set generator parameters
-    #print(f"spike_params[0] = {spike_params[0]}")
     smoothtime = spike_params[0]
     rnonzero = spike_params[1]
     
-    # 1) generate the varying rate vector
+    # generate the varying rate vector
     # get gaussian
     nsub = 20
     dt = smoothtime / nsub
     T = np.ceil(T)
-    #print(f"T = {T} and dt = {dt}")
     nt = int(np.ceil(T / dt))
     x = np.random.randn(nt + 2 * nsub)
     tau = np.array([nsub, 0])
@@ -99,15 +104,23 @@ class synth_gen():
     s = nsub * HWHH / (2 * np.pi)
     sr = np.sqrt(1 / (2 * np.sqrt(np.pi) * s))
     # and rescale to 1
+    # If sr<=0, return a single spike at dt*3
+    if sr<=0:
+      spikes = dt*3
+      print("Warning: NaN in vrate, returning single spike at dt*3")
+      return spikes
+    
     vrate = vrate / sr
     # translate, and scale the rate vector
     thr = norm.ppf(1 - rnonzero)
     vrate = np.maximum(0, vrate - thr)
     vrate = self.spike_rate*vrate/np.max((vrate))
     
+
     #2 generate spikes
     # choose sampling rate with at most one spike per bin
     dt1 = 1 / np.max(vrate) / 100
+    print(f"vrate max = {np.max(vrate)}, dt1 = {dt1}, dt = {dt}")
     nt1 = int(np.floor(T / dt1))
     t = np.linspace(0, T, nt1)
     vrate_interp = np.interp(t, np.arange(nt) * dt, vrate)
@@ -145,12 +158,13 @@ class synth_gen():
       self.spike_rate = spike_rate
     if spike_params:
       self.spike_params = spike_params
-    if cell_parmas:
+    if cell_params:
       self.cell_params = cell_params
   
   def generate(self,Cparams=None,tag=None,output_folder="."):
     """
-      This generates the actual synthetic data. Need to add some randomization stuff
+      This generates the actual synthetic data.
+       TODO: add some randomization stuff
     """
     #Make dir to hold the synthetic data
     self.tag = tag if tag else self.tag
@@ -173,6 +187,7 @@ class synth_gen():
       noise_data = sio.loadmat(file)
       CAttached = noise_data['CAttached']
       keys = CAttached[0][0].dtype.descr
+      noisy_idxs = []
       
       for ii in np.arange(len(CAttached[0])):
         existing_fields = CAttached[0][ii].dtype.names
@@ -181,6 +196,8 @@ class synth_gen():
             new_fields.append(('fluo_mean', '|O'))
         if 'events_AP' not in existing_fields:
             new_fields.append(('events_AP', '|O'))
+        if 'fluo_time' not in existing_fields:
+            new_fields.append(('fluo_time', '|O'))
 
         # Add new field for noise + simulation
         new_inner_dtype = np.dtype(CAttached[0][ii].dtype.descr + \
@@ -196,36 +213,41 @@ class synth_gen():
             
         #Noise, time, get spikes
         noise = inner_array['gt_noise'][0][0]
-        time = inner_array['fluo_time'][0][0]
-        T = time[-1] - time[0]
 
-        #Check standardized noise and toss if over criterion
-        if self.use_noise:
-          frame_rate = 1/np.mean(np.diff(time.flatten()))
-          standard_noise = self.calculate_standardized_noise(noise.T,frame_rate.T)
-          if standard_noise>self.noise_val:
-            break
-
+        # Hack for now - I didn't capture the time stamps in the noise files when I generated them
         try:
-          
-          spikes = self.spk_gen(T) + time[0]
-          
-          #Simulation
-          self.gcamp.integrateOverTime(time.flatten().astype(float), spikes.flatten().astype(float))
-          dff_clean = self.gcamp.getDFFValues()
-          
-          #Add new field and fill with sim + noise and spike times
-          #new_inner_array['fluo_mean'] = np.empty((1, 1), dtype='|O')
-          new_inner_array['fluo_mean'][0][0] = np.array([dff_clean.flatten() + noise.flatten()])
-          #new_inner_array['events_AP'] = np.empty((1, 1), dtype='|O')
-          
-          new_inner_array['events_AP'][0][0] = spikes.reshape(-1,1)*1e4
-        except Exception:
-          break
+          time = inner_array['fluo_time'][0][0]
+        except:
+          sampling_rate = 121.9  # Hz
+          n_samples = noise.shape[0]
+          time = np.arange(n_samples) / sampling_rate
+        T = time[-1] - time[0]
+        print(f"Generating synthetic data for file {file}, cell {ii} with T = {T} seconds")
         
+        # Generate spikes
+        spikes = self.spk_gen(T) + time[0]
+        print(f"Data type of spikes: {type(spikes)}, shape: {spikes.shape}, spikes: {spikes}")
+          
+        # Handle cases where we have no spikes - spike at time point 3
+        #if not len(spikes)>0: 
+        #  spikes = time[2]
+        
+        # Simulation
+        self.gcamp.integrateOverTime(time.flatten().astype(float), spikes.flatten().astype(float))
+        dff_clean = self.gcamp.getDFFValues()
+        
+        # Add new field and fill with sim + noise, spike times, and time
+        new_inner_array['fluo_mean'][0][0] = np.array([2*dff_clean.flatten() + noise.flatten()])
+        new_inner_array['events_AP'][0][0] = spikes.reshape(-1,1)*1e4
+        new_inner_array['fluo_time'][0][0] = time.flatten()
+        
+        # Update the CAttached structure with the new inner array entries
         CAttached[0][ii] = new_inner_array
-        #print("CAttached[0][ii].dtype.descr = ",CAttached[0][ii].dtype.descr)
       
+      # Remove noisy traces
+      if len(noisy_idxs)>0:
+        CAttached = np.delete(CAttached, noisy_idxs, axis=1)
+      # Save the modified CAttached structure back to the file
       basename = os.path.basename(file)
       file_name, extension = os.path.splitext(basename)
       fname = 'rate='+str(self.spike_rate) + 'param='+str(self.spike_params[0])+ '_'+ str(self.spike_params[1]) +\
@@ -234,7 +256,7 @@ class synth_gen():
       print("syn_gen save_path = ", save_path)
       sio.savemat(save_path, {'CAttached': CAttached})
       
-      # reset the model (might want to add this to the end of the c++ method to reduce exposure
+      # reset the model (might want to add this to the end of the c++ method to reduce pybind exposure)
       self.gcamp.init()
       
       if self.plot_on and test_plot:
@@ -249,6 +271,18 @@ class synth_gen():
         
 
 if __name__ == "__main__":
-  synth = synth_gen(plot_on=False)
+  # For troubleshooting
+  # Make a gcamp object
+  import numpy as np
+  import c_spikes.pgas.pgas_bound as pgas
+  Gparam_file="src/c_spikes/pgas/20230525_gold.dat"
+  Gparams = np.loadtxt(Gparam_file)
+  Cparams=np.array([30e-6, 10e2, 1e-5, 5, 30, 10])
+  gcamp = pgas.GCaMP(Gparams,Cparams)
+
+  # Use gcamp model instantiation to create a synthetic generator
+  rate = 2; tag = "test_synth"
+  synth = synth_gen.synth_gen(plot_on=False,GCaMP_model=gcamp,\
+    spike_rate=rate,cell_params=Cparams,tag=tag,use_noise=True, noise_dir="gt_noise_dir")
+  synth.generate(output_folder=f"results")
   #synth.spk_gen(np.array([200]))
-  synth.generate()

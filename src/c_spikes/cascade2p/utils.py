@@ -369,33 +369,33 @@ def preprocess_groundtruth_artificial_noise_balanced(ground_truth_folders,before
       # some of the datasets contribute zero samples because they do not contain
       # recordings with sufficiently low noise levels (must be lower than 'noise_level')
       # or sufficiently long trials (must be significantly longer than 'window_size').
-      try:
-          if verbose > 1: print('Preprocessing dataset number', dataset_index)
+      #try:
+      if verbose > 1: print('Preprocessing dataset number', dataset_index)
 
-          sub_traces_allX, sub_traces_events_allX, frame_rate, events_allX = calibrated_ground_truth_artificial_noise(ground_truth_folders[dataset_index],noise_level,sampling_rate,replicas,omission_list, verbose)
+      sub_traces_allX, sub_traces_events_allX, frame_rate, events_allX = calibrated_ground_truth_artificial_noise(ground_truth_folders[dataset_index],noise_level,sampling_rate,replicas,omission_list, verbose)
 
-          datapoint_counter = 0
-          print('The number of subtraces found was',len(sub_traces_allX))
-          for k in range(len(sub_traces_allX)):
-            try:
-               datapoint_counter += sub_traces_allX[k].shape[1]*sub_traces_allX[k].shape[0]
-            except:
-              if verbose > 2: print('No things for k={}'.format(k))
+      datapoint_counter = 0
+      print('The number of subtraces found was',len(sub_traces_allX))
+      for k in range(len(sub_traces_allX)):
+        try:
+            datapoint_counter += sub_traces_allX[k].shape[1]*sub_traces_allX[k].shape[0]
+        except:
+          if verbose > 2: print('No things for k={}'.format(k))
 
-          dataset_sizes[dataset_index] = datapoint_counter
+      dataset_sizes[dataset_index] = datapoint_counter
 
-          nbx_datapoints[neuron_counter:neuron_counter+len(sub_traces_allX)] = datapoint_counter*np.ones(len(sub_traces_allX),)
-          sub_traces_all[neuron_counter:neuron_counter+len(sub_traces_allX)] = sub_traces_allX
-          sub_traces_events_all[neuron_counter:neuron_counter+len(sub_traces_allX)] = sub_traces_events_allX
-          events_all[neuron_counter:neuron_counter+len(sub_traces_allX)] = events_allX
-          dataset_indices[neuron_counter:neuron_counter+len(sub_traces_allX)] = dataset_index*np.ones(len(sub_traces_allX),)
+      nbx_datapoints[neuron_counter:neuron_counter+len(sub_traces_allX)] = datapoint_counter*np.ones(len(sub_traces_allX),)
+      sub_traces_all[neuron_counter:neuron_counter+len(sub_traces_allX)] = sub_traces_allX
+      sub_traces_events_all[neuron_counter:neuron_counter+len(sub_traces_allX)] = sub_traces_events_allX
+      events_all[neuron_counter:neuron_counter+len(sub_traces_allX)] = events_allX
+      dataset_indices[neuron_counter:neuron_counter+len(sub_traces_allX)] = dataset_index*np.ones(len(sub_traces_allX),)
 
-          neuron_counter += len(sub_traces_allX)
+      neuron_counter += len(sub_traces_allX)
 
-      except:
-           sub_traces_allX = None
-           dataset_sizes[dataset_index] = np.NaN
-           print('Caught exception line 395 cascade.utils')
+      # except:
+      #      sub_traces_allX = None
+      #      dataset_sizes[dataset_index] = np.nan
+      #      print('Caught exception line 395 cascade.utils')
       os.chdir(base_folder)
 
     mininum_traces = 15e6/len(ground_truth_folders)
