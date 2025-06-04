@@ -3,6 +3,7 @@
 import numpy as np
 import c_spikes.pgas.pgas_bound as pgas
 from c_spikes.syn_gen import synth_gen
+from c_spikes.utils import load_Janlia_data, spike_times_2_binary
 import matplotlib.pyplot as plt
 import scipy.io as sio
 import os
@@ -14,38 +15,6 @@ recalc_Cparams = False # this runs the particle Gibbs sampler with known spike t
 recalc_synth = False # this runs the synthetic data generation code to create new synthetic data
 retrain_and_infer = True # this runs the cascade training and inference code to train a new model and infer spikes on the original data
 model_source = "ens2"   # FLAG: choose "cascade" or "ens2"
-
-#Utility-type methods
-def spike_times_2_binary(spike_times,time_stamps):
-    # initialize the binary vector
-    binary_vector = np.zeros(len(time_stamps), dtype=int)
-
-    # get event times within the time_stamps ends
-    good_spike_times = spike_times[(spike_times >= time_stamps[0]) & (spike_times <= time_stamps[-1])]
-    
-    # Find the nearest element in 'a' that is less than the elements in 'b'
-    for event_time in good_spike_times:
-        # Find indices where 'a' is less than 'event_time'
-        valid_indices = np.where(time_stamps < event_time)[0]
-        if valid_indices.size > 0:
-            nearest_index = valid_indices[-1]  # Taking the last valid index
-            binary_vector[nearest_index] += 1
-
-    return binary_vector
-
-# For opening the janelia datasets
-def open_Janelia_1(j_path):
-    all_data = sio.loadmat(j_path)
-    dff = all_data['dff']
-    time_stamps = all_data['time_stamps']
-    spike_times = all_data['ap_times'] 
-
-    return time_stamps, dff, spike_times
-
-# For calculating noise levels in the data
-def calculate_standardized_noise(dff,frame_rate):
-    noise_levels = np.nanmedian(np.abs(np.diff(dff, axis=-1)), axis=-1) / np.sqrt(frame_rate)
-    return noise_levels * 100     # scale noise levels to percent
 
 """
     Setup for the demo
@@ -62,7 +31,6 @@ time1 = time1.copy()
 data1 = np.float64(data[0,1000:2000])
 data1 = data1.copy()
 binary_spikes = np.float64(spike_times_2_binary(spike_times,time1))
-#binary_spikes = np.float64([0])
 
 # Run the particle Gibbs sampler to extract cell parameters
 ## Setting up parameters for the particle gibbs sampler
@@ -183,10 +151,10 @@ if retrain_and_infer:
     synthetic_training_dataset = os.path.join(f"synth_{tag}")
     cfg = dict( 
         model_name = f"synth_trained_model{tag}",    # Model name (and name of the save folder)
-        sampling_rate = 30,    # Sampling rate in Hz (round to next integer)
+        sampling_rate = 60,    # Sampling rate in Hz (round to next integer)
         training_datasets = [synthetic_training_dataset],
         noise_levels = [noise for noise in range(2,3)],#[int(np.ceil(noise_level)+1)]
-        smoothing = 0.05,     # std of Gaussian smoothing in time (sec)
+        smoothing = 0.025,     # std of Gaussian smoothing in time (sec)
         causal_kernel = 0,   # causal ground truth smoothing kernel
         verbose = 1,
             )
@@ -232,13 +200,14 @@ if retrain_and_infer:
         # Prepare data (same fluo_data and time_stamps as above)
         
         # Use the same sampling_rate and smoothing as CASCADE config for consistency
+        model_name = cfg['model_name']
         sampling_rate = cfg.get('sampling_rate', 60)
-        smoothing_std = cfg.get('smoothing', 0.050)
+        smoothing_std = cfg.get('smoothing', 0.025)
         # Train ENS2 model on synthetic data
-        ens.train_model(tag, sampling_rate=sampling_rate, smoothing_std=smoothing_std, 
+        ens.train_model(model_name, tag=tag, sampling_rate=sampling_rate, smoothing_std=smoothing_std, 
                          use_causal_kernel=False, verbose=2,batch_size=256)
         # Perform inference on the original trace
-        spike_prob = ens.predict(tag, np.reshape(fluo_data, (1, len(fluo_data))), 
+        spike_prob = ens.predict(model_name, np.reshape(fluo_data, (1, len(fluo_data))), 
                                    sampling_rate=sampling_rate, smoothing_std=smoothing_std)
         # Save results (continuous spike probability output)
         save_dir = "results/ens2_output/predictions"
