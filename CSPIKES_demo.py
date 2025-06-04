@@ -25,7 +25,7 @@ model_source = "ens2"   # FLAG: choose "cascade" or "ens2"
 janelia_file = "jGCaMP8f_ANM471993_cell03"
 filename = os.path.join("gt_data",janelia_file+".mat")
 
-time,data,spike_times = open_Janelia_1(filename)
+time,data,spike_times = load_Janlia_data(filename)
 time1 = np.float64(time[0,1000:2000])
 time1 = time1.copy()
 data1 = np.float64(data[0,1000:2000])
