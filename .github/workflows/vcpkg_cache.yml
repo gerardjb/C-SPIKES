@@ -5,19 +5,20 @@ on:
     branches:
       - main
 
+permissions:
+  packages: write
+
 jobs:
   vcpkg-cache:
     runs-on: ubuntu-latest # may want to pin at some point
 
     env:
-      # Accessing the PAT I set up for this action
-      # NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}  
       # Location where vcpkg.exe will live after bootstrap
-      VCPKG_EXE: ${{ github.workspace }}/vcpkg/vcpkg
+      VCPKG_EXE: ${{ github.workspace }}/vcpkg/vcpkg  
       # NuGet feed URL for GitHub Packages
       FEED_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-      # Instruct vcpkg to clear existing sources and use GitHub Packages for read/write
-      VCPKG_BINARY_SOURCES: "clear;nuget,${{ env.FEED_URL }},readwrite"
+      # Instruct vcpkg to use GitHub Packages: note we reference FEED_URL literally 
+      VCPKG_BINARY_SOURCES: "clear;nuget,https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json,readwrite"
 
     steps:
       - name: Checkout repository
