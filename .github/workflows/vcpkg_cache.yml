@@ -1,0 +1,67 @@
+name: Build and Cache vcpkg Dependencies
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  vcpkg-cache:
+    runs-on: ubuntu-latest # may want to pin at some point
+
+    env:
+      # Accessing the PAT I set up for this action
+      # NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}  
+      # Location where vcpkg.exe will live after bootstrap
+      VCPKG_EXE: ${{ github.workspace }}/vcpkg/vcpkg
+      # NuGet feed URL for GitHub Packages
+      FEED_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+      # Instruct vcpkg to clear existing sources and use GitHub Packages for read/write
+      VCPKG_BINARY_SOURCES: "clear;nuget,${{ env.FEED_URL }},readwrite"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3 # I hear v4 is released and also good, haven't looked into updates yet
+
+      - name: Export GitHub Actions cache variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '')
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '')
+
+      - name: Clone vcpkg repository
+        shell: bash
+        run: |
+          # Clone the official vcpkg repo
+          git clone https://github.com/Microsoft/vcpkg.git vcpkg
+          cd vcpkg
+          # Check out a stable tagged version - this is probably the same we used in the original TEST2 repo!
+          git checkout tags/2023.05
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          cd vcpkg
+          ./bootstrap-vcpkg.sh
+
+      - name: Configure NuGet source for GitHub Packages
+        shell: pwsh
+        run: |
+          # Acquire nuget.exe via vcpkg
+          $nuget = & "${{ env.VCPKG_EXE }}" fetch nuget
+          # Add GitHub Packages feed with read/write permissions
+          & $nuget sources add -Name GitHubPackages `
+                              -Source "${{ env.FEED_URL }}" `
+                              -UserName "${{ github.actor }}" ` 
+                              -Password "${{ secrets.GITHUB_TOKEN }}"  
+          # Set the API key for the GitHub Packages feed
+          & $nuget setapikey "${{ secrets.GITHUB_TOKEN }}" -Source "${{ env.FEED_URL }}"
+
+      - name: Install vcpkg ports with binary caching
+        shell: bash
+        run: |
+          cd vcpkg
+          # Install required libraries (downloads from cache if available, else builds then pushes)
+          VBINARY_SOURCES="${VCPKG_BINARY_SOURCES}"
+          ./vcpkg install gsl armadillo jsoncpp boost-circular-buffer
