@@ -2,7 +2,7 @@
 import scipy.io as sio
 import numpy as np
 
-def load_Janlia_data(j_path):
+def load_Janelia_data(j_path):
     """
     Load Janelia dataset from a .mat file. This is for the data as in the custom
     imports done for Broussard et al. 2025 of Marton Rosza's Janelia dandi dataset

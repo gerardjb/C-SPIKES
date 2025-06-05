@@ -3,7 +3,7 @@
 import numpy as np
 import c_spikes.pgas.pgas_bound as pgas
 from c_spikes.syn_gen import synth_gen
-from c_spikes.utils import load_Janlia_data, spike_times_2_binary
+from c_spikes.utils import load_Janelia_data, spike_times_2_binary
 import matplotlib.pyplot as plt
 import scipy.io as sio
 import os
@@ -25,7 +25,7 @@ model_source = "ens2"   # FLAG: choose "cascade" or "ens2"
 janelia_file = "jGCaMP8f_ANM471993_cell03"
 filename = os.path.join("gt_data",janelia_file+".mat")
 
-time,data,spike_times = load_Janlia_data(filename)
+time,data,spike_times = load_Janelia_data(filename)
 time1 = np.float64(time[0,1000:2000])
 time1 = time1.copy()
 data1 = np.float64(data[0,1000:2000])
@@ -178,7 +178,7 @@ if retrain_and_infer:
 
         # Use trained model to perform inference on the original dataset
         from c_spikes.cascade2p.utils_discrete_spikes import infer_discrete_spikes
-        spike_prob = cascade.predict(model_name, np.reshape(fluo_data, (1, len(fluo_data))), model_folder='results/Pretrained_modles')
+        spike_prob = cascade.predict(model_name, np.reshape(fluo_data, (1, len(fluo_data))), model_folder='results/Pretrained_models')
 
         '''
         For now turning this part off -> convergence takes a long time if model predictions are low SNR
