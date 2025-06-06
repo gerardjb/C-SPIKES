@@ -23,7 +23,7 @@ jobs:
       # Trying to get at why Nuget credentialling fails
       VCPKG_INSTALL_OPTIONS: "--debug"
       # Attempt to let vcpkg/nuget.exe push authenticate
-      VCPKG_NUGET_TOKEN: ${{ secrets.VCPKG_PACKAGES }}
+      VCPKG_NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}
 
     steps:
       - name: Checkout repository
@@ -79,7 +79,7 @@ jobs:
       - name: Install vcpkg ports with binary caching
         shell: bash
         run: |
-          export VCPKG_NUGET_TOKEN="${VCPKG_NUGET_TOKEN}"
+          #export VCPKG_NUGET_TOKEN="${VCPKG_NUGET_TOKEN}"
           cd vcpkg
           # Install required libraries (downloads from cache if available, else builds then pushes)
           VBINARY_SOURCES="${VCPKG_BINARY_SOURCES}"
