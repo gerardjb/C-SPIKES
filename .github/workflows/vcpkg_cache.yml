@@ -6,6 +6,7 @@ on:
       - main
 
 permissions:
+  contents: read 
   packages: write
 
 jobs:
@@ -19,6 +20,11 @@ jobs:
       FEED_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
       # Instruct vcpkg to use GitHub Packages: note we reference FEED_URL literally 
       VCPKG_BINARY_SOURCES: "clear;nuget,https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json,readwrite"
+      # Trying to get at why Nuget credentialling fails
+      VCPKG_INSTALL_OPTIONS: "--debug"
+      # Attempt to let vcpkg/nuget.exe push authenticate
+      VCPKG_NUGET_USER: ${{ github.repository_owner }}
+      VCPKG_NUGET_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout repository
