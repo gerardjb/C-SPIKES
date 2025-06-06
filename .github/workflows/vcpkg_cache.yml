@@ -68,7 +68,7 @@ jobs:
           NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}
         run: |
           cd vcpkg
-          ./vcpkg install armadillo --debug
+          ./vcpkg install jsoncpp --debug
           tree -d
           NUGET_PATH=$(find downloads/tools/ -name nuget.exe | head -n1)
           
@@ -76,7 +76,7 @@ jobs:
             echo "nuget.exe not found!"
             exit 1
           fi
-          mono $NUGET_PATH setApiKey $NUGET_API_KEY -Source $VCPKG_BINARY_SOURCES
+          mono $NUGET_PATH setApiKey $NUGET_API_KEY -Source "https://nuget.pkg.github.com/gerardjb/index.json"
 
       #- name: Configure NuGet source via dotnet
       #  shell: bash
