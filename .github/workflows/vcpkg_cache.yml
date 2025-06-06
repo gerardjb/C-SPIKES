@@ -69,7 +69,12 @@ jobs:
         run: |
           cd vcpkg
           ./vcpkg help
-          mono downloads/tools/nuget-6.10.0-linux/nuget.exe setApiKey $NUGET_API_KEY -Source "https://nuget.pkg.github.com/gerardjb/index.json"
+          NUGET_PATH=$(find downloads/tools/ -name nuget.exe | head -n1)
+          if [[ -z "$NUGET_PATH" ]]; then
+            echo "nuget.exe not found!"
+            exit 1
+          fi
+          mono $NUGET_PATH setApiKey $NUGET_API_KEY -Source $VCPKG_BINARY_SOURCES
 
       #- name: Configure NuGet source via dotnet
       #  shell: bash
@@ -87,6 +92,9 @@ jobs:
 
       - name: Install vcpkg ports with binary caching
         shell: bash
+        env:
+          VCPKG_NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}
+          VCPKG_BINARY_SOURCES: "clear;nuget,https://nuget.pkg.github.com/gerardjb/index.json,readwrite"
         run: |
           #export VCPKG_NUGET_TOKEN="${VCPKG_NUGET_TOKEN}"
           cd vcpkg
