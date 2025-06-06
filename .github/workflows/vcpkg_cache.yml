@@ -68,7 +68,7 @@ jobs:
           NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}
         run: |
           cd vcpkg
-          ./vcpkg help
+          ./vcpkg install armadillo --debug
           tree -d
           NUGET_PATH=$(find downloads/tools/ -name nuget.exe | head -n1)
           
