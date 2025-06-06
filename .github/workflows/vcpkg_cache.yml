@@ -37,6 +37,11 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '')
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '')
 
+      - name: Install .NET SDK 6.x
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '6.x'
+
       - name: Clone vcpkg repository
         shell: bash
         run: |
@@ -50,18 +55,16 @@ jobs:
           cd vcpkg
           ./bootstrap-vcpkg.sh
 
-      - name: Configure NuGet source for GitHub Packages
-        shell: pwsh
+      - name: Configure NuGet source via dotnet
+        shell: bash
         run: |
-          # Acquire nuget.exe via vcpkg
-          $nuget = & "${{ env.VCPKG_EXE }}" fetch nuget
-          # Add GitHub Packages feed with read/write permissions
-          & $nuget sources add -Name GitHubPackages `
-                              -Source "${{ env.FEED_URL }}" `
-                              -UserName "${{ github.actor }}" ` 
-                              -Password "${{ secrets.GITHUB_TOKEN }}"  
-          # Set the API key for the GitHub Packages feed
-          & $nuget setapikey "${{ secrets.GITHUB_TOKEN }}" -Source "${{ env.FEED_URL }}"
+          dotnet nuget add source "${FEED_URL}" \
+            --name GitHubPackages \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
+          dotnet nuget update source GitHubPackages \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" 
 
       - name: Install vcpkg ports with binary caching
         shell: bash
