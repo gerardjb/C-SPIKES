@@ -83,5 +83,5 @@ jobs:
           cd vcpkg
           # Install required libraries (downloads from cache if available, else builds then pushes)
           VBINARY_SOURCES="${VCPKG_BINARY_SOURCES}"
-          ./vcpkg install gsl armadillo jsoncpp boost-circular-buffer
+          ./vcpkg install gsl armadillo jsoncpp boost-circular-buffer --debug
           echo "Token is set: ${VCPKG_NUGET_TOKEN:0:4}******"
