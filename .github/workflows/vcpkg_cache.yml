@@ -69,7 +69,7 @@ jobs:
         run: |
           cd vcpkg
           ./vcpkg help
-          echo tree -d
+          tree -d
           NUGET_PATH=$(find downloads/tools/ -name nuget.exe | head -n1)
           
           if [[ -z "$NUGET_PATH" ]]; then
