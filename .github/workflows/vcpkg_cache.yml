@@ -43,8 +43,6 @@ jobs:
           # Clone the official vcpkg repo
           git clone https://github.com/Microsoft/vcpkg.git vcpkg
           cd vcpkg
-          # Check out a stable tagged version - this is probably the same we used in the original TEST2 repo!
-          git checkout tags/2023.10.19
 
       - name: Bootstrap vcpkg
         shell: bash
