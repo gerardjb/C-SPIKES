@@ -69,8 +69,9 @@ jobs:
         run: |
           cd vcpkg
           ./vcpkg help
-          NUGET_PATH=$(find downloads/tools/ -name nuget.exe | head -n1)
           echo tree -d
+          NUGET_PATH=$(find downloads/tools/ -name nuget.exe | head -n1)
+          
           if [[ -z "$NUGET_PATH" ]]; then
             echo "nuget.exe not found!"
             exit 1
