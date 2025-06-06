@@ -67,7 +67,9 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}
         run: |
-          mono vcpkg/downloads/tools/nuget-6.10.0-linux/nuget.exe setApiKey $NUGET_API_KEY -Source "https://nuget.pkg.github.com/gerardjb/index.json"
+          cd vcpkg
+          ./vcpkg help
+          mono downloads/tools/nuget-6.10.0-linux/nuget.exe setApiKey $NUGET_API_KEY -Source "https://nuget.pkg.github.com/gerardjb/index.json"
 
       #- name: Configure NuGet source via dotnet
       #  shell: bash
