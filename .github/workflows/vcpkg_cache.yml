@@ -24,7 +24,7 @@ jobs:
       VCPKG_INSTALL_OPTIONS: "--debug"
       # Attempt to let vcpkg/nuget.exe push authenticate
       VCPKG_NUGET_USER: ${{ github.repository_owner }}
-      VCPKG_NUGET_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VCPKG_NUGET_TOKEN: ${{ secrets.VCPKG_PACKAGES }}
 
     steps:
       - name: Checkout repository
