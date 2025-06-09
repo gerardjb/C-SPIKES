@@ -57,13 +57,22 @@ GCaMP::GCaMP(string Gparam_file, string Cparam_file) {
 		gam_in = 40;
 		gam_out = 4;
   } else {
+    cout<< "Loading Cparams from file: " << Cparam_file << endl;
 		Cparams.load(Cparam_file, arma::raw_ascii);
+    cout<<"Length of Cparams: "<<Cparams(0)<<endl;
 		G_tot = Cparams(0);
     gamma = Cparams(1);
     DCaT = Cparams(2);
 		Rf = Cparams(3);
 		gam_in = Cparams(4);
 		gam_out = Cparams(5);
+    cout<<"Using standard koff_B = "<< koff_B << ", kon_B = " << kon_B << ", B_tot = " << B_tot << endl;
+    if (Cparams.n_elem > 5) {
+      koff_B = Cparams(6);
+      kon_B = Cparams(7);
+      B_tot = Cparams(8);
+      cout << "Using custom buffer parameters: koff_B = " << koff_B << ", kon_B = " << kon_B << ", B_tot = " << B_tot << endl;
+    }
 	}
 	
   // Call initial_setup to complete object initialization
@@ -94,7 +103,7 @@ void GCaMP::initial_setup() {
   Gparams(0) = Gparams(1) / pow(Gparams(0), Gparams(2));
   Gparams(3) = Gparams(4) / pow(Gparams(3), Gparams(5));
 	
-	
+
   kapB = B_tot / (koff_B / kon_B);
 
   BCa0 = kon_B * c0 / (kon_B * c0 + koff_B) * B_tot;

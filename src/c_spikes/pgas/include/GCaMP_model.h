@@ -41,7 +41,7 @@ public:
     double DFF;
     
     arma::vec::fixed<14> Gparams;
-		arma::vec::fixed<6> Cparams;
+		arma::vec Cparams;
     arma::mat::fixed<9,9> Gmat;
     arma::uvec::fixed<5> brightStates;
 
@@ -88,9 +88,9 @@ private:
     double gam_out;
     
     // buffer
-    const double koff_B = 1e4;
-    const double kon_B  = 1e8;
-    const double B_tot  = 0.004;
+    double koff_B = 1e4;
+    double kon_B  = 1e8;
+    double B_tot  = 0.004;
     double BCa0;
     double kapB;
 

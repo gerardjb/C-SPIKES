@@ -84,10 +84,12 @@ void Analyzer::run() {
     // loading the ground truth spikes
     // arma::vec gtSpikes; 
     if (has_gtspikes) {
+        cout << "Using ground truth spikes from " << gtSpikes << endl;
         constants.KNOWN_SPIKES = true;
         //gtSpikes.load(gtSpike_file, arma::raw_ascii);
     }
     if (gtSpikes.n_elem==1){
+        
         constants.KNOWN_SPIKES = false;
         has_gtspikes = false;
     }
@@ -95,6 +97,7 @@ void Analyzer::run() {
 
     if (has_trained_priors) {
         string dum;
+        cout << "Using trained priors from " << trainedPriorFile << endl;
         // update the constants
         ifstream trainedPrior(trainedPriorFile);
         trainedPrior >> dum >> constants.G_tot_mean >> constants.G_tot_sd;
