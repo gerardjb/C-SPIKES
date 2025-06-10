@@ -1,0 +1,80 @@
+name: Build and Cache vcpkg Dependencies
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read 
+  packages: write
+
+jobs:
+  vcpkg-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4 
+
+      - name: Install Mono for nuget.exe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mono-complete
+
+      - name: Clone & bootstrap vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/Microsoft/vcpkg.git vcpkg
+          cd vcpkg
+          git checkout tags/2023.10.19                                        # pin vcpkg to match ABI cache 
+          ./bootstrap-vcpkg.sh
+
+      - name: Configure GitHub Packages feed
+        shell: bash
+        run: |
+          FEED_URL="https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          VCPKG_EXE="${{ github.workspace }}/vcpkg/vcpkg"
+          nuget_path="$($VCPKG_EXE fetch nuget | tail -n1 | tr -d '\r')"
+          mono "$nuget_path" sources add \
+            -Name GitHubPackages \
+            -Source "$FEED_URL" \
+            -UserName "${{ github.repository_owner }}" \
+            -Password "${{ secrets.GH_PACKAGES_TOKEN }}" \
+            -StorePasswordInClearText
+          mono "$nuget_path" setapikey "${{ secrets.GH_PACKAGES_TOKEN }}" -Source "$FEED_URL"
+
+      - name: Install C++ dependencies via vcpkg
+        shell: bash
+        run: |
+          cd vcpkg
+          ./vcpkg install gsl armadillo jsoncpp boost-circular-buffer openblas lapack-reference  # pull binaries from cache
+
+  build-wheel:
+    needs: vcpkg-cache
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [3.10]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build dependencies
+        run: pip install --upgrade pip build wheel
+
+      - name: Build wheel
+        run: python -m build --wheel --outdir dist
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: c_spikes-wheel-${{ matrix.python-version }}
+          path: dist/*.whl
+      
