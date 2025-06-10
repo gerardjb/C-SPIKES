@@ -1,4 +1,4 @@
-name: Build and Cache wheel
+name: Build and Cache Wheel
 
 on:
   push:
@@ -6,72 +6,73 @@ on:
       - main
 
 permissions:
-  contents: read 
+  contents: read
   packages: write
 
 jobs:
   vcpkg-cache:
-    if: false
     runs-on: ubuntu-latest
 
     env:
-      VCPKG_EXE: "${{ github.workspace }}/vcpkg/vcpkg"
+      VCPKG_EXE: ${{ github.workspace }}/vcpkg/vcpkg
       FEED_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-      VCPKG_BINARY_SOURCES: "clear;nuget,https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json,readwrite"
-      VCPKG_NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}
-      NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}
+      VCPKG_BINARY_SOURCES: clear;nuget,${{ env.FEED_URL }},readwrite
+      GH_PACKAGES_TOKEN: ${{ secrets.VCPKG_PACKAGES }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 
+        uses: actions/checkout@v4
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg/installed
+            vcpkg/buildtrees
+            vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ github.sha }}
 
       - name: Install Mono for nuget.exe
         run: |
           sudo apt-get update
           sudo apt-get install -y mono-complete
 
-      - name: Export GitHub Actions cache variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '')
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '')
-
-      - name: Install .NET SDK 6.x
-        uses: actions/setup-dotnet@v4
-        env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
-        with:
-          dotnet-version: '6.0.x'
-
       - name: Clone & bootstrap vcpkg
-        shell: bash
         run: |
           git clone https://github.com/Microsoft/vcpkg.git vcpkg
           cd vcpkg
-          git checkout tags/2023.10.19                                        # pin vcpkg to match ABI cache 
+          git checkout tags/2023.10.19
           ./bootstrap-vcpkg.sh
-
-      - name: Configure GitHub Packages feed
         shell: bash
+
+      - name: Configure NuGet feed and API key
         run: |
           nuget_path="$($VCPKG_EXE fetch nuget | tail -n1 | tr -d '\r')"
           mono "$nuget_path" sources add \
             -Name GitHubPackages \
             -Source "$FEED_URL" \
             -UserName "${{ github.repository_owner }}" \
-            -Password "${{ secrets.VCPKG_PACKAGES }}" \
+            -Password "$GH_PACKAGES_TOKEN" \
             -StorePasswordInClearText
-          mono "$nuget_path" setapikey "${{ secrets.VCPKG_PACKAGES }}" -Source "$FEED_URL"
+          mono "$nuget_path" setapikey "$GH_PACKAGES_TOKEN" -Source "$FEED_URL"
+        shell: bash
 
       - name: Install C++ dependencies via vcpkg
-        shell: bash
         run: |
           cd vcpkg
-          ./vcpkg install gsl armadillo jsoncpp boost-circular-buffer openblas lapack-reference  # pull binaries from cache
+          ./vcpkg install gsl armadillo jsoncpp boost-circular-buffer openblas lapack-reference  # pull cached binaries 
+        shell: bash
+
+      - name: Save vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg/installed
+            vcpkg/buildtrees
+            vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ github.sha }}-postinstall
 
   build-wheel:
-    if: false
     needs: vcpkg-cache
     runs-on: ubuntu-latest
 
@@ -82,8 +83,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
-      - name: Set up Python ${{ matrix.python-version }}
+
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
@@ -91,16 +92,13 @@ jobs:
       - name: Install build dependencies
         run: pip install --upgrade pip build wheel ninja cmake
 
-      - name: Build wheel
+      - name: Build wheel with vcpkg toolchain
         env:
-          SKBUILD_CMAKE_ARGS: >
-            -G Ninja;
-            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          SKBUILD_CMAKE_ARGS: "-G Ninja;-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
         run: python -m build --wheel --outdir dist
-      
+
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:
           name: c_spikes-wheel-${{ matrix.python-version }}
           path: dist/*.whl
-      
