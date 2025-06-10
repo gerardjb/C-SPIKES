@@ -92,7 +92,7 @@ jobs:
       - name: Build wheel
         env:
           SKBUILD_CMAKE_ARGS: >
-            -G Ninja
+            -G Ninja;
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
         run: python -m build --wheel --outdir dist
       
