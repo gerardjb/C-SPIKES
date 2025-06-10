@@ -87,14 +87,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install build dependencies
-        run: pip install --upgrade pip build wheel
+        run: pip install --upgrade pip build wheel ninja cmake
 
       - name: Build wheel
-        run: python -m build --wheel --outdir dist
         env:
-          CMAKE_TOOLCHAIN_FILE: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-          VCPKG_DEFAULT_TRIPLET: x64-linux
+          SKBUILD_CMAKE_ARGS: >
+            -G Ninja
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+        run: python -m build --wheel --outdir dist
       
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
