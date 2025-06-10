@@ -1,4 +1,4 @@
-name: Build and Cache vcpkg Dependencies
+name: Build and Cache wheel
 
 on:
   push:
@@ -39,9 +39,9 @@ jobs:
             -Name GitHubPackages \
             -Source "$FEED_URL" \
             -UserName "${{ github.repository_owner }}" \
-            -Password "${{ secrets.GH_PACKAGES_TOKEN }}" \
+            -Password "${{ secrets.VCPKG_PACKAGES }}" \
             -StorePasswordInClearText
-          mono "$nuget_path" setapikey "${{ secrets.GH_PACKAGES_TOKEN }}" -Source "$FEED_URL"
+          mono "$nuget_path" setapikey "${{ secrets.VCPKG_PACKAGES }}" -Source "$FEED_URL"
 
       - name: Install C++ dependencies via vcpkg
         shell: bash
