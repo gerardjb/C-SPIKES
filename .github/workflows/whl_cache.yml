@@ -12,6 +12,14 @@ permissions:
 jobs:
   vcpkg-cache:
     runs-on: ubuntu-latest
+
+    env:
+      VCPKG_EXE: "${{ github.workspace }}/vcpkg/vcpkg"
+      FEED_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+      VCPKG_BINARY_SOURCES: "clear;nuget,https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json,readwrite"
+      VCPKG_NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}
+      NUGET_API_KEY: ${{ secrets.VCPKG_PACKAGES }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4 
@@ -20,6 +28,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mono-complete
+
+      - name: Export GitHub Actions cache variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '')
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '')
+
+      - name: Install .NET SDK 6.x
+        uses: actions/setup-dotnet@v4
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
+        with:
+          dotnet-version: '6.0.x'
 
       - name: Clone & bootstrap vcpkg
         shell: bash
@@ -32,8 +54,6 @@ jobs:
       - name: Configure GitHub Packages feed
         shell: bash
         run: |
-          FEED_URL="https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
-          VCPKG_EXE="${{ github.workspace }}/vcpkg/vcpkg"
           nuget_path="$($VCPKG_EXE fetch nuget | tail -n1 | tr -d '\r')"
           mono "$nuget_path" sources add \
             -Name GitHubPackages \
