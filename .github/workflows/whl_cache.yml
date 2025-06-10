@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   vcpkg-cache:
+    if: false
     runs-on: ubuntu-latest
 
     env:
@@ -70,6 +71,7 @@ jobs:
           ./vcpkg install gsl armadillo jsoncpp boost-circular-buffer openblas lapack-reference  # pull binaries from cache
 
   build-wheel:
+    if: false
     needs: vcpkg-cache
     runs-on: ubuntu-latest
 
