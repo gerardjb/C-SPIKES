@@ -49,14 +49,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y mono-complete
 
-      - name: Clone & bootstrap vcpkg
-        run: |
-          git clone https://github.com/Microsoft/vcpkg.git vcpkg
-          cd vcpkg
-          git checkout tags/2023.10.19
-          ./bootstrap-vcpkg.sh
-        shell: bash
-
       - name: Configure NuGet feed and API key
         run: |
           nuget_path="$($VCPKG_EXE fetch nuget | tail -n1 | tr -d '\r')"
