@@ -32,6 +32,18 @@ jobs:
             ${{ runner.os }}-vcpkg-${{ github.ref_name }}-
             ${{ runner.os }}-vcpkg-
 
+      - name: Prepare vcpkg directory
+        # If we've already set the cache up, just ff merge to the cached changes into the repo 
+        run: |
+          if [ -d vcpkg ]; then
+            cd vcpkg && git pull --ff-only && cd ..
+          else
+            git clone https://github.com/Microsoft/vcpkg.git vcpkg
+            cd vcpkg && git checkout tags/2023.10.19 && ./bootstrap-vcpkg.sh
+            cd ..
+          fi
+        shell: bash
+
       - name: Install Mono for nuget.exe
         run: |
           sudo apt-get update
