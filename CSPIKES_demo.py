@@ -10,10 +10,10 @@ import os
 
 
 #Setting flags for what to calculate on this run
-recalc_pgas = False # this runs the particle Gibbs sampler to extract spike times and cell parameters
+recalc_pgas = True # this runs the particle Gibbs sampler to extract spike times and cell parameters
 recalc_Cparams = False # this runs the particle Gibbs sampler with known spike times to extract cell parameters
 recalc_synth = False # this runs the synthetic data generation code to create new synthetic data
-retrain_and_infer = True # this runs the cascade training and inference code to train a new model and infer spikes on the original data
+retrain_and_infer = False # this runs the cascade training and inference code to train a new model and infer spikes on the original data
 model_source = "ens2"   # FLAG: choose "cascade" or "ens2"
 
 """
