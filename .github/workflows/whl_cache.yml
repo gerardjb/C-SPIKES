@@ -80,6 +80,9 @@ jobs:
     needs: vcpkg-cache
     runs-on: ubuntu-latest
 
+    env:
+      VCPKG_TAG: 2025.04.09
+
     strategy:
       matrix:
         python-version: ['3.9','3.10']
@@ -97,10 +100,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: vcpkg
-          key: ${{ runner.os }}-vcpkg-${{ github.ref_name }}-x64-linux
+          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_TAG }}-${{ github.ref_name }}-x64-linux
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ github.ref_name }}-
-            ${{ runner.os }}-vcpkg-
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_TAG }}-${{ github.ref_name }}-
 
       - name: Install build dependencies
         run: pip install --upgrade pip build wheel ninja cmake
