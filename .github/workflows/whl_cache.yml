@@ -26,10 +26,7 @@ jobs:
       - name: Restore vcpkg cache
         uses: actions/cache@v4
         with:
-          path: |
-            vcpkg/installed
-            vcpkg/buildtrees
-            vcpkg/downloads
+          path: vcpkg
           key: ${{ runner.os }}-vcpkg-${{ github.sha }}
 
       - name: Install Mono for nuget.exe
@@ -66,10 +63,7 @@ jobs:
       - name: Save vcpkg cache
         uses: actions/cache@v4
         with:
-          path: |
-            vcpkg/installed
-            vcpkg/buildtrees
-            vcpkg/downloads
+          path: vcpkg
           key: ${{ runner.os }}-vcpkg-${{ github.sha }}-postinstall
 
   build-wheel:
