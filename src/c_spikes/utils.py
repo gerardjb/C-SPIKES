@@ -44,3 +44,30 @@ def spike_times_2_binary(spike_times,time_stamps):
             binary_vector[nearest_index] += 1
 
     return binary_vector
+
+def unroll_pgas_traj(dat_file):
+    """
+    Convert spike times to a binary vector based on provided time stamps.
+    Args:
+        dat_file (str): Path to the .csv file containing PGAS trajectory data.
+    Returns:
+        B (np.ndarray): Baseline drift (Brownian motion).
+        S (np.ndarray): Discretized spike number per time bin.
+        C (np.ndarray): "Calcium" value, akin to a DFF-like metric.
+        Y (np.ndarray): Original data (not included in PGBAR output, but present in PGAS).
+    """
+    #Loading data
+    data = np.genfromtxt(dat_file, delimiter=',', skip_header=1)
+    #Dealing out data
+    index = data[:,0]
+    B = data[:,2]
+    S = data[:,3]
+    C = data[:,4]
+    
+    #Note that files produced by PGBAR (rather than the more general PGAS) lack Y - for now not including it
+    try:
+        Y = data[:,5]
+    except:
+        Y = np.nan
+    
+    return index,B,S,C,Y
