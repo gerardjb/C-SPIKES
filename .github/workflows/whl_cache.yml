@@ -107,10 +107,7 @@ jobs:
 
       - name: Build wheel with vcpkg toolchain
         env:
-          SKBUILD_CMAKE_ARGS: >
-            -G Ninja;
-            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          SKBUILD_CMAKE_ARGS: "-G Ninja;-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake;-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
         run: python -m build --wheel --outdir dist
 
       - name: Upload wheel artifact
