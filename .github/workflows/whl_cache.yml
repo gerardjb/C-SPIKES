@@ -18,6 +18,7 @@ jobs:
       FEED_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
       VCPKG_BINARY_SOURCES: clear;nuget,https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json,readwrite
       GH_PACKAGES_TOKEN: ${{ secrets.VCPKG_PACKAGES }}
+      VCPKG_TAG: 2025.04.09
 
     steps:
       - name: Checkout repository
@@ -27,9 +28,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: vcpkg
-          key: ${{ runner.os }}-vcpkg-${{ github.ref_name }}-x64-linux
+          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_TAG }}-x64-linux
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ github.ref_name }}-
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_TAG }}-
             ${{ runner.os }}-vcpkg-
 
       - name: Prepare vcpkg directory
@@ -42,7 +43,7 @@ jobs:
             rm -rf vcpkg
             git clone https://github.com/Microsoft/vcpkg.git vcpkg
             cd vcpkg
-            git checkout tags/2025.04.09
+            git checkout tags/${VCPKG_TAG}
             ./bootstrap-vcpkg.sh
             cd ..
           fi
@@ -74,7 +75,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: vcpkg
-          key: ${{ runner.os }}-vcpkg-${{ github.ref_name }}-x64-linux
+          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_TAG }}-x64-linux
 
   build-wheel:
     needs: vcpkg-cache
