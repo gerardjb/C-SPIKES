@@ -89,6 +89,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg/installed
+            vcpkg/buildtrees
+            vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ github.sha }}-postinstall
+
       - name: Install build dependencies
         run: pip install --upgrade pip build wheel ninja cmake
 
