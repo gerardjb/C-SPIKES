@@ -3,7 +3,7 @@
 
 #include<fstream>
 #include "constants.h"
-#include "include/reparam.h"
+#include "reparam.h"
 
 class param {
 public:

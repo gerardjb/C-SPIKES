@@ -392,7 +392,7 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
                    dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2))};
     double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));
     
-    arma::vec state_out(12);
+    arma::vec state_out(12); // <xxx flag for removal xxx>
     for(unsigned int i=0;i<2*maxspikes;i++){
 
         burst = floor(i/maxspikes);

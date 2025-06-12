@@ -9,7 +9,7 @@
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #include<string>
-#include"include/GCaMP_model.h"
+#include"GCaMP_model.h"
 
 using namespace std;
 

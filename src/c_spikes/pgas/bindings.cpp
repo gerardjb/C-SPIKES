@@ -16,7 +16,8 @@
 #include "include/Analyzer.h"
 //In case any other functions or classes need to be exposed to python
 #include "include/GCaMP_model.h"
-
+// Attempting kokkos integration
+#include <Kokkos_Core.hpp>
 namespace py = pybind11;
 
 /* //method to extract final array entries as numpy array
@@ -26,6 +27,12 @@ py::array_t<double> get_final_params(Analyzer& analyzer) {
   std::copy(analyzer.final_params.begin(), analyzer.final_params.end(), result.mutable_data());
   return result;
 } */
+
+auto cleanup_callback = []() {
+	// perform cleanup here -- this function is called with the GIL held
+	// You must call finalize() after you are done using Kokkos.
+	Kokkos::finalize();
+};
 
 
 PYBIND11_MODULE(pgas_bound, m) {
@@ -74,4 +81,6 @@ PYBIND11_MODULE(pgas_bound, m) {
             states["Ca_in"] = g.getCaInValues();
             return states;
         });
+    // Add Kokkos cleanup callback	
+    m.add_object("_cleanup", py::capsule(cleanup_callback));
 }
