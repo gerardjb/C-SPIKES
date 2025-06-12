@@ -24,7 +24,7 @@ dependencies = [
     "tqdm == 4.64.0"    # Also ENS2-specific. Works, but may want to relax pin at some point
 ]
 
-# invoked via, e.g., "pip install -e .[test,dev]"
+# invoked via, e.g., "pip install -e .[test]"
 [project.optional-dependencies]
  test = [
    "pytest >=6",
