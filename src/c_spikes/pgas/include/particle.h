@@ -10,8 +10,13 @@
 #include <gsl/gsl_randist.h>
 #include<string>
 #include"GCaMP_model.h"
+#include"particle_array.h"
+
+#include <Kokkos_Core.hpp>
 
 using namespace std;
+
+
 
 class Particle
 {

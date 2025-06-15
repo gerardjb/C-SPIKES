@@ -112,7 +112,7 @@ Scalar fixedStep_LA_kernel(
         {0,konC,0,0,konN,0,0,-(koffC+koffN+konPC2+konPN2),0},
         {0,0,0,konPC2,0,0,konPN2,0,-(koffPN2+koffPC2)}};
 
-    Scalar dG_dt[9];Add commentMore actions
+    Scalar dG_dt[9];
     Scalar old_t = 0;
     Scalar t = finedt;
     int tstep_i = 1;
@@ -405,7 +405,7 @@ void ParticleArray::calc_ancestor_resampling(
                 logW(part_idx) = logWeight(part_idx, t-1);
                 ar_logW(part_idx) = logWeight(part_idx, t-1) + lf;
 
-                // auto generator = random_pool.get_state();Add commentMore actions
+                // auto generator = random_pool.get_state();
                 // int rand_a = Kokkos::rand<RandGenType, int>::draw(generator, 0, N-1);
                 // ancestor(part_idx, t) = rand_a ;
                 // random_pool.free_state(generator);
