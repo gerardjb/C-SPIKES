@@ -15,6 +15,8 @@ find_package(Kokkos REQUIRED)
 
 file(GLOB PGAS_SRCS CONFIGURE_DEPENDS src/c_spikes/pgas/*.cpp)
 
+#set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -G -lineinfo") # for debugging CUDA code
+
 # Tell CMake where vcpkg lives
 set(CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/vcpkg" CACHE STRING "")
 
@@ -24,7 +26,7 @@ set(CMAKE_BUILD_RPATH "${_vpkglib}")
 set(CMAKE_INSTALL_RPATH "${_vpkglib}")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-pybind11_add_module(pgas_bound MODULE src/c_spikes/pgas/bindings.cpp ${PGAS_SRCS})
+pybind11_add_module(pgas_bound MODULE src/c_spikes/pgas/bindings.cpp ${PGAS_SRCS} NO_EXTRAS)
 
 target_compile_options(pgas_bound PRIVATE -Wno-error=cpp)
 

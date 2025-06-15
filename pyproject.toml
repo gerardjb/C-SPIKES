@@ -49,14 +49,23 @@ dependencies = [
  minimum-version = "0.4"
  cmake.args = [
   '-DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake', 
-  '-DCMAKE_BUILD_TYPE=RelWithDebInfo',
   '-DCMAKE_CXX_FLAGS=-DARMA_ALLOW_FAKE_GCC',
+  #'-DCMAKE_BUILD_TYPE=RelWithDebInfo',
+  '-DCMAKE_BUILD_TYPE=Release', # apparently this is needed for kokkos full speed potential
+  # '-DCMAKE_BUILD_TYPE=Debug',
+
+  # Kokkos Debug
+  #'-DKokkos_ENABLE_DEBUG=ON',
+  #'-DKokkos_ENABLE_DEBUG_BOUNDS_CHECK=ON',
+  #'-DKokkos_ENABLE_DEBUG_DUALVIEW_MODIFY_CHECK=ON',
 
   # Kokkos stuff,
+  # '-DKOKKOS_DEBUG=ON',
   '-DKokkos_ENABLE_SERIAL=ON',
   '-DKokkos_ENABLE_OPENMP=ON',
   '-DKokkos_ENABLE_CUDA=ON',
   '-DKokkos_ARCH_AMPERE80=ON', # A100 only for now.
+  '-DKokkos_ENABLE_CUDA_CONSTEXPR=ON',
   ]
  build-dir = "build/{wheel_tag}"
  metadata.version.provider = "scikit_build_core.metadata.setuptools_scm" # gets versions dynamically from git tags

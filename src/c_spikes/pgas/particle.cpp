@@ -1,4 +1,5 @@
 #include"include/particle.h"
+#include"include/particle_array.h"
 #include"include/utils.h"
 #include<gsl/gsl_sf_gamma.h>
 #include<gsl/gsl_math.h>
@@ -8,35 +9,6 @@
 #include"include/GCaMP_model.h"
 #include<iomanip>
 
-// A helper function that generates a discrete random variable from a uniform sample.
-// This function lets us pre-generate noise samples for the move and weight steps
-// Ahead of time to aid in reproducibility.
-#include <gsl/gsl_randist.h>
-size_t gsl_ran_discrete_from_uniform(const gsl_ran_discrete_t *g, double u)
-{
-
-    #define KNUTH_CONVENTION 1
-
-    size_t c=0;
-    double f;
-#if KNUTH_CONVENTION
-    c = (u*(g->K));
-#else
-    u *= g->K;
-    c = u;
-    u -= c;
-#endif
-    f = (g->F)[c];
-    /* fprintf(stderr,"c,f,u: %d %.4f %f\n",c,f,u); */
-    if (f == 1.0) return c;
-
-    if (u < f) {
-        return c;
-    }
-    else {
-        return (g->A)[c];
-    }
-}
 
 using namespace std;
 
@@ -44,7 +16,7 @@ using namespace std;
 // -----------------------------------------------------------
 //
 Particle::Particle(){
-    C.set_size(11);
+    C.set_size(12);
     B=0;
     burst=0;
     S=0;
@@ -361,7 +333,7 @@ void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, 
     if(!set){
         // move particle if not already set
         gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(2, probs);
-        int idx = gsl_ran_discrete_from_uniform(rdisc, u_noise);
+        int idx = utils::gsl_ran_discrete_from_uniform(rdisc, u_noise);
 
         part.burst = idx;
         part.B     = z[0]*parent.B+z[1]*(y-parent.C(0)) + g_noise;
@@ -390,7 +362,7 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
     
     double z[2] = {par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)),
                    dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2))};
-    double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));
+    //double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));
     
     arma::vec state_out(12); // <xxx flag for removal xxx>
     for(unsigned int i=0;i<2*maxspikes;i++){
@@ -401,8 +373,8 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
         model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
         
         log_probs[i] = log(W[parent.burst][burst]);
-        log_probs[i] += ns*log(rate[burst]) - log(gsl_sf_gamma(ns+1)) -rate[burst];
-        log_probs[i] += -0.5/(par.sigma2+pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2);
+        log_probs[i] += ns*log(rate[burst]) - log(tgamma(ns+1)) -rate[burst];
+        log_probs[i] += -0.5/(par.sigma2+pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2); 
         
     } 
 
@@ -414,7 +386,7 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
     if(!set){
         // move particle if not already set
         gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(2*maxspikes, probs);
-        int idx = gsl_ran_discrete_from_uniform(rdisc, u_noise);
+        int idx = utils::gsl_ran_discrete_from_uniform(rdisc, u_noise);
 
         part.burst = floor(idx/maxspikes);
         part.S     = idx%maxspikes;
@@ -643,6 +615,17 @@ void SMC::PF(const param &par){
 
   
 }
+
+// A global to keep track whether Kokkos has been setup.
+bool Kokkos_Initialized = false;
+
+void init_kokkos()
+{
+	if (!Kokkos_Initialized) {
+		Kokkos::initialize();
+		Kokkos_Initialized = true;
+	}
+}
  
 void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out){
 
@@ -650,6 +633,9 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
     int i;
 
     double dt=1.0/constants->sampling_frequency;
+
+    // fixes omp complaints
+    //omp_set_num_threads(1);
     
     // set model parameters
     model->setParams(par.G_tot,par.gamma,par.DCaT,par.Rf, par.gam_in, par.gam_out);
@@ -694,14 +680,67 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
 
     vector<double> g_noise(nparticles);
     vector<double> u_noise(nparticles);
+
+    init_kokkos();
+    
+    // Copy the state of particles for all times to our structure of arrays on device memory
+    ParticleArray particleArray(nparticles, TIME);
+    for(t=0;t<TIME;t++)
+        for(i=0;i<nparticles;i++)
+            particleArray.set_particle(t, i, particleSystem[t][i]);
+    particleArray.copy_to_device();
+
+    // Create a GPU view of the data_y vector
+    VectorType data_y_view = VectorType("data_y_view", data_y.n_elem);
+    VectorType::HostMirror data_y_h = Kokkos::create_mirror_view(data_y_view);
+    for (unsigned int i = 0; i < data_y.n_elem; i++)
+        data_y_h(i) = data_y(i);
+    Kokkos::deep_copy(data_y_view, data_y_h);
+
+    // Create the noise views
+    VectorType g_noise_view = VectorType("g_noise_view", nparticles);
+    VectorType u_noise_view = VectorType("u_noise_view", nparticles);
+    VectorType::HostMirror g_noise_h = Kokkos::create_mirror_view(g_noise_view);
+    VectorType::HostMirror u_noise_h = Kokkos::create_mirror_view(u_noise_view);
+
+    GCaMP_params params;
+    model->read_params(params);
+
+    //bool die = false;
         
     for(t=1;t<TIME;++t){
-        // cout<<"    "<<t<<"      \r"<<flush;
+        //if (die)
+        //    break;
+
+        //cout<<"    "<<t<<"      \r"<<flush;
         // Retrieve weights and calculate ancestor resampling weights for particle 0
-        #pragma omp parallel for schedule(static)
+        //#pragma omp parallel for schedule(static)
+        
+        //for(i=0;i<nparticles;i++){
+        //    logW[i] = particleSystem[t-1][i].logWeight;
+        //    ar_logW[i] = logW[i]+logf(particleSystem[t-1][i],particleSystem[t][0],par);
+        //}
+
+        particleArray.calc_ancestor_resampling(t, par, constants);
+
+        // Check logW and ar_logW are equal on particleArray and particleSystem
+        //for(i=0;i<nparticles;i++){
+        //    double lw_cpu = logW[i];
+        //    double lw_gpu = particleArray.logW_h(i);
+        //    double ar_lw_cpu = ar_logW[i];
+        //    double ar_lw_gpu = particleArray.ar_logW_h(i);
+        //    if (fabs(lw_cpu - lw_gpu) > 1e-10 || fabs(ar_lw_cpu - ar_lw_gpu) > 1e-10) {
+        //        cout << "Error: logW or ar_logW mismatch at particle " << i << " at time " << t << endl;
+        //        cout << "CPU: logW = " << lw_cpu << ", ar_logW = " << ar_lw_cpu << endl;
+        //        cout << "GPU: logW = " << lw_gpu << ", ar_logW = " << ar_lw_gpu << endl;
+        //        die = true;
+        //        break;
+        //    }
+        //}
+
         for(i=0;i<nparticles;i++){
-            logW[i] = particleSystem[t-1][i].logWeight;
-            ar_logW[i] = logW[i]+logf(particleSystem[t-1][i],particleSystem[t][0],par);
+            logW[i] = particleArray.logW_h(i);;
+            ar_logW[i] = particleArray.ar_logW_h(i);
         }
 
         utils::w_from_logW(logW,w,nparticles);
@@ -720,31 +759,55 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
             particleSystem[t][i].ancestor = a;
         }
 
-        // Pregenerate noise so we can have noise that is not dependent on the thread execution order
-        double dt = 1.0/constants->sampling_frequency;
-        double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));  
-        for(i=0;i<nparticles;i++){
-            if(i != 0) {
-                u_noise[i] = gsl_rng_uniform(rng);
-                g_noise[i] = gsl_ran_gaussian(rng,sigma_B_posterior);
-            }
-        }
+        // Copy ancestors to device memory
+        for(i=0;i<nparticles;i++)
+            particleArray.new_ancestors_h(i) = particleSystem[t][i].ancestor;
+        Kokkos::deep_copy(particleArray.new_ancestors, particleArray.new_ancestors_h);
+
+        // // Pregenerate noise so we can have noise that is not dependent on the thread execution order
+        // double dt = 1.0/constants->sampling_frequency;
+        // double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));  
+        // for(i=0;i<nparticles;i++){
+        //     if(i != 0) {
+        //         u_noise[i] = gsl_rng_uniform(rng);
+        //         g_noise[i] = gsl_ran_gaussian(rng,sigma_B_posterior);
+        //     }
+        // }
     
+        // // Copy noise to device memory
+        // for(i=0;i<nparticles;i++){
+        //     g_noise_h(i) = g_noise[i];
+        //     u_noise_h(i) = u_noise[i];
+        // }
+        // Kokkos::deep_copy(g_noise_view, g_noise_h);
+        // Kokkos::deep_copy(u_noise_view, u_noise_h);
+
         // Move and weight particles
-        #pragma omp parallel for schedule(static)
-        for(i=0;i<nparticles;i++){
-            a = particleSystem[t][i].ancestor;
-            if(constants->KNOWN_SPIKES){
-                move_and_weight_GTS(particleSystem[t][i], particleSystem[t-1][a], data_y(t), par, g_noise[i], u_noise[i], i==0);
-            } else {
-                move_and_weight(particleSystem[t][i], particleSystem[t-1][a], data_y(t), par, g_noise[i], u_noise[i], i==0);
-            }
-        }
+        //#pragma omp parallel for schedule(static)
+        //for(i=0;i<nparticles;i++){
+        //    a = particleSystem[t][i].ancestor;
+        //    if(constants->KNOWN_SPIKES){
+        //        move_and_weight_GTS(particleSystem[t][i], particleSystem[t-1][a], data_y(t), par, g_noise[i], u_noise[i], i==0);
+        //    } else {
+        //        move_and_weight(particleSystem[t][i], particleSystem[t-1][a], data_y(t), par, g_noise[i], u_noise[i], i==0);
+        //    }
+        //}
+
+        // Copy back to host so we can theck things.
+        particleArray.move_and_weight(t, data_y_view, par, constants, g_noise_view, u_noise, u_noise_view, params);
+
+        //die = !particleArray.check_particle_system(t, particleSystem);
 
         gsl_ran_discrete_free(rdisc);
         gsl_ran_discrete_free(ar_rdisc);
         
     }
+
+    // Copy the partilce system back to the CPU
+    particleArray.copy_to_host();
+    for(t=1;t<TIME;++t)
+       for(i=0;i<nparticles;i++)
+            particleArray.get_particle(t, i, particleSystem[t][i]);
 		
     // Now use the last particle set to resample the new trajectory
     for(i=0;i<nparticles;i++){
@@ -757,6 +820,9 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
     i = gsl_ran_discrete(rng,rdisc);
 
     t=TIME;
+
+    //if(die)
+    //    return;
 
     while(t>0){
         t--;

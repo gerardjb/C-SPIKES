@@ -3,6 +3,7 @@
 #include<armadillo>
 #include"include/utils.h"
 #include<gsl/gsl_sf.h>
+#include <gsl/gsl_randist.h>
 using namespace std;
 
 namespace utils {
@@ -23,6 +24,34 @@ namespace utils {
 
     double Z_factor(double x,double xprop,double sigma,double cutoff){
         return(log(gsl_sf_erf_Q((cutoff-x)/sigma)/gsl_sf_erf_Q((cutoff-xprop)/sigma)));
+    }
+
+    // A helper function that generates a discrete random variable from a uniform sample.Add commentMore actions
+    // This function lets us pre-generate noise samples for the move and weight steps
+    // Ahead of time to aid in reproducibility. Implmented from gsl_ran_discrete().
+    size_t gsl_ran_discrete_from_uniform(const gsl_ran_discrete_t *g, double u)
+    {
+        #define KNUTH_CONVENTION 1
+
+        size_t c=0;
+        double f;
+    #if KNUTH_CONVENTION
+        c = (u*(g->K));
+    #else
+        u *= g->K;
+        c = u;
+        u -= c;
+    #endif
+        f = (g->F)[c];
+        /* fprintf(stderr,"c,f,u: %d %.4f %f\n",c,f,u); */
+        if (f == 1.0) return c;
+
+        if (u < f) {
+            return c;
+        }
+        else {
+            return (g->A)[c];
+        }
     }
 
 }

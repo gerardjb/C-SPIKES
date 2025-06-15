@@ -35,6 +35,12 @@ gt_noise_dir/
 
 gt_data/
 
+# kokkos tools
+kokkos-tools/
+
+# slurm stuff
+slurm-*.out
+
 # Outputs for syn_gen and cascade
 Pretrained_models/*
 Ground_truth/*
