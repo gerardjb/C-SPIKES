@@ -17,7 +17,7 @@ def smooth_spike_train(spike_times, sampling_rate, duration=None, sigma_ms=50):
         duration = spike_times.max() if spike_times.size > 0 else 0
     N = int(np.ceil(duration * sampling_rate)) + 1
     spike_array = np.zeros(N, dtype=float)
-    indices = (spike_times * sampling_rate).astype(int)
+    indices = np.rint(spike_times * sampling_rate).astype(np.int64)
     indices = indices[(indices >= 0) & (indices < N)]
     np.add.at(spike_array, indices, 1)
     sigma_samples = (sigma_ms / 1000) * sampling_rate
