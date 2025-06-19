@@ -10,9 +10,9 @@
 
 using namespace std;
 
- Analyzer::Analyzer(const std::vector<double>& time, const std::vector<double>& data, const std::string& constants_file, const std::string& output_folder,
+ Analyzer::Analyzer(const arma::vec& time, const arma::vec& data, const std::string& constants_file, const std::string& output_folder,
              unsigned int column, const std::string& tag, unsigned int niter, const std::string& trainedPriorFile,
-             bool append, unsigned int trim, bool verbose, const std::vector<double>& gtSpikes,
+             bool append, unsigned int trim, bool verbose, const arma::vec& gtSpikes,
              bool has_trained_priors, bool has_gtspikes, unsigned int maxlen, const std::string& Gparam_file, int seed)
         : time(time), data(data), constants_file(constants_file), output_folder(output_folder), column(column), tag(tag),
           niter(niter), trainedPriorFile(trainedPriorFile), append(append), trim(trim), verbose(verbose),
@@ -27,7 +27,7 @@ void Analyzer::add_parameter_sample(std::vector<double> parameter_sample) {
     }
     cout << endl;
 
-    parameter_samples.push_back(parameter_sample);
+    //parameter_samples.push_back(parameter_sample);
 }
 
 
@@ -87,7 +87,7 @@ void Analyzer::run() {
         constants.KNOWN_SPIKES = true;
         //gtSpikes.load(gtSpike_file, arma::raw_ascii);
     }
-    if (gtSpikes.size()==1){
+    if (gtSpikes.n_elem==1){
         constants.KNOWN_SPIKES = false;
         has_gtspikes = false;
     }
@@ -116,9 +116,7 @@ void Analyzer::run() {
     // Initialize the sampler (this will also reset the scales, that's why we need to initialize after we update the constants)
     // note the different constructors for SMC class here - one expects Analyzer to be called with a filename, the other takes data passed in directly
 
-    arma::vec time_vec(time);
-    arma::vec data_vec(data);
-    SMC sampler(time_vec, data_vec, column, constants, false, seed, maxlen, Gparam_file);
+    SMC sampler(time, data, column, constants, false, seed, maxlen, Gparam_file);
 
     // Initialize the trajectory
 
@@ -129,7 +127,7 @@ void Analyzer::run() {
         traj_sam1.burst(t) = 0;
         traj_sam1.C(t) = 0;
         traj_sam1.S(t) = 0;
-        if (has_gtspikes) traj_sam1.S(t) = gtSpikes[t];
+        if (has_gtspikes) traj_sam1.S(t) = gtSpikes(t);
         traj_sam1.Y(t) = 0;
     }
 
@@ -192,7 +190,13 @@ void Analyzer::run() {
             testpar.Rf,
             testpar.gam_in,
             testpar.gam_out};
-            parameter_samples.push_back(parameter_sample);
+            arma::rowvec new_row(parameter_sample);
+            if (parameter_samples.n_cols==0){
+                parameter_samples = arma::mat(new_row);
+            }
+            else{
+                parameter_samples = arma::join_cols(parameter_samples, arma::mat(new_row));
+            }
             testpar.write(parsamples, constants.sampling_frequency);
             traj_sam2.write(trajsamples, i / trim);
             logp << testpar.logPrior(constants) + traj_sam2.logp(&testpar, &constants) << endl;
