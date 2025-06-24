@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.linalg import null_space 
 import json
+import os
 from scipy.interpolate import interp1d
 
 def gauss_sum_interp(
@@ -103,13 +104,19 @@ class GCaMP:
 
         # Load the buffer parameters
         ## Fixed buffer
-        self.kon_B  = self.params['fixed_buffer']['kon_B']
-        self.koff_B = self.params['fixed_buffer']['koff_B']
-        self.B_tot  = self.params['fixed_buffer']['B_tot']
+        if 'fixed_buffer' in self.params:
+            self.kon_B  = self.params['fixed_buffer']['kon_B']
+            self.koff_B = self.params['fixed_buffer']['koff_B']
+            self.B_tot  = self.params['fixed_buffer']['B_tot']
+        else:
+            self.kon_B = None
         ## ATP
-        self.kon_ATP = self.params['ATP']['kon_ATP']
-        self.koff_ATP = self.params['ATP']['koff_ATP']
-        self.ATP_tot = self.params['ATP']['ATP_tot']
+        if 'ATP' in self.params:
+            self.kon_ATP = self.params['ATP']['kon_ATP']
+            self.koff_ATP = self.params['ATP']['koff_ATP']
+            self.ATP_tot = self.params['ATP']['ATP_tot']
+        else:
+            self.kon_ATP = None
         ## Free buffer - trun off if not included
         if 'free_buffer' in self.params:
             self.kon_free = self.params['free_buffer']['kon_free']
@@ -130,12 +137,20 @@ class GCaMP:
         self.t_kernel,self.ca_influx_kernel,_,_ = gauss_sum_interp(self.spike_times, self.duration, dt_out=None,
                 sigma=self.FWHM/2.3548, offset=4e-4,
                 area_per_spike=self.DCaT,dt_kernel=1e-5)
-
+        
+        n_states = 11
         # Get initial system state and edge states
-        self.BCa0 = self.kon_B*self.c0/(self.kon_B*self.c0 +self.koff_B)*self.B_tot
-        self.ATP0 = self.kon_ATP*self.c0/(self.kon_ATP*self.c0 +self.koff_ATP)*self.ATP_tot
+        if self.kon_B is not None:
+            n_states += 1
+            self.BCa0 = self.kon_B*self.c0/(self.kon_B*self.c0 +self.koff_B)*self.B_tot
+        if self.kon_ATP is not None:
+            n_states += 1
+            self.ATP0 = self.kon_ATP*self.c0/(self.kon_ATP*self.c0 +self.koff_ATP)*self.ATP_tot
         if self.kon_free is not None:
+            n_states += 1
             self.free0 = self.kon_free*self.c0/(self.kon_free*self.c0 +self.koff_free)*self.free_tot
+        self.n_states = n_states
+
         # GCaMP initializations
         self.Ginit = self.getInitialCondition(self.c0)[self.bright_states].sum()
         self.G0 = self.getInitialCondition(0)[self.bright_states].sum()
@@ -168,10 +183,15 @@ class GCaMP:
         ns = null_space(self.Gmat(ca))[:,0]
         G=ns/sum(ns)*self.G_tot
         # Loads into initial state as G, BCa, Ca, Ca_in, ATP, free
+
+        initialCondition = np.concatenate((G,[self.c0,self.c0]))
+
+        if self.kon_B is not None:
+            initialCondition = np.concatenate((initialCondition,[self.BCa0]))
+        if self.kon_ATP is not None:
+            initialCondition = np.concatenate((initialCondition,[self.ATP0]))
         if self.kon_free is not None:
-            initialCondition = np.concatenate((G,[self.BCa0,self.c0,self.c0,self.ATP0,self.kon_free]))
-        else:
-            initialCondition = np.concatenate((G,[self.BCa0,self.c0,self.c0,self.ATP0]))
+            initialCondition = np.concatenate((initialCondition,[self.kon_free]))
 
         return(initialCondition)
 
@@ -206,43 +226,54 @@ class GCaMP:
 
         # Separate states for matmul
         G = state[:9]
-        BCa = state[9]
-        Ca = state[10]
-        Ca_in = state[11]
-        ATP = state[12]
+        Ca = state[9]
+        Ca_in = state[10]
+
+        state_ind_shift = 0
 
         # calcium flux due to GCaMP
         Gflux = self.getFlux(Ca,G)
 
         # Taylor expansion at current time
         dG_dt = np.matmul(self.Gmat(Ca),G)
-        dBCa_dt = self.kon_B*(self.B_tot-BCa)*Ca - self.koff_B*BCa
+
+        if self.kon_B is not None:
+            BCa = state[11]
+            dBCa_dt = self.kon_B*(self.B_tot-BCa)*Ca - self.koff_B*BCa
+            BCa = BCa +  dt*dBCa_dt
+            state[11] = BCa
+            state_ind_shift += 1
+        else:
+            dBCa_dt = 0
+
         dCa_dt  = -self.gamma*(Ca-self.c0)\
             -self.gam_in*(Ca - self.c0) + self.gam_out*(Ca_in - self.c0) \
             + Gflux - dBCa_dt + calcium_input
         dCa_in_dt = self.gam_in*(Ca - self.c0) - self.gam_out*(Ca_in - self.c0)
-        dATP_dt = self.kon_ATP*(self.ATP_tot-ATP)*Ca - self.koff_ATP*ATP
+
+        if self.kon_ATP is not None:
+            ATP = state[11 + state_ind_shift]
+            dATP_dt = self.kon_ATP*(self.ATP_tot-ATP)*Ca - self.koff_ATP*ATP
+            ATP = ATP + dt*dATP_dt
+            state[11 + state_ind_shift] = ATP
+            state_ind_shift += 1
         
         # Handle free separately
         if self.kon_free is not None:
-            free = state[13]
+            free = state[11 + state_ind_shift]
             dfree_dt = self.kon_free*(self.free_tot-free)*Ca - self.koff_free*free
             free = free + dt*dfree_dt
-            state[13] = free
+            state[11 + state_ind_shift] = free
         
         # State updates
         G   = G   +  dt*dG_dt
-        BCa = BCa +  dt*dBCa_dt
         Ca  = Ca  +  dt*dCa_dt
         Ca_in = Ca_in + dt*dCa_in_dt
-        ATP = ATP + dt*dATP_dt
 
         # Pack out
         state[:9] = G
-        state[9] = BCa
-        state[10] = Ca
-        state[11] = Ca_in
-        state[12] = ATP
+        state[9] = Ca
+        state[10] = Ca_in
         return(state)
 
     def euler(self,n_sim=None):
@@ -251,11 +282,11 @@ class GCaMP:
             n_sim = int(np.ceil(self.duration / self.dt)) + 1
 
         # Check if we're using free, adjust state number accordingly
-        n_states = 14 if self.kon_free is not None else 13
+        #n_states = 14 if self.kon_free is not None else 13
 
         # Set up
         dt=self.dt
-        state_out=np.zeros((n_sim,n_states))
+        state_out=np.zeros((n_sim,self.n_states))
         initial_state = self.getInitialCondition(self.c0)
         state_out[0,:]=initial_state
         # this is for interpolating the coarse gaussian kernels onto the simulation time basis
@@ -293,7 +324,7 @@ if __name__ == '__main__':
     dt_kernel = 1e-5
     dt_out = 1e-6
     DCaT = 1e-5
-    duration = 1
+    duration = 0.2
     t_out = np.arange(0, duration, dt_out)
     spikes = np.linspace(0, 0.1, 10)
 
@@ -319,19 +350,41 @@ if __name__ == '__main__':
     plt.show()
 
     ### Deomnstration for the GCaMP class
-    pFile = r'params.json'
+    pFile = r'parameter_files/params_fe_test.json'
     spike_time = 0
     # I spoofed an overloaded constructor here with conditionals (check out top lines of __init__ to see what I mean)
     # This will cause initializations to be calculated, etc.
-    gcamp = GCaMP(params=pFile,spikes=spike_time,duration=1)
+    gcamp_dt_out = 1e-4
+    gcamp = GCaMP(params=pFile,spikes=spikes,duration=duration,
+                  dt_out=gcamp_dt_out)
+    print(gcamp.spike_times)
     # Properly speaking, I should have segregated private and public methods here, but suffice to say this one is public
     # input is number of iterations - default is to use duration/dt steps in not passed in
-    states,dff = gcamp.euler(2000000)
+    #iter = 100000000
+    iter = 1000000
+    states,dff = gcamp.euler(iter)
+    time_np = np.arange(0, duration + gcamp_dt_out, gcamp_dt_out)
+    #states,dff = gcamp.euler()
     # QC plot comparing 1e-5 and finer time basis (could go finer, but memory lags after a while)
     plt.figure(figsize=(8, 4))
-    plt.plot(dff)
+    plt.plot(time_np, dff)
+    plt.title("DFF")
     plt.show()
     plt.figure(figsize=(8, 4))
     plt.plot(states[:,-2])
+    plt.title("States")
     plt.show()
+
+    tag = "test2"
+    np_sav_dir = os.path.join("results/sim_output", tag)
+    
+    if not os.path.exists(np_sav_dir):
+        os.makedirs(np_sav_dir)
+    else:
+        os.makedirs(np_sav_dir + "_x")
+
+    np.save(os.path.join(np_sav_dir, "dff.npy"), dff)
+    np.save(os.path.join(np_sav_dir, "states.npy"), states)
+    np.save(os.path.join(np_sav_dir, "time.npy"), time_np)
+    np.save(os.path.join(np_sav_dir, "spike_times.npy"), spikes)
     
