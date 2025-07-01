@@ -50,7 +50,7 @@ class GCaMP:
     """
     A class to simulate GCaMP calcium indicator dynamics based on provided parameters and spike times.
     """
-    def __init__(self,params=None,spikes=None,duration=1,dt=1e-9,dt_out=1e-4):
+    def __init__(self,params=None,spikes=None,duration=1,dt=1e-9,dt_out=1e-4, use_linear_approx=False):
         """
         Initialize the GCaMP model with parameters and spike times.
         :param params: Path to the JSON file containing model parameters.
@@ -61,6 +61,7 @@ class GCaMP:
         self.dt = dt
         self.dt_out = dt_out
         self.duration = duration
+        self.use_linear_approx = use_linear_approx
 
         # Load the parameters and spike times
         if params is None:
@@ -124,6 +125,33 @@ class GCaMP:
             self.free_tot = self.params['free_buffer']['free_tot']
         else:
             self.kon_free = None
+        # Calretinin
+        if 'calretinin' in self.params:
+            cr = self.params['calretinin']
+            self.CR_tot = cr['CR_tot']  # Total calretinin concentration (M)
+            self.k1on_CR = cr['k1on']
+            self.k1off_CR = cr['k1off']
+            self.k2on_CR = cr['k2on']
+            self.k2off_CR = cr['k2off']
+            self.kon_CR = True
+            self.TR0 = 0.0  # will be updated in initialCondition
+            self.RCaRCa0 = 0.0
+        else:
+            self.kon_CR = None
+        # Parvalbumin
+        if 'parvalbumin' in self.params:
+            pv = self.params['parvalbumin']
+            self.PV_tot = pv['PV_tot']
+            self.k1on_PV = pv['k1on']    # Mg binding (1/(M·s))
+            self.k1off_PV = pv['k1off']
+            self.k2on_PV = pv['k2on']   # Ca binding (1/(M·s))
+            self.k2off_PV = pv['k2off']
+            self.kon_PV = True
+            self.PB0 = 0.0
+            self.PBCa0 = 0.0
+            self.Mg0 = 1e-3
+        else:
+            self.kon_PV = None
 
         # Constants you probably won't change, but just to explicitly state them
         self.FWHM = 2.8e-4 # FWHM for calcium flux (s)
@@ -143,12 +171,68 @@ class GCaMP:
         if self.kon_B is not None:
             n_states += 1
             self.BCa0 = self.kon_B*self.c0/(self.kon_B*self.c0 +self.koff_B)*self.B_tot
+
+            Kd_B = self.koff_B / self.kon_B
+            self.kap_B = self.B_tot / Kd_B
+
         if self.kon_ATP is not None:
             n_states += 1
             self.ATP0 = self.kon_ATP*self.c0/(self.kon_ATP*self.c0 +self.koff_ATP)*self.ATP_tot
+
+            Kd_ATP = self.koff_ATP / self.kon_ATP
+            self.kap_ATP = self.ATP_tot / Kd_ATP
+
         if self.kon_free is not None:
             n_states += 1
             self.free0 = self.kon_free*self.c0/(self.kon_free*self.c0 +self.koff_free)*self.free_tot
+
+            Kd_free = self.koff_free / self.kon_free
+            self.kap_free = self.free_tot / Kd_free
+
+        if self.kon_CR is not None:
+            n_states += 2
+            K1 = self.k1on_CR / self.k1off_CR
+            K2 = self.k2on_CR / self.k2off_CR
+            ca = self.c0
+
+            denom = 1 + K1*ca + K1*K2*ca**2
+            TR0 = K1 * ca * self.CR_tot / denom
+            RCaRCa0 = K1 * K2 * ca**2 * self.CR_tot / denom
+
+            self.TR0 = TR0
+            self.RCaRCa0 = RCaRCa0
+
+            Kd_CR1 = self.k1off_CR / self.k1on_CR
+            Kd_CR2 = self.k2off_CR / self.k2on_CR
+            self.kap_CR = self.CR_tot * (1 / Kd_CR1 + 2 / Kd_CR2)
+
+        if self.kon_PV is not None:
+            n_states += 2
+            K1 = self.k1on_PV / self.k1off_PV
+            K2 = self.k2on_PV / self.k2off_PV
+            ca = self.c0
+            mg = self.Mg0  # Assume a constant Mg2+ concentration
+
+            r1 = mg * K2 / (ca * K1)
+            r2 = ((r1 * self.k1off_PV + self.k2off_PV) / (mg * self.k1on_PV + ca * self.k2on_PV)) + r1 + 1
+            PB0 = self.PV_tot / r2
+            PBCa0 = PB0 * self.k2on_PV * ca / self.k2off_PV
+
+            self.PB0 = PB0
+            self.PBCa0 = PBCa0
+
+            # PV kinetic constants
+            k1on = self.k1on_PV  # Mg2+ on
+            k1off = self.k1off_PV
+            k2on = self.k2on_PV  # Ca2+ on
+            k2off = self.k2off_PV
+
+            # Effective Ca2+ binding fraction accounting for Mg2+ occupancy
+            # From Lee 2000, Equation 3:
+            numerator = self.PV_tot * k2on / k2off
+            denominator = 1 + (mg * k1on / k1off)
+            self.kap_PV = numerator / denominator
+
         self.n_states = n_states
 
         # GCaMP initializations
@@ -191,7 +275,11 @@ class GCaMP:
         if self.kon_ATP is not None:
             initialCondition = np.concatenate((initialCondition,[self.ATP0]))
         if self.kon_free is not None:
-            initialCondition = np.concatenate((initialCondition,[self.kon_free]))
+            initialCondition = np.concatenate((initialCondition,[self.free0]))
+        if self.kon_CR is not None:
+            initialCondition = np.concatenate((initialCondition, [self.TR0, self.RCaRCa0]))
+        if self.kon_PV is not None:
+            initialCondition = np.concatenate((initialCondition, [self.PB0, self.PBCa0]))
 
         return(initialCondition)
 
@@ -219,8 +307,15 @@ class GCaMP:
 
         Csites=2
         return(2*N + Csites*C)
+    
+    def model(self, state, calcium_input):
+        if self.use_linear_approx:
+            return self.model_la(state, calcium_input)
+        else:
+            return self.model_full(state, calcium_input)
+        
 
-    def model(self,state,calcium_input):
+    def model_full(self,state,calcium_input):
         
         dt = self.dt
 
@@ -246,17 +341,14 @@ class GCaMP:
         else:
             dBCa_dt = 0
 
-        dCa_dt  = -self.gamma*(Ca-self.c0)\
-            -self.gam_in*(Ca - self.c0) + self.gam_out*(Ca_in - self.c0) \
-            + Gflux - dBCa_dt + calcium_input
-        dCa_in_dt = self.gam_in*(Ca - self.c0) - self.gam_out*(Ca_in - self.c0)
-
         if self.kon_ATP is not None:
             ATP = state[11 + state_ind_shift]
             dATP_dt = self.kon_ATP*(self.ATP_tot-ATP)*Ca - self.koff_ATP*ATP
             ATP = ATP + dt*dATP_dt
             state[11 + state_ind_shift] = ATP
             state_ind_shift += 1
+        else:
+            dATP_dt = 0
         
         # Handle free separately
         if self.kon_free is not None:
@@ -264,6 +356,54 @@ class GCaMP:
             dfree_dt = self.kon_free*(self.free_tot-free)*Ca - self.koff_free*free
             free = free + dt*dfree_dt
             state[11 + state_ind_shift] = free
+        else:
+            dfree_dt = 0
+
+        # Calretinin
+        if self.kon_CR is not None:
+            TRCa = state[11 + state_ind_shift]
+            RCaRCa = state[12 + state_ind_shift]
+            TT = self.CR_tot - TRCa - RCaRCa
+
+            dTRCa_dt = self.k1on_CR * TT * Ca - self.k1off_CR * TRCa \
+                    - self.k2on_CR * TRCa * Ca + self.k2off_CR * RCaRCa
+            dRCaRCa_dt = self.k2on_CR * TRCa * Ca - self.k2off_CR * RCaRCa
+
+            # Update states
+            TRCa += dt * dTRCa_dt
+            RCaRCa += dt * dRCaRCa_dt
+            state[11 + state_ind_shift] = TRCa
+            state[12 + state_ind_shift] = RCaRCa
+
+            dCR_dt = dTRCa_dt + 2 * dRCaRCa_dt
+        else:
+            dCR_dt = 0
+
+        # Parvalbumin
+        if self.kon_PV is not None:
+            PB = state[11 + state_ind_shift]
+            PBCa = state[12 + state_ind_shift]
+            PBMg = self.PV_tot - PB - PBCa
+
+            dPB_dt = PBMg * self.k1off_PV - PB * self.Mg0 * self.k1on_PV \
+                    - PB * Ca * self.k2on_PV + PBCa * self.k2off_PV
+            dPBMg_dt = PB * self.Mg0 * self.k1on_PV - PBMg * self.k1off_PV # Unused since not modeling Mg2+ flux
+            dPBCa_dt = PB * Ca * self.k2on_PV - PBCa * self.k2off_PV
+
+            PB += dt * dPB_dt
+            PBCa += dt * dPBCa_dt
+
+            state[11 + state_ind_shift] = PB
+            state[12 + state_ind_shift] = PBCa
+
+            dPV_dt = dPBCa_dt
+        else:
+            dPV_dt = 0
+
+        dCa_dt  = -self.gamma*(Ca-self.c0)\
+            -self.gam_in*(Ca - self.c0) + self.gam_out*(Ca_in - self.c0) \
+            + Gflux - dBCa_dt + calcium_input - dATP_dt - dfree_dt - dCR_dt - dPV_dt
+        dCa_in_dt = self.gam_in*(Ca - self.c0) - self.gam_out*(Ca_in - self.c0)
         
         # State updates
         G   = G   +  dt*dG_dt
@@ -274,7 +414,68 @@ class GCaMP:
         state[:9] = G
         state[9] = Ca
         state[10] = Ca_in
+
         return(state)
+    
+    def model_la(self, state, calcium_input):
+        """
+        Linear Approximation (LA) model using simplified buffer capacity approximation.
+        Includes Mg²⁺ competition for parvalbumin (PV) as per Neher (1992).
+        """
+        dt = self.dt
+
+        # Extract current state variables
+        G = state[:9]
+        Ca = state[9]
+        Ca_in = state[10]
+
+        # --- GCaMP dynamics ---
+        Gflux = self.getFlux(Ca, G)
+        dG_dt = np.matmul(self.Gmat(Ca), G)
+
+        # --- Buffer capacity κ approximation ---
+        kappa_total = 0.0
+
+        # Fixed buffer
+        if self.kon_B is not None:
+            kappa_total += self.kap_B
+
+        # ATP
+        if self.kon_ATP is not None:
+            kappa_total += self.kap_ATP
+
+        # Free buffer
+        if self.kon_free is not None:
+            kappa_total += self.kap_free
+
+        # Calretinin (2-site; simplified additive model)
+        if self.kon_CR:
+            kappa_total += self.kap_CR
+
+        # Parvalbumin with Mg²⁺ competition
+        if self.kon_PV:
+            kappa_total += self.kap_PV
+
+        # --- Calcium dynamics with scaled buffer effect ---
+        dCa_dt = (-self.gamma * (Ca - self.c0)
+                - self.gam_in * (Ca - self.c0)
+                + self.gam_out * (Ca_in - self.c0)
+                + Gflux + calcium_input) / (1 + kappa_total)
+
+        dCa_in_dt = self.gam_in * (Ca - self.c0) - self.gam_out * (Ca_in - self.c0)
+
+        # --- Update states ---
+        G += dt * dG_dt
+        Ca += dt * dCa_dt
+        Ca_in += dt * dCa_in_dt
+
+        # --- Pack updated state ---
+        state[:9] = G
+        state[9] = Ca
+        state[10] = Ca_in
+
+        return state
+      
 
     def euler(self,n_sim=None):
         # With n_sim we specify the number of time points we would like in the sim
@@ -282,11 +483,12 @@ class GCaMP:
             n_sim = int(np.ceil(self.duration / self.dt)) + 1
 
         # Check if we're using free, adjust state number accordingly
-        #n_states = 14 if self.kon_free is not None else 13
+        n_states = self.n_states #if not self.use_linear_approx else 11
+        print(n_states)
 
         # Set up
         dt=self.dt
-        state_out=np.zeros((n_sim,self.n_states))
+        state_out=np.zeros((n_sim,n_states))
         initial_state = self.getInitialCondition(self.c0)
         state_out[0,:]=initial_state
         # this is for interpolating the coarse gaussian kernels onto the simulation time basis
@@ -296,6 +498,8 @@ class GCaMP:
         # forward euler
         for i in range(1,n_sim):
             # Get the calcium input
+            if (i % 100000) == 0:
+                print(f"iteration: {i}")
             calcium_input = interp_func(T)
             state_out[i,:] = self.model(state_out[i-1,:],calcium_input)
             T+=dt
@@ -324,9 +528,10 @@ if __name__ == '__main__':
     dt_kernel = 1e-5
     dt_out = 1e-6
     DCaT = 1e-5
-    duration = 0.2
+    duration = 0.05
     t_out = np.arange(0, duration, dt_out)
-    spikes = np.linspace(0, 0.1, 10)
+    #spikes = np.linspace(0, 0.05, 1)
+    spikes = np.array([0.01])
 
     # Calc over dt=1e-5 time basis, time it
     start = time.time()
@@ -350,24 +555,24 @@ if __name__ == '__main__':
     plt.show()
 
     ### Deomnstration for the GCaMP class
-    pFile = r'parameter_files/params_fe_test.json'
+    pFile = r'parameter_files/params_fe_cal.json'
     spike_time = 0
     # I spoofed an overloaded constructor here with conditionals (check out top lines of __init__ to see what I mean)
     # This will cause initializations to be calculated, etc.
     gcamp_dt_out = 1e-4
     gcamp = GCaMP(params=pFile,spikes=spikes,duration=duration,
-                  dt_out=gcamp_dt_out)
+                  dt_out=gcamp_dt_out, use_linear_approx=True)
     print(gcamp.spike_times)
     # Properly speaking, I should have segregated private and public methods here, but suffice to say this one is public
     # input is number of iterations - default is to use duration/dt steps in not passed in
-    #iter = 100000000
-    iter = 1000000
+    iter = 50000000
     states,dff = gcamp.euler(iter)
-    time_np = np.arange(0, duration + gcamp_dt_out, gcamp_dt_out)
+    #time_np = np.arange(0, duration + gcamp_dt_out, gcamp_dt_out)
+    time_np = np.arange(0, duration, gcamp_dt_out)
     #states,dff = gcamp.euler()
     # QC plot comparing 1e-5 and finer time basis (could go finer, but memory lags after a while)
     plt.figure(figsize=(8, 4))
-    plt.plot(time_np, dff)
+    plt.plot(time_np, dff[:-1])
     plt.title("DFF")
     plt.show()
     plt.figure(figsize=(8, 4))
@@ -375,7 +580,7 @@ if __name__ == '__main__':
     plt.title("States")
     plt.show()
 
-    tag = "test2"
+    tag = "test_cal_true_la_model"
     np_sav_dir = os.path.join("results/sim_output", tag)
     
     if not os.path.exists(np_sav_dir):
