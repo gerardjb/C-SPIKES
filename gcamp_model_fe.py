@@ -3,6 +3,7 @@ from scipy.linalg import null_space
 import json
 import os
 from scipy.interpolate import interp1d
+import math
 
 def gauss_sum_interp(
     spike_times, duration, dt_out=None, sigma=1.18e-4, offset=4e-4, area_per_spike=1.0, dt_kernel=1e-5
@@ -204,7 +205,11 @@ class GCaMP:
 
             Kd_CR1 = self.k1off_CR / self.k1on_CR
             Kd_CR2 = self.k2off_CR / self.k2on_CR
+            #ChatGPT Suggestion
             self.kap_CR = self.CR_tot * (1 / Kd_CR1 + 2 / Kd_CR2)
+
+            #From Faas et. al 2007
+            #self.kap_CR = self.CR_tot / math.sqrt(Kd_CR1 * Kd_CR2)
 
         if self.kon_PV is not None:
             n_states += 2
@@ -228,7 +233,7 @@ class GCaMP:
             k2off = self.k2off_PV
 
             # Effective Ca2+ binding fraction accounting for Mg2+ occupancy
-            # From Lee 2000, Equation 3:
+            # From Lee 2000 (Chromaffin...), Equation 7:
             numerator = self.PV_tot * k2on / k2off
             denominator = 1 + (mg * k1on / k1off)
             self.kap_PV = numerator / denominator
@@ -433,34 +438,38 @@ class GCaMP:
         Gflux = self.getFlux(Ca, G)
         dG_dt = np.matmul(self.Gmat(Ca), G)
 
-        # --- Buffer capacity κ approximation ---
-        kappa_total = 0.0
+        dBCa_dt = 0
+        dATP_dt = 0
+        dfree_dt = 0
+        dCR_dt = 0
+        dPV_dt = 0
 
         # Fixed buffer
         if self.kon_B is not None:
-            kappa_total += self.kap_B
+            dBCa_dt = (self.kap_B / (1 + self.kap_B)) * Ca
 
         # ATP
         if self.kon_ATP is not None:
-            kappa_total += self.kap_ATP
+            dATP_dt = (self.kap_ATP / (1 + self.kap_ATP)) * Ca
 
         # Free buffer
         if self.kon_free is not None:
-            kappa_total += self.kap_free
+            dfree_dt = (self.kap_free / (1 + self.kap_free)) * Ca
 
         # Calretinin (2-site; simplified additive model)
-        if self.kon_CR:
-            kappa_total += self.kap_CR
+        if self.kon_CR is not None:
+            dCR_dt = (self.kap_CR / (1 + self.kap_CR)) * Ca
 
         # Parvalbumin with Mg²⁺ competition
-        if self.kon_PV:
-            kappa_total += self.kap_PV
+        if self.kon_PV is not None:
+            dPV_dt = (self.kap_PV/ (1 + self.kap_PV)) * Ca
 
-        # --- Calcium dynamics with scaled buffer effect ---
-        dCa_dt = (-self.gamma * (Ca - self.c0)
-                - self.gam_in * (Ca - self.c0)
-                + self.gam_out * (Ca_in - self.c0)
-                + Gflux + calcium_input) / (1 + kappa_total)
+        buffer_sink = dBCa_dt + dATP_dt + dfree_dt + dCR_dt + dPV_dt
+
+        # Calcium dynamics with buffer-adjusted influx term
+        dCa_dt = -self.gamma * (Ca - self.c0) \
+                - self.gam_in * (Ca - self.c0) + self.gam_out * (Ca_in - self.c0) \
+                + Gflux + calcium_input - buffer_sink  
 
         dCa_in_dt = self.gam_in * (Ca - self.c0) - self.gam_out * (Ca_in - self.c0)
 
@@ -528,10 +537,15 @@ if __name__ == '__main__':
     dt_kernel = 1e-5
     dt_out = 1e-6
     DCaT = 1e-5
-    duration = 0.05
+    duration = 0.01
     t_out = np.arange(0, duration, dt_out)
     #spikes = np.linspace(0, 0.05, 1)
-    spikes = np.array([0.01])
+    #spikes = np.array([0.01])
+    rate_hz = 10
+    isi = np.random.exponential(1.0 / rate_hz, size=int(rate_hz * duration * 2))  # oversample
+    spike_times = np.cumsum(isi)
+    spikes = spike_times[spike_times < duration]
+    spikes = [0]
 
     # Calc over dt=1e-5 time basis, time it
     start = time.time()
@@ -565,8 +579,11 @@ if __name__ == '__main__':
     print(gcamp.spike_times)
     # Properly speaking, I should have segregated private and public methods here, but suffice to say this one is public
     # input is number of iterations - default is to use duration/dt steps in not passed in
-    iter = 50000000
+    iter = int(duration / gcamp.dt)
+    start = time.time()
     states,dff = gcamp.euler(iter)
+    end = time.time()
+    print(f"gcamp.euler() took {end - start:.6f} seconds")
     #time_np = np.arange(0, duration + gcamp_dt_out, gcamp_dt_out)
     time_np = np.arange(0, duration, gcamp_dt_out)
     #states,dff = gcamp.euler()
@@ -580,7 +597,7 @@ if __name__ == '__main__':
     plt.title("States")
     plt.show()
 
-    tag = "test_cal_true_la_model"
+    tag = "test_cal_la_model_upd_kap"
     np_sav_dir = os.path.join("results/sim_output", tag)
     
     if not os.path.exists(np_sav_dir):
