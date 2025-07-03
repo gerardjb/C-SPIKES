@@ -444,32 +444,40 @@ class GCaMP:
         dCR_dt = 0
         dPV_dt = 0
 
+        kap_tot = 0
+
         # Fixed buffer
         if self.kon_B is not None:
-            dBCa_dt = (self.kap_B / (1 + self.kap_B)) * Ca
+            dBCa_dt = (1 / (1 + self.kap_B)) * calcium_input
+            kap_tot += self.kap_B
 
         # ATP
         if self.kon_ATP is not None:
-            dATP_dt = (self.kap_ATP / (1 + self.kap_ATP)) * Ca
+            dATP_dt = (1 / (1 + self.kap_ATP)) * calcium_input
+            kap_tot += self.kap_ATP
 
         # Free buffer
         if self.kon_free is not None:
-            dfree_dt = (self.kap_free / (1 + self.kap_free)) * Ca
+            dfree_dt = (1 / (1 + self.kap_free)) * calcium_input
+            kap_tot += self.kap_free
 
         # Calretinin (2-site; simplified additive model)
         if self.kon_CR is not None:
-            dCR_dt = (self.kap_CR / (1 + self.kap_CR)) * Ca
+            dCR_dt = (1 / (1 + self.kap_CR)) * calcium_input
+            kap_tot += self.kap_CR
 
         # Parvalbumin with Mg²⁺ competition
         if self.kon_PV is not None:
-            dPV_dt = (self.kap_PV/ (1 + self.kap_PV)) * Ca
+            dPV_dt = (1 / (1 + self.kap_PV)) * calcium_input
+            kap_tot += self.kap_PV
 
         buffer_sink = dBCa_dt + dATP_dt + dfree_dt + dCR_dt + dPV_dt
+        #buffer_sink = 0
 
         # Calcium dynamics with buffer-adjusted influx term
         dCa_dt = -self.gamma * (Ca - self.c0) \
                 - self.gam_in * (Ca - self.c0) + self.gam_out * (Ca_in - self.c0) \
-                + Gflux + calcium_input - buffer_sink  
+                + Gflux -buffer_sink + calcium_input#*1/(kap_tot + 1)
 
         dCa_in_dt = self.gam_in * (Ca - self.c0) - self.gam_out * (Ca_in - self.c0)
 
@@ -537,7 +545,7 @@ if __name__ == '__main__':
     dt_kernel = 1e-5
     dt_out = 1e-6
     DCaT = 1e-5
-    duration = 0.01
+    duration = 0.05
     t_out = np.arange(0, duration, dt_out)
     #spikes = np.linspace(0, 0.05, 1)
     #spikes = np.array([0.01])
@@ -545,7 +553,7 @@ if __name__ == '__main__':
     isi = np.random.exponential(1.0 / rate_hz, size=int(rate_hz * duration * 2))  # oversample
     spike_times = np.cumsum(isi)
     spikes = spike_times[spike_times < duration]
-    spikes = [0]
+    spikes = [0.005]
 
     # Calc over dt=1e-5 time basis, time it
     start = time.time()
@@ -569,13 +577,13 @@ if __name__ == '__main__':
     plt.show()
 
     ### Deomnstration for the GCaMP class
-    pFile = r'parameter_files/params_fe_cal.json'
+    pFile = r'parameter_files/params_fe.json'
     spike_time = 0
     # I spoofed an overloaded constructor here with conditionals (check out top lines of __init__ to see what I mean)
     # This will cause initializations to be calculated, etc.
     gcamp_dt_out = 1e-4
-    gcamp = GCaMP(params=pFile,spikes=spikes,duration=duration,
-                  dt_out=gcamp_dt_out, use_linear_approx=True)
+    gcamp = GCaMP(params=pFile,spikes=spikes,duration=duration, dt=1e-6,
+                  dt_out=gcamp_dt_out, use_linear_approx=False)
     print(gcamp.spike_times)
     # Properly speaking, I should have segregated private and public methods here, but suffice to say this one is public
     # input is number of iterations - default is to use duration/dt steps in not passed in
@@ -597,7 +605,7 @@ if __name__ == '__main__':
     plt.title("States")
     plt.show()
 
-    tag = "test_cal_la_model_upd_kap"
+    tag = "test_cal_full_model_1_0us_fr"
     np_sav_dir = os.path.join("results/sim_output", tag)
     
     if not os.path.exists(np_sav_dir):
