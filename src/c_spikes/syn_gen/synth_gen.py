@@ -26,7 +26,9 @@ from scipy.stats import norm
 
 class synth_gen():
   def __init__(self, spike_rate=2, spike_params=[5, 0.5],cell_params=[30e-6, 10e2, 1e-5, 5, 30, 10],
-    noise_dir="gt_noise_dir", GCaMP_model=None, tag="default", plot_on=False,use_noise=False,noise_val=2):
+    noise_dir="gt_noise_dir", GCaMP_model=None, tag="default", plot_on=False,\
+    use_noise=False,noise_val=2,signal_boost=2,\
+    param_set=0):
     
     # Get current directory of this file, prepend to noise_dir
     self.noise_dir = noise_dir
@@ -36,25 +38,30 @@ class synth_gen():
     self.spike_rate = spike_rate
     self.spike_params = spike_params
     self.Cparams = cell_params
+    self.signal_boost = signal_boost
 
     
     # Determine noise directory and get the file list, get path elements
     self.noise_files = [os.path.join(full_noise_path, f) for f in os.listdir(full_noise_path) if f.endswith('.mat')]
     self.tag = tag
+    self.param_set = param_set # index of the used param set
     #Handling noise cases
     self.use_noise = use_noise
     self.noise_val = noise_val
     
+    #For QC plots if not otherwise specified
+    self.plot_on = plot_on
+
     # Load the GCaMP_model
     if not GCaMP_model:
       import c_spikes.pgas.pgas_bound as pgas
-
       self.gcamp = pgas.GCaMP(Gparams,cell_params)
+    # This is for testing the spike generator with visualization of the resultant Poisson rate trace
+    elif GCaMP_model=='test_spk_gen':
+      self.gcamp = None
+      self.plot_on = True
     else:
       self.gcamp = GCaMP_model
-    
-    #For QC plots
-    self.plot_on = plot_on
 
   def calculate_standardized_noise(self,dff,frame_rate):
     noise_levels = np.nanmedian(np.abs(np.diff(dff, axis=-1)), axis=-1) / np.sqrt(frame_rate)
@@ -63,74 +70,77 @@ class synth_gen():
     
   def spk_gen(self,T):
     """
-    Generate a simulated spike train. Based loosely on pocedures described by Deneux et al., 2016.
-    
-    TODO: need more flexibilty around bursting here
-    """
-    spike_rate = self.spike_rate
-    spike_params = self.spike_params
-    
-    # Set generator parameters
-    smoothtime = spike_params[0]
-    rnonzero = spike_params[1]
-    
-    # generate the varying rate vector
-    # get gaussian
-    nsub = 20
-    dt = smoothtime / nsub
-    T = np.ceil(T)
-    nt = int(np.ceil(T / dt))
-    x = np.random.randn(nt + 2 * nsub)
-    tau = np.array([nsub, 0])
-    dim = 0
-    s1 = x.shape
-    xf = np.fft.fft(x, axis=dim)
-    nk = s1[dim]
-    freqs = np.fft.fftfreq(nk)
-    freq2 = freqs ** 2
-    HWHH = np.sqrt(2 * np.log(2))
-    freqthr = 1. / tau[0]
-    sigma = freqthr / HWHH
-    K = 1. / (2 * sigma ** 2)
-    K = np.array([K])
-    K[np.isinf(K)] = 1e6
-    g = np.exp(-K[0] * freq2)
-    # apply gaussian in fourrier space
-    xf = xf * g
-    y = np.fft.ifft(xf, axis=dim)
-    vrate = np.real(y)
-    vrate = vrate[nsub:(nsub + nt)]
-    # calculate std of elem of vrate
-    s = nsub * HWHH / (2 * np.pi)
-    sr = np.sqrt(1 / (2 * np.sqrt(np.pi) * s))
-    # and rescale to 1
-    # If sr<=0, return a single spike at dt*3
-    if sr<=0:
-      spikes = dt*3
-      print("Warning: NaN in vrate, returning single spike at dt*3")
-      return spikes
-    
-    vrate = vrate / sr
-    # translate, and scale the rate vector
-    thr = norm.ppf(1 - rnonzero)
-    vrate = np.maximum(0, vrate - thr)
-    vrate = self.spike_rate*vrate/np.max((vrate))
-    
+    Generate a simulated spike train. Based on pocedures described by Deneux et al., 2016.
 
-    #2 generate spikes
-    # choose sampling rate with at most one spike per bin
-    dt1 = 1 / np.max(vrate) / 100
-    print(f"vrate max = {np.max(vrate)}, dt1 = {dt1}, dt = {dt}")
-    nt1 = int(np.floor(T / dt1))
-    t = np.linspace(0, T, nt1)
-    vrate_interp = np.interp(t, np.arange(nt) * dt, vrate)
-    # make spikes
-    nspike = (np.random.rand(nt1).reshape(-1,1) < vrate_interp * dt1)
-    
-    spikes = np.nonzero(nspike)[0] * dt1
-    spikes = self.strip_sub_refrac(spikes)
+    """
+    try:
+      spike_rate = self.spike_rate
+      spike_params = self.spike_params
+      
+      # Set generator parameters
+      smoothtime = spike_params[0]
+      rnonzero = spike_params[1]
+      
+      # generate the varying rate vector
+      # get gaussian
+      nsub = 20
+      dt = smoothtime / nsub
+      T = np.ceil(T)
+      nt = int(np.ceil(T / dt))
+      x = np.random.randn(nt + 2 * nsub)
+      tau = np.array([nsub, 0])
+      dim = 0
+      s1 = x.shape
+      xf = np.fft.fft(x, axis=dim)
+      nk = s1[dim]
+      freqs = np.fft.fftfreq(nk)
+      freq2 = freqs ** 2
+      HWHH = np.sqrt(2 * np.log(2))
+      freqthr = 1. / tau[0]
+      sigma = freqthr / HWHH
+      K = 1. / (2 * sigma ** 2)
+      K = np.array([K])
+      K[np.isinf(K)] = 1e6
+      g = np.exp(-K[0] * freq2)
+      # apply gaussian in fourrier space
+      xf = xf * g
+      y = np.fft.ifft(xf, axis=dim)
+      vrate = np.real(y)
+      vrate = vrate[nsub:(nsub + nt)]
+      # calculate std of elem of vrate
+      s = nsub * HWHH / (2 * np.pi)
+      sr = np.sqrt(1 / (2 * np.sqrt(np.pi) * s))
+      # and rescale to 1
+      # If sr<=0, return a single spike at dt*3
+      if sr<=0:
+        spikes = dt*3
+        print("Warning: NaN in vrate, returning single spike at dt*3")
+        return spikes
+      
+      vrate = vrate / sr
+      # translate, and scale the rate vector
+      thr = norm.ppf(1 - rnonzero)
+      vrate = np.maximum(0, vrate - thr)
+      vrate = self.spike_rate*vrate/np.max((vrate))
+      
+
+      # generate spikes
+      # choose sampling rate with at most one spike per bin
+      dt1 = 1 / np.max(vrate) / 100
+      nt1 = int(np.floor(T / dt1))
+      t = np.linspace(0, T, nt1)
+      vrate_interp = np.interp(t, np.arange(nt) * dt, vrate)
+      # make spikes
+      nspike = (np.random.rand(nt1).reshape(-1,1) < vrate_interp * dt1)
+      
+      spikes = np.nonzero(nspike)[0] * dt1
+      spikes = self.strip_sub_refrac(spikes)
+    except Exception as e:
+      spikes = np.array([dt*3])
+      print("Exception thrown, using single spike at dt*3") # Fallback to a single spike at dt*3
     
     if self.plot_on:
+        print("plot was on")
         import matplotlib.pyplot as plt
         plt.figure()
         plt.plot(t, vrate_interp)
@@ -169,7 +179,6 @@ class synth_gen():
     #Make dir to hold the synthetic data
     self.tag = tag if tag else self.tag
     synth_dir = os.path.join(output_folder, "Ground_truth", f"synth_{self.tag}")
-    #print(synth_dir)
     os.makedirs(synth_dir,exist_ok=True)
     
     #Pass in Cparams and initialize the model
@@ -222,11 +231,11 @@ class synth_gen():
           n_samples = noise.shape[0]
           time = np.arange(n_samples) / sampling_rate
         T = time[-1] - time[0]
-        print(f"Generating synthetic data for file {file}, cell {ii} with T = {T} seconds")
+        # print(f"Generating synthetic data for file {file}, cell {ii} with T = {T} seconds")
         
         # Generate spikes
         spikes = self.spk_gen(T) + time[0]
-        print(f"Data type of spikes: {type(spikes)}, shape: {spikes.shape}, spikes: {spikes}")
+        # print(f"Data type of spikes: {type(spikes)}, shape: {spikes.shape}, spikes: {spikes}")
           
         # Handle cases where we have no spikes - spike at time point 3
         #if not len(spikes)>0: 
@@ -237,7 +246,7 @@ class synth_gen():
         dff_clean = self.gcamp.getDFFValues()
         
         # Add new field and fill with sim + noise, spike times, and time
-        new_inner_array['fluo_mean'][0][0] = np.array([2*dff_clean.flatten() + noise.flatten()])
+        new_inner_array['fluo_mean'][0][0] = np.array([self.signal_boost*dff_clean.flatten() + noise.flatten()])
         new_inner_array['events_AP'][0][0] = spikes.reshape(-1,1)*1e4
         new_inner_array['fluo_time'][0][0] = time.flatten()
         
@@ -251,7 +260,7 @@ class synth_gen():
       basename = os.path.basename(file)
       file_name, extension = os.path.splitext(basename)
       fname = 'rate='+str(self.spike_rate) + 'param='+str(self.spike_params[0])+ '_'+ str(self.spike_params[1]) +\
-        file_name + extension
+        f"_params_{self.param_set}" + file_name + extension
       save_path = os.path.join(synth_dir, fname)
       print("syn_gen save_path = ", save_path)
       sio.savemat(save_path, {'CAttached': CAttached})
@@ -275,14 +284,16 @@ if __name__ == "__main__":
   # Make a gcamp object
   import numpy as np
   import c_spikes.pgas.pgas_bound as pgas
-  Gparam_file="src/c_spikes/pgas/20230525_gold.dat"
-  Gparams = np.loadtxt(Gparam_file)
+  # Gparam_file="src/c_spikes/pgas/20230525_gold.dat"
+  # Gparams = np.loadtxt(Gparam_file)
   Cparams=np.array([30e-6, 10e2, 1e-5, 5, 30, 10])
-  gcamp = pgas.GCaMP(Gparams,Cparams)
+  # gcamp = pgas.GCaMP(Gparams,Cparams)
+  gcamp = 'test_spk_gen'
 
   # Use gcamp model instantiation to create a synthetic generator
-  rate = 2; tag = "test_synth"
-  synth = synth_gen.synth_gen(plot_on=False,GCaMP_model=gcamp,\
+  rate = 20; tag = "test_synth"
+  synth = synth_gen(GCaMP_model=gcamp,\
+    spike_params=[3,0.1],\
     spike_rate=rate,cell_params=Cparams,tag=tag,use_noise=True, noise_dir="gt_noise_dir")
-  synth.generate(output_folder=f"results")
-  #synth.spk_gen(np.array([200]))
+  # synth.generate(output_folder=f"results")
+  synth.spk_gen(np.array([100]))
