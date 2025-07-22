@@ -109,7 +109,6 @@ void GCaMP::initial_setup() {
   konPC2 = Gparams(12); koffPC2 = Gparams(13);
 
   sigma2_calcium_spike = pow(FWHM, 2) / (8 * log(2));
-
   setState(c0);
 
   arma::vec G0_v = steady_state(0);
@@ -119,7 +118,6 @@ void GCaMP::initial_setup() {
   G0 = arma::accu(G0_v(brightStates));
   Gsat = arma::accu(Gsat_v(brightStates));
   Ginit = arma::accu(Ginit_v(brightStates));
-
   DFF = 0;
 }
 
@@ -532,6 +530,7 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
 				setGmat(Ca);
 				arma::vec dG_dt = Gmat*G;
 				Gflux = flux(Ca,G);
+
 				Cflux   = -gamma*(Ca-c0) + Gflux;
         dBCa_dt = Cflux*kapB/(kapB + 1);
         dCa_in_dt = gam_in*(Ca-c0) - gam_out*(Ca_in - c0);
@@ -580,7 +579,12 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
 //
 void GCaMP::integrateOverTime2(const arma::vec& time_vect, const arma::vec& spike_times) {
     
-		DFF_values.clear();  // Clear previous DFF values
+		// Clear previous state and DFF values
+		DFF_values.clear();
+    G_values.reset();
+    BCa_values.clear();
+    Ca_values.clear();
+    Ca_in_values.clear(); 
 		
 		double fine_dt = 100e-6; // Hard code this near instability edge for hardest G/Cparams
 
@@ -592,16 +596,31 @@ void GCaMP::integrateOverTime2(const arma::vec& time_vect, const arma::vec& spik
 
     // Generate timesteps, prep calcium vect
     arma::vec timesteps = arma::regspace(time_vect(0), fine_dt, time_vect(time_vect.n_elem - 1));
+    size_t num_steps = timesteps.n_elem;
     arma::vec calcium_input(timesteps.n_elem, arma::fill::zeros);
 
 		// Temporary vector to store intermediate DFF values
     arma::vec temp_DFF_values(timesteps.n_elem);
+    int spike_counter=0;
 
     // Find all timesteps that are within fine_timestep of one of the elements of spike_times
     for (double spike_time : spike_times) {
         arma::uvec indices = arma::find(arma::abs(timesteps - spike_time) <= fine_dt/2);
         calcium_input(indices).fill(DCaT/fine_dt);
+        spike_counter+=indices.n_elem;
     }
+
+    // Preallocate state vectors
+    G_values.set_size(num_steps, G.n_elem);
+    BCa_values.set_size(num_steps);
+    Ca_values.set_size(num_steps);
+    Ca_in_values.set_size(num_steps);
+
+    // Initialize first state
+    G_values.row(0) = G.t();
+    BCa_values(0) = BCa;
+    Ca_values(0) = Ca;
+    Ca_in_values(0) = Ca_in;
 
     for (unsigned int i = 1; i < timesteps.n_elem; ++i) {
 				
@@ -612,8 +631,8 @@ void GCaMP::integrateOverTime2(const arma::vec& time_vect, const arma::vec& spik
 				arma::vec dG_dt = Gmat*G;
 				Gflux = flux(Ca,G);
 				
-				Cflux_out = -gamma*(Ca-c0) - Gflux;
-				Cflux_in = - gam_in*(Ca-c0) + gam_out*(Ca-c0);
+				Cflux_out = - gamma*(Ca-c0) + Gflux;
+				Cflux_in = - gam_in*(Ca-c0) + gam_out*(Ca_in-c0);
         dBCa_dt = (Cflux_out + Cflux_in + calcium_input(i))*kapB/(kapB + 1);
         dCa_in_dt = -Cflux_in*kapB/(1+kapB);
 				dCa_dt  = (Cflux_in + Cflux_out + calcium_input(i))*1/(kapB+1);
@@ -631,7 +650,19 @@ void GCaMP::integrateOverTime2(const arma::vec& time_vect, const arma::vec& spik
     // Interpolate back onto original time vector
 		//cout<<"Size of timesteps = "<<timesteps.n_elem<<"; Size of temp_DFF_values = "<<temp_DFF_values.n_elem<<endl;
 		arma::interp1(timesteps, temp_DFF_values, time_vect, DFF_values, "linear");
-		//cout<<"Size of DFF_values after interp1 = "<<DFF_values.n_elem<<endl;
+    arma::interp1(timesteps, BCa_values, time_vect, BCa_values, "linear");
+    arma::interp1(timesteps, Ca_values, time_vect, Ca_values, "linear");
+    arma::interp1(timesteps, Ca_in_values, time_vect, Ca_in_values, "linear");
+		// Now the same for G
+    // Interpolate G_values for each G element
+    size_t num_G_elements = G_values.n_cols;
+    G_interp.set_size(time_vect.n_elem, num_G_elements);
+    for (size_t col = 0; col < num_G_elements; ++col) {
+        arma::vec G_col = G_values.col(col);
+        arma::vec G_interp_col;
+        arma::interp1(timesteps, G_col, time_vect, G_interp_col, "linear");
+        G_interp.col(col) = G_interp_col;
+    }
 }
 
 // Giovanni's methods for passing compressed states around the SMC sampler
