@@ -31,11 +31,14 @@ py::array_t<double> get_final_params(Analyzer& analyzer) {
 auto cleanup_callback = []() {
 	// perform cleanup here -- this function is called with the GIL held
 	// You must call finalize() after you are done using Kokkos.
-	Kokkos::finalize();
+	if (Kokkos::is_initialized()) Kokkos::finalize();
 };
 
 
 PYBIND11_MODULE(pgas_bound, m) {
+  if (!Kokkos::is_initialized() && !Kokkos::is_finalized())
+        Kokkos::initialize();
+
 	// bindings for Analyzer.cpp
 		py::class_<Analyzer>(m, "Analyzer")
         .def(py::init<const arma::vec&, const arma::vec&, const std::string&, const std::string&, unsigned int, const std::string&, unsigned int,
