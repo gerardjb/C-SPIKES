@@ -57,7 +57,8 @@ Scalar fixedStep_LA_kernel(
     const StateVectorType state_in,
     StateVectorType state_out,
     const GCaMP_params & p,
-    bool save_state)
+    bool save_state,
+    bool TSmode)
 {
 
     Scalar G[9];
@@ -71,7 +72,8 @@ Scalar fixedStep_LA_kernel(
     Scalar Ca_in = state_in(11);
     Scalar dCa_dt, dCa_in_dt;
     
-    Scalar Gflux, Cflux;
+    Scalar Gflux;
+    Scalar Cflux, Cflux_out, Cflux_in;
     Scalar finedt=100e-6;
     Scalar dt;
 
@@ -160,20 +162,29 @@ Scalar fixedStep_LA_kernel(
         int Csites=2;
         Gflux = 2*N + Csites*C;
 
-        Cflux   = -p.gamma*(Ca-p.c0) + Gflux;
-        dBCa_dt = Cflux*p.kapB/(p.kapB + 1);
-        dCa_in_dt = p.gam_in*(Ca-p.c0) - p.gam_out*(Ca_in - p.c0);
+        // Use the TSmode flag to use the corrected or uncorrected cell model
+        if(TSmode){
+            Cflux   = -p.gamma*(Ca-p.c0) + Gflux;
+            dBCa_dt = (Cflux+calcium_input)*p.kapB/(p.kapB + 1);
+            dCa_in_dt = p.gam_in*(Ca-p.c0) - p.gam_out*(Ca_in - p.c0);
 
-        dCa_dt  = -p.gamma*(Ca-p.c0) // pump out
-            -p.gam_in*(Ca - p.c0) + p.gam_out*(Ca_in - p.c0) //intra-compartmental exchange
-            + Gflux - dBCa_dt + calcium_input*1/(p.kapB + 1);
+            dCa_dt  = -p.gamma*(Ca-p.c0) // pump out
+                -p.gam_in*(Ca - p.c0) + p.gam_out*(Ca_in - p.c0) //intra-compartmental exchange
+                + Gflux - Cflux*p.kapB/(p.kapB + 1) + calcium_input*1/(p.kapB + 1);
+        }else{
+            Cflux_out = - p.gamma*(Ca-p.c0) + Gflux;
+            Cflux_in = - p.gam_in*(Ca-p.c0) + p.gam_out*(Ca_in-p.c0);
+            dBCa_dt = (Cflux_out + Cflux_in + calcium_input)*p.kapB/(p.kapB + 1);
+            dCa_in_dt = -Cflux_in*p.kapB/(1+p.kapB);
+            dCa_dt  = (Cflux_in + Cflux_out + calcium_input)*1/(p.kapB+1);
+        }
 
         dt  = t-old_t;
         
         // G   = G   +  dt*dG_dt;
         for(int i=0;i<9;i++) G[i] = G[i] + dt*dG_dt[i];
 
-        BCa = BCa +  dt*(dBCa_dt+p.kapB/(p.kapB+1)*calcium_input);
+        BCa = BCa +  dt*dBCa_dt;
         Ca  = Ca  +  dt*dCa_dt;
         Ca_in = Ca_in + dt*dCa_in_dt;
         old_t = t; 
@@ -420,7 +431,7 @@ void ParticleArray::calc_ancestor_resampling(
 
 void ParticleArray::move_and_weight(
     int t,
-    VectorType y, 
+    VectorType y,
     const param &par, constpar *constants, 
     VectorType g_noise, std::vector<double> & u_noise,
     VectorType u_noise_view,
@@ -463,7 +474,8 @@ void ParticleArray::move_and_weight(
                 // Evolve
                 // model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
                 StateVectorType state_in = Kokkos::subview(C, a, t-1, Kokkos::ALL);
-                Scalar ct = fixedStep_LA_kernel(dt, ns, state_in, state_out, params, false);
+                bool TSmode = constants->TSMode != 0;
+                Scalar ct = fixedStep_LA_kernel(dt, ns, state_in, state_out, params, false, TSmode);
 
                 Scalar log_prob_tmp = log(W[parent_b][b]);
                 log_prob_tmp += ns*log(rate[b]) - log(tgamma(ns+1)) - rate[b];
@@ -545,7 +557,8 @@ void ParticleArray::move_and_weight(
                 // part.C     = state_out;
                 StateVectorType state_in = Kokkos::subview(C, ancestor(part_idx, t), t-1, Kokkos::ALL);
                 StateVectorType state_out = Kokkos::subview(C, part_idx, t, Kokkos::ALL);
-                Scalar ct = fixedStep_LA_kernel(dt, S(part_idx, t), state_in, state_out, params, true);
+                bool TSmode = constants->TSMode != 0;
+                Scalar ct = fixedStep_LA_kernel(dt, S(part_idx, t), state_in, state_out, params, true, TSmode);
 
             });
     Kokkos::fence("fence_move_particles");

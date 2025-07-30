@@ -84,6 +84,7 @@ class ParticleArray
 
         void calc_ancestor_resampling(int t, const param &par, constpar *constants);
 
+        KOKKOS_FUNCTION
         Scalar logf(int part_idx_in, int t_in, int part_idx_out, int t_out, const param &par, constpar *constants);
 
         bool check_particle_system(int t, std::vector<Particle*> & particleSystem);

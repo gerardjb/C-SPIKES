@@ -621,7 +621,7 @@ bool Kokkos_Initialized = false;
 
 void init_kokkos()
 {
-	if (!Kokkos_Initialized) {
+	if (!Kokkos::is_initialized()) {
 		Kokkos::initialize();
 		Kokkos_Initialized = true;
 	}

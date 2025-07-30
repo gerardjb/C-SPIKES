@@ -61,6 +61,7 @@ public:
     void fixedStep(double deltat, int ns);
     void fixedStep_LA(double deltat, int ns);
     double fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out);
+    double fixedStep_LA_corr_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out);
     void evolve_test(double deltat, int ns);
     void evolve(double deltat, int ns, const arma::vec& state);
     void evolve_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out, double & dff_out);

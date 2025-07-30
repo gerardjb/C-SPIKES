@@ -286,7 +286,7 @@ void GCaMP::evolve(double deltat, int ns){
 void GCaMP::evolve_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out, double & dff_out){
     switch(TSMode){
         case FIXED:
-            fixedStep(deltat,ns);
+            dff_out = fixedStep_LA_corr_threadsafe(deltat,ns,state_in,state_out);
             break;
         case FIXEDLA:
             dff_out = fixedStep_LA_threadsafe(deltat,ns,state_in,state_out);
@@ -302,45 +302,48 @@ void GCaMP::fixedStep(double deltat, int ns){
     double BCa = state(9);
     double dBCa_dt;
 
-    double Ca    = state(10);
+    double Ca  = state(10);
     double Ca_in = state(11);
     double dCa_dt, dCa_in_dt;
     
-    double Gflux;
-
-    double fine_timestep=3e-6;
+    double Gflux, Cflux_out, Cflux_in;
+    double finedt=100e-6;
     double dt;
 
-    arma::vec timesteps = arma::regspace(0,fine_timestep,deltat);
-    arma::vec calcium_input = DCaT/sqrt(2*arma::datum::pi*sigma2_calcium_spike)*exp(-0.5/sigma2_calcium_spike*pow(deltat/2-timesteps,2));
+    arma::vec timesteps = arma::regspace(0,finedt,deltat);
+    double calcium_input;
     
     for(unsigned int i=1;i<timesteps.n_elem;++i){
-        setGmat(Ca);
+
+        calcium_input = (i==1) ? ns*DCaT/finedt : 0;
+
+        double logCa = log(Ca);
+	      double konN = Gparams(0)*exp(Gparams(2)*logCa);
+        double konC = Gparams(3)*exp(Gparams(5)*logCa);
+
+        setGmat_konN_konC(Gmat, konN, konC);
         arma::vec dG_dt  = Gmat*G;
-        Gflux = flux(Ca,G);
+        Gflux = flux_konN_konC(konN, konC, G);
 
-        dBCa_dt = kon_B*(B_tot-BCa)*Ca - koff_B*BCa;
-        dCa_dt  = -gamma*(Ca-c0)  
-            -gam_in*(Ca - c0) + gam_out*(Ca_in - c0)  //intra-compartmental exchange
-            + Gflux - dBCa_dt + ns*calcium_input(i);
-        dCa_in_dt = gam_in*(Ca - c0) - gam_out*(Ca_in - c0);
+        Cflux_out = - gamma*(Ca-c0) + Gflux;
+        Cflux_in = - gam_in*(Ca-c0) + gam_out*(Ca_in-c0);
+        dBCa_dt = (Cflux_out + Cflux_in + calcium_input)*kapB/(kapB + 1);
+        dCa_in_dt = -Cflux_in*kapB/(1+kapB);
+				dCa_dt  = (Cflux_in + Cflux_out + calcium_input)*1/(kapB+1);
 
-        dt  = timesteps(i)-timesteps(i-1);
-        
+        dt  = timesteps(i)-timesteps(i-1); 
         G   = G   +  dt*dG_dt;
         BCa = BCa +  dt*dBCa_dt;
         Ca  = Ca  +  dt*dCa_dt;
-        Ca_in+= dt*dCa_in_dt;
-
-
-        step_count+=1;
+        Ca_in = Ca_in + dt*dCa_in_dt;
     }
 
     for(unsigned int i=0;i<9;i++) state(i) = G(i);
     state(9)  = BCa;
     state(10) = Ca;
+    state(11) = Ca_in;
 
-    DFF = (arma::accu(G(brightStates)) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));                                
+    DFF = (arma::accu(G(brightStates)) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));                               
 }
 
 void GCaMP::fixedStep_LA(double deltat, int ns){
@@ -468,6 +471,68 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& st
     return DFF_out;
 }
 
+
+double GCaMP::fixedStep_LA_corr_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out){
+
+    arma::vec G = state_in(arma::span(0,8));
+    arma::mat::fixed<9,9> Gmatrix;
+    
+    double BCa = state_in(9);
+    double dBCa_dt;
+
+    double Ca  = state_in(10);
+    double Ca_in = state_in(11);
+    double dCa_dt, dCa_in_dt;
+    
+    double Gflux, Cflux_out, Cflux_in;
+    double finedt=100e-6;
+    double dt;
+
+    arma::vec timesteps = arma::regspace(0,finedt,deltat);
+    double calcium_input;
+
+    // Intiliaze the Gmatrix
+    fillGmat(Gmatrix, Ca);
+
+    for(unsigned int i=1;i<timesteps.n_elem;++i){
+
+        calcium_input = (i==1) ? ns*DCaT/finedt : 0;
+
+        double logCa = log(Ca);
+	      double konN = Gparams(0)*exp(Gparams(2)*logCa);
+        double konC = Gparams(3)*exp(Gparams(5)*logCa);
+
+        setGmat_konN_konC(Gmatrix, konN, konC);
+        arma::vec dG_dt  = Gmatrix*G;
+        Gflux = flux_konN_konC(konN, konC, G);
+
+        // Corrected flux calculations
+        Cflux_out = - gamma*(Ca-c0) + Gflux;
+        Cflux_in = - gam_in*(Ca-c0) + gam_out*(Ca_in-c0);
+        dBCa_dt = (Cflux_out + Cflux_in + calcium_input)*kapB/(kapB + 1);
+        dCa_in_dt = -Cflux_in*kapB/(1+kapB);
+				dCa_dt  = (Cflux_in + Cflux_out + calcium_input)*1/(kapB+1);
+
+
+        dt  = timesteps(i)-timesteps(i-1); 
+        G   = G   +  dt*dG_dt;
+        BCa = BCa +  dt*dBCa_dt;
+        Ca  = Ca  +  dt*dCa_dt;
+        Ca_in = Ca_in + dt*dCa_in_dt;
+    }
+
+    for(unsigned int i=0;i<9;i++) state_out(i) = G(i);
+    state_out(9)  = BCa;
+    state_out(10) = Ca;
+    state_out(11) = Ca_in;
+
+    //double DFF_out = (arma::accu(G(brightStates)) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));<- avoids loading arma to gpu
+    double brightStatesSum = 0.0;
+    for(unsigned int i=0;i<5;i++) brightStatesSum += G[brightStates[i]];
+    double DFF_out = (brightStatesSum - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
+
+    return DFF_out;
+}
 
 // This method allows direct outputs to python via bindings
 void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike_times) {

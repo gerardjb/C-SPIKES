@@ -20,13 +20,6 @@
 #include <Kokkos_Core.hpp>
 namespace py = pybind11;
 
-/* //method to extract final array entries as numpy array
-py::array_t<double> get_final_params(Analyzer& analyzer) {
-  // Create a NumPy array from the std::vector
-  py::array_t<double> result(analyzer.final_params.size());
-  std::copy(analyzer.final_params.begin(), analyzer.final_params.end(), result.mutable_data());
-  return result;
-} */
 
 auto cleanup_callback = []() {
 	// perform cleanup here -- this function is called with the GIL held
