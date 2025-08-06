@@ -11,6 +11,32 @@ GCaMP::GCaMP(double p1, double p2, double p3, double p4, double p5, double p6, s
   Rf = p4;
   gam_in = p5;
   gam_out = p6;
+  ca_half = 0.0001; //nonsense value
+  n_gate = 2.0; // nonsense value
+
+  // Load Gparams from file
+  if (Gparam_file.empty()) {
+    throw std::invalid_argument("GParam file cannot be empty");
+  }
+  Gparams.load(Gparam_file, arma::raw_ascii);
+
+  // Call initial_setup to complete object initialization
+  initial_setup();
+}
+
+// Constructor used by the PGAS particles
+GCaMP::GCaMP(double p1, double p2, double p3, double p4, double p5, double p6, double p7, double p8, string Gparam_file) {
+  // Set passed-in parameters
+  G_tot = p1;
+  gamma = p2;
+  DCaT = p3;
+  Rf = p4;
+  gam_in = p5;
+  gam_out = p6;
+  ca_half = p7;
+  n_gate = p8;
+  ca_half = 0.0001; //nonsense value
+  n_gate = 2.0; // nonsense value
 
   // Load Gparams from file
   if (Gparam_file.empty()) {
@@ -47,7 +73,7 @@ GCaMP::GCaMP(string Gparam_file, string Cparam_file) {
     Gparams.load(Gparam_file, arma::raw_ascii);
   }
 	
-	//Loading from cparams file (assumes order G_tot, gamma, DCaT, Rf, gam_in, gom_out
+	//Loading from cparams file (assumes order G_tot, gamma, DCaT, Rf, gam_in, gam_out, ca_half, n_gate)
   if (Cparam_file.empty()) {
     // Use default values (as in the original constructor)
     G_tot = 1e-5;
@@ -57,15 +83,26 @@ GCaMP::GCaMP(string Gparam_file, string Cparam_file) {
 		gam_in = 40;
 		gam_out = 4;
   } else {
-		Cparams.load(Cparam_file, arma::raw_ascii);
+		bool loaded = Cparams.load(Cparam_file, arma::raw_ascii);
+    if (!loaded) {
+        std::cerr << "Failed to load Cparam_file: " << Cparam_file << std::endl;
+    }
+    Cparams.print("Cparams:");
 		G_tot = Cparams(0);
     gamma = Cparams(1);
     DCaT = Cparams(2);
 		Rf = Cparams(3);
 		gam_in = Cparams(4);
 		gam_out = Cparams(5);
+    if (Cparams.n_elem > 6) {
+      ca_half = Cparams(6);
+      n_gate = Cparams(7);
+    } else {
+      ca_half = 0.0001; // nonsense value
+      n_gate = 2.0;     // nonsense value
+    }
 	}
-	
+	//cout<<"ca_half = "<<ca_half<<"; n_gate = "<<n_gate<<endl;
   // Call initial_setup to complete object initialization
   initial_setup();
 }
@@ -79,6 +116,8 @@ GCaMP::GCaMP(const arma::vec Gparams_in, const arma::vec Cparams_in) {
   Rf = Cparams_in(3);
   gam_in = Cparams_in(4);
   gam_out = Cparams_in(5);
+  ca_half = Cparams_in(6);
+  n_gate = Cparams_in(7);
   Gparams = Gparams_in;  // Assuming Gparams is already a vector of appropriate size
 	
 	cout<<"G_tot = "<<G_tot<<"; gam_out = "<<gam_out<<endl;
@@ -129,6 +168,26 @@ void GCaMP::setParams(double p1, double p2, double p3, double p4, double p5, dou
     Rf    = p4;
     gam_in = p5;
     gam_out = p6;
+
+    arma::vec G0_v    = steady_state(0);
+    arma::vec Gsat_v  = steady_state(csat);
+    arma::vec Ginit_v = steady_state(c0);
+
+    G0     =  arma::accu(G0_v(brightStates));
+    Gsat   =  arma::accu(Gsat_v(brightStates));
+    Ginit  =  arma::accu(Ginit_v(brightStates));
+   
+}
+
+void GCaMP::setParams(double p1, double p2, double p3, double p4, double p5, double p6, double p7, double p8){
+    G_tot = p1;
+    gamma = p2;
+    DCaT  = p3;
+    Rf    = p4;
+    gam_in = p5;
+    gam_out = p6;
+    ca_half = p7;
+    n_gate = p8;
 
     arma::vec G0_v    = steady_state(0);
     arma::vec Gsat_v  = steady_state(csat);
@@ -357,9 +416,10 @@ void GCaMP::fixedStep_LA(double deltat, int ns){
     double Ca_in = state(11);
     double dCa_dt, dCa_in_dt;
     
-    double Gflux, Cflux;
+    double Gflux, Cflux_out, Cflux_in;
     double finedt=100e-6;
     double dt;
+    double ca_check, H_gate;
 
     arma::vec timesteps = arma::regspace(0,finedt,deltat);
     double calcium_input;
@@ -372,26 +432,26 @@ void GCaMP::fixedStep_LA(double deltat, int ns){
 	      double konN = Gparams(0)*exp(Gparams(2)*logCa);
         double konC = Gparams(3)*exp(Gparams(5)*logCa);
 
+        // get the hill influx gate value
+        ca_check = (Ca - c0)/(ca_half);
+        if (ca_check<1e-3){ca_check = 0;}
+        H_gate = pow(ca_check, n_gate)/(pow(ca_check, n_gate) + 1);
+
+        // GCaMP fluxes
         setGmat_konN_konC(Gmat, konN, konC);
         arma::vec dG_dt  = Gmat*G;
         Gflux = flux_konN_konC(konN, konC, G);
 
-        Cflux   = -gamma*(Ca-c0) + Gflux;
-        dBCa_dt = Cflux*kapB/(kapB + 1);
-        dCa_in_dt = gam_in*(Ca-c0) - gam_out*(Ca_in - c0);
+        Cflux_out = - gamma*(Ca-c0) + Gflux;
+				Cflux_in = - gam_in*H_gate*(Ca-c0) + gam_out*(Ca_in-c0);
+        dBCa_dt = (Cflux_out + Cflux_in + calcium_input)*kapB/(kapB + 1);
+        dCa_in_dt = -Cflux_in*kapB/(1+kapB);
+				dCa_dt  = (Cflux_in + Cflux_out + calcium_input)*1/(kapB+1);
 
-        dCa_dt  = -gamma*(Ca-c0) // pump out
-            -gam_in*(Ca - c0) + gam_out*(Ca_in - c0) //intra-compartmental exchange
-            + Gflux - dBCa_dt + calcium_input*1/(kapB + 1);
-
-        //cout<<timesteps(i)<<endl;
-        //cout<<"BCa = "<<BCa<<"; d_dt:"<<dBCa_dt<<", "<<calcium_input*kapB/(kapB+1)<<endl;
-        //cout<<"Ca  = "<<Ca<<" ; d_dt:"<<dCa_dt<<", "<<calcium_input*1/(kapB+1)<<endl;
-        //cout<<"------------------------"<<endl;
 
         dt  = timesteps(i)-timesteps(i-1); 
         G   = G   +  dt*dG_dt;
-        BCa = BCa +  dt*(dBCa_dt+kapB/(kapB+1)*calcium_input);
+        BCa = BCa +  dt*dBCa_dt;
         Ca  = Ca  +  dt*dCa_dt;
         Ca_in = Ca_in + dt*dCa_in_dt;
     }
@@ -416,9 +476,10 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& st
     double Ca_in = state_in(11);
     double dCa_dt, dCa_in_dt;
     
-    double Gflux, Cflux;
+    double Gflux, Cflux_in, Cflux_out;
     double finedt=100e-6;
     double dt;
+    double ca_check, H_gate;
 
     arma::vec timesteps = arma::regspace(0,finedt,deltat);
     double calcium_input;
@@ -434,26 +495,24 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& st
 	      double konN = Gparams(0)*exp(Gparams(2)*logCa);
         double konC = Gparams(3)*exp(Gparams(5)*logCa);
 
+        // get the hill influx gate value
+        ca_check = (Ca - c0)/(ca_half);
+        if (ca_check<1e-3){ca_check = 0;}
+        H_gate = pow(ca_check, n_gate)/(pow(ca_check, n_gate) + 1);
+
         setGmat_konN_konC(Gmatrix, konN, konC);
         arma::vec dG_dt  = Gmatrix*G;
         Gflux = flux_konN_konC(konN, konC, G);
 
-        Cflux   = -gamma*(Ca-c0) + Gflux;
-        dBCa_dt = Cflux*kapB/(kapB + 1);
-        dCa_in_dt = gam_in*(Ca-c0) - gam_out*(Ca_in - c0);
-
-        dCa_dt  = -gamma*(Ca-c0) // pump out
-            -gam_in*(Ca - c0) + gam_out*(Ca_in - c0) //intra-compartmental exchange
-            + Gflux - dBCa_dt + calcium_input*1/(kapB + 1);
-
-        //cout<<timesteps(i)<<endl;
-        //cout<<"BCa = "<<BCa<<"; d_dt:"<<dBCa_dt<<", "<<calcium_input*kapB/(kapB+1)<<endl;
-        //cout<<"Ca  = "<<Ca<<" ; d_dt:"<<dCa_dt<<", "<<calcium_input*1/(kapB+1)<<endl;
-        //cout<<"------------------------"<<endl;
+        Cflux_out = - gamma*(Ca-c0) + Gflux;
+				Cflux_in = - gam_in*H_gate*(Ca-c0) + gam_out*(Ca_in-c0);
+        dBCa_dt = (Cflux_out + Cflux_in + calcium_input)*kapB/(kapB + 1);
+        dCa_in_dt = -Cflux_in*kapB/(1+kapB);
+				dCa_dt  = (Cflux_in + Cflux_out + calcium_input)*1/(kapB+1);
 
         dt  = timesteps(i)-timesteps(i-1); 
         G   = G   +  dt*dG_dt;
-        BCa = BCa +  dt*(dBCa_dt+kapB/(kapB+1)*calcium_input);
+        BCa = BCa +  dt*dBCa_dt;
         Ca  = Ca  +  dt*dCa_dt;
         Ca_in = Ca_in + dt*dCa_in_dt;
     }
@@ -535,6 +594,7 @@ double GCaMP::fixedStep_LA_corr_threadsafe(double deltat, int ns, const arma::ve
 }
 
 // This method allows direct outputs to python via bindings
+// this implementation is not thread-safe, so it cannot be used by the PGAS particles
 void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike_times) {
     // Clear previous state and DFF values
 		DFF_values.clear();
@@ -549,7 +609,8 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
     double BCa = state(9);
     double Ca = state(10);
     double Ca_in = state(11);
-    double dBCa_dt, dCa_dt, dCa_in_dt, Gflux, Cflux;
+    double dBCa_dt, dCa_dt, dCa_in_dt, Gflux, Cflux_out, Cflux_in;
+    double ca_check, H_gate;
 
     // Generate timesteps, prep calcium vect
 
@@ -590,22 +651,24 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
     for (unsigned int i = 1; i < timesteps.n_elem; ++i) {
 				
 				/*
-					Giovanni's implementation
+					Adding the hill update for internal store
 				*/
+        ca_check = (Ca - c0)/(ca_half);
+        if (ca_check<1e-3){ca_check = 0;}
+        H_gate = pow(ca_check, n_gate)/(pow(ca_check, n_gate) + 1);
+        
 				setGmat(Ca);
 				arma::vec dG_dt = Gmat*G;
 				Gflux = flux(Ca,G);
 
-				Cflux   = -gamma*(Ca-c0) + Gflux;
-        dBCa_dt = Cflux*kapB/(kapB + 1);
-        dCa_in_dt = gam_in*(Ca-c0) - gam_out*(Ca_in - c0);
-
-        dCa_dt  = -gamma*(Ca-c0) // pump out
-            -gam_in*(Ca - c0) + gam_out*(Ca_in - c0) //intra-compartmental exchange
-            + Gflux - dBCa_dt + calcium_input(i)*1/(kapB + 1);
+				Cflux_out = - gamma*(Ca-c0) + Gflux;
+				Cflux_in = - gam_in*H_gate*(Ca-c0) + gam_out*(Ca_in-c0);
+        dBCa_dt = (Cflux_out + Cflux_in + calcium_input(i))*kapB/(kapB + 1);
+        dCa_in_dt = -Cflux_in*kapB/(1+kapB);
+				dCa_dt  = (Cflux_in + Cflux_out + calcium_input(i))*1/(kapB+1);
 						
 				G   = G   +  fine_dt*dG_dt;
-        BCa = BCa +  fine_dt*(dBCa_dt+kapB/(kapB+1)*calcium_input(i));
+        BCa = BCa +  fine_dt*dBCa_dt;
         Ca  = Ca  +  fine_dt*dCa_dt;
         Ca_in = Ca_in + fine_dt*dCa_in_dt;
 
@@ -636,9 +699,6 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
         G_interp.col(col) = G_interp_col;
     }
 
-    // For direct comparison of c++ to python stored values
-    //cout<<"G_interp.row(0)"<<G_interp.row(0)<<endl;
-    //cout<<"G_interp.row(200)"<<G_interp.row(200)<<endl;
 }
 
 //
@@ -770,6 +830,8 @@ void GCaMP::read_params(GCaMP_params & params)
   params.gamma = gamma;
   params.DCaT = DCaT;
   params.Rf = Rf;
+  params.ca_half = ca_half;
+  params.n_gate = n_gate;
   
   // parameters that can be fixed
   // indicator

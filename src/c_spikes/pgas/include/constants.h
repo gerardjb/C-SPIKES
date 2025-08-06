@@ -24,6 +24,8 @@ public:
     double Rf_mean, Rf_sd;
     double gam_in_mean, gam_in_sd;
     double gam_out_mean, gam_out_sd;
+    double ca_half_mean, ca_half_sd;
+    double n_gate_mean, n_gate_sd;
     double G_tot_prop_sd;
     double gamma_prop_sd;
     double DCaT_prop_sd;

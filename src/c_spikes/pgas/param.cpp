@@ -13,6 +13,8 @@ param::param(){
 		Rf = 0.0;
 		gam_in = 0.0;
 		gam_out = 0.0;
+        ca_half = 0.0;
+        n_gate = 0.0;
 		sigma2 = 0.0;
 		r0 = 0.0;
 		r1 = 0.0;
@@ -26,6 +28,8 @@ param::param(string fname){
 		Rf = 0.0;
 		gam_in = 0.0;
 		gam_out = 0.0;
+        ca_half = 0.0;
+        n_gate = 0.0;
 		sigma2 = 0.0;
 		r0 = 0.0;
 		r1 = 0.0;
@@ -40,6 +44,8 @@ void param::print(){
         <<"Rf     = "<<Rf<<endl
         <<"gam_in = "<<gam_in<<endl
         <<"gam_out = "<<gam_out<<endl
+        <<"ca_half = "<<ca_half<<endl
+        <<"n_gate = "<<n_gate<<endl
         <<"sigma2 = "<<sigma2<<endl
         <<"r0     = "<<r0<<endl
         <<"r1     = "<<r1<<endl;
@@ -48,7 +54,7 @@ void param::print(){
 void param::write(ofstream &out,double sf){
     if(!out.is_open()){
         out.open(filename);
-        out<<"G_tot,gamma,DCaT,Rf,gam_in,gam_out,sigma2,r0,r1,w01,w10"<<endl;
+        out<<"G_tot,gamma,DCaT,Rf,gam_in,gam_out,ca_half,n_gate,sigma2,r0,r1,w01,w10"<<endl;
     }
 
     out<<G_tot<<","
@@ -57,6 +63,8 @@ void param::write(ofstream &out,double sf){
         <<Rf<<","
         <<gam_in<<","
         <<gam_out<<","
+        <<ca_half<<","
+        <<n_gate<<","
         <<sigma2<<","
         <<r0<<","
         <<r1<<","
@@ -71,6 +79,8 @@ param& param::operator=(const param& p){
     Rf       = p.Rf;
     gam_in   = p.gam_in;
     gam_out  = p.gam_out;
+    ca_half = p.ca_half;
+    n_gate = p.n_gate;
     r0       = p.r0;
     r1       = p.r1;
     wbb[0]   = p.wbb[0];
@@ -88,7 +98,9 @@ double param::logPrior(const constpar& constants){
             -0.5*pow((DCaT   - constants.DCaT_mean)  / constants.DCaT_sd,2) 
             -0.5*pow((Rf     - constants.Rf_mean)    / constants.Rf_sd,2)
             -0.5*pow((gam_in - constants.gam_in_mean)/constants.gam_in_sd,2)
-            -0.5*pow((gam_out - constants.gam_out_mean)/constants.gam_out_sd,2);
+            -0.5*pow((gam_out - constants.gam_out_mean)/constants.gam_out_sd,2)
+            -0.5*pow((ca_half - constants.ca_half_mean)/constants.ca_half_sd,2)
+            -0.5*pow((n_gate - constants.n_gate_mean)/constants.n_gate_sd,2);
 
     return logp;
 }

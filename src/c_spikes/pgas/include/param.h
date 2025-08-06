@@ -13,6 +13,8 @@ public:
     double Rf;
     double gam_in;
     double gam_out;
+    double ca_half;
+    double n_gate;
     double r0, r1;
     double* wbb;
     double sigma2;

@@ -35,11 +35,11 @@ PYBIND11_MODULE(pgas_bound, m) {
 	// bindings for Analyzer.cpp
 		py::class_<Analyzer>(m, "Analyzer")
         .def(py::init<const arma::vec&, const arma::vec&, const std::string&, const std::string&, unsigned int, const std::string&, unsigned int,
-                      const std::string&, bool, unsigned int, bool, const arma::vec&, bool, bool, unsigned int, const std::string&, int>(),
+                      const std::string&, bool, unsigned int, bool, const arma::vec&, bool, bool, unsigned int, const std::string&, int, const std::string&>(),
              py::arg("time"), py::arg("data"), py::arg("constants_file"), py::arg("output_folder"), py::arg("column"), py::arg("tag"),
-             py::arg("niter") = 0, py::arg("trainedPriorFile") = "", py::arg("append") = false, py::arg("trim") = 1,
+             py::arg("niter") = 0, py::arg("trainedPriorFile") = "", py::arg("init_old") = false, py::arg("trim") = 1,
              py::arg("verbose") = true, py::arg("gtSpikes") = 0, py::arg("has_trained_priors") = false, py::arg("has_gtspikes") = false,
-             py::arg("maxlen") = 0, py::arg("Gparam_file") = "", py::arg("seed") = 0)
+             py::arg("maxlen") = 0, py::arg("Gparam_file") = "", py::arg("seed") = 0, py::arg("old_tag") = "")
         .def("run", &Analyzer::run)
         .def("add_parameter_sample", &Analyzer::add_parameter_sample)
         .def("get_parameter_samples", &Analyzer::get_parameter_samples);
@@ -51,7 +51,12 @@ PYBIND11_MODULE(pgas_bound, m) {
         .def(py::init<double, double, double, double, double, double, std::string>())
 				.def(py::init<std::string, std::string>(), py::arg("Gparam_file"), py::arg("Cparam_file"))
 				.def(py::init<const arma::vec,const arma::vec>(), py::arg("Gparams_in"), py::arg("Cparams_in"))
-        .def("setParams", &GCaMP::setParams)
+        .def("setParams",
+          py::overload_cast<double,double,double,double,double,double>(
+          &GCaMP::setParams))
+        .def("setParams",
+          py::overload_cast<double,double,double,double,double,double,double,double>(
+          &GCaMP::setParams))
         .def("setGmat", &GCaMP::setGmat)
         .def("flux", &GCaMP::flux)
         .def("steady_state", &GCaMP::steady_state)

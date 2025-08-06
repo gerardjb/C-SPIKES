@@ -48,6 +48,10 @@ constpar::constpar(string filename)
     gam_in_sd       = cfg["priors"]["gam_in sd"].asDouble();
     gam_out_mean    = cfg["priors"]["gam_out mean"].asDouble();
     gam_out_sd      = cfg["priors"]["gam_out sd"].asDouble();
+    ca_half_mean    = cfg["priors"]["ca_half mean"].asDouble();
+    ca_half_sd      = cfg["priors"]["ca_half sd"].asDouble();
+    n_gate_mean     = cfg["priors"]["n_gate mean"].asDouble();
+    n_gate_sd       = cfg["priors"]["n_gate sd"].asDouble();
 
     seed                = cfg["MCMC"]["seed"].asInt();
     niter               = cfg["MCMC"]["niter"].asInt();

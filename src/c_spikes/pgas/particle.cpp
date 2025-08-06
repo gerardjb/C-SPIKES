@@ -58,7 +58,7 @@ Trajectory::Trajectory(unsigned int s, string fname){
 
 void Trajectory::simulate(gsl_rng* rng, const param& par, const constpar *constants){
 
-    GCaMP model(par.G_tot, par.gamma, par.DCaT, par.Rf, par.gam_in, par.gam_out);
+    GCaMP model(par.G_tot, par.gamma, par.DCaT, par.Rf, par.gam_in, par.gam_out, par.ca_half, par.n_gate);
 
     double dt=1.0/constants->sampling_frequency;
     double rate[2] = {par.r0*dt,par.r1*dt};
@@ -143,7 +143,7 @@ SMC::SMC(string filename, int index, constpar& cst, bool has_header, int seed, u
     rng = gsl_rng_alloc(gsl_rng_mt19937);
     gsl_rng_set(rng, (seed==0) ? cst.seed : seed);
 		
-    model = new GCaMP(cst.G_tot_mean,cst.gamma_mean,cst.DCaT_mean,cst.Rf_mean,cst.gam_in_mean, cst.gam_out_mean, Gparam_file);
+    model = new GCaMP(cst.G_tot_mean,cst.gamma_mean,cst.DCaT_mean,cst.Rf_mean,cst.gam_in_mean, cst.gam_out_mean, cst.ca_half_mean, cst.n_gate_mean, Gparam_file);
     model->setTimeStepMode((TimeStepMode)cst.TSMode);
 
     arma::field <string> header;
@@ -184,7 +184,7 @@ SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_head
     rng = gsl_rng_alloc(gsl_rng_mt19937);
     gsl_rng_set(rng, (seed==0) ? cst.seed : seed);
 		
-    model = new GCaMP(cst.G_tot_mean,cst.gamma_mean,cst.DCaT_mean,cst.Rf_mean,cst.gam_in_mean, cst.gam_out_mean, Gparam_file);
+    model = new GCaMP(cst.G_tot_mean,cst.gamma_mean,cst.DCaT_mean,cst.Rf_mean,cst.gam_in_mean, cst.gam_out_mean, cst.ca_half_mean, cst.n_gate_mean, Gparam_file);
     model->setTimeStepMode((TimeStepMode)cst.TSMode);
 
     arma::field <string> header;
@@ -443,9 +443,9 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
     // Sampling Amax, rise and decay times
 
     unsigned int sampled_variable;
-    sampled_variable=gsl_rng_uniform_int(rng,6);
+    sampled_variable=gsl_rng_uniform_int(rng,8);
 
-    unsigned int var_selec[6] = {0,0,0,0,0,0}; 
+    unsigned int var_selec[8] = {0,0,0,0,0,0,0,0}; 
     var_selec[sampled_variable] = 1;
 
     if(constants->KNOWN_SPIKES){
@@ -455,6 +455,8 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
         var_selec[3]=1;
         var_selec[4]=1;
         var_selec[5]=1;
+        var_selec[6]=1;
+        var_selec[7]=1;
     }
 
     // Sampling parameter set using gaussian moves
@@ -467,8 +469,8 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
 
     // Sampling parameters using gamma multiplicative proposals
     
-    double proposal_factors[6] = {1,1,1,1,1,1};
-    for(unsigned int i=0; i<6; i++){
+    double proposal_factors[8] = {1,1,1,1,1,1,1,1};
+    for(unsigned int i=0; i<8; i++){
         proposal_factors[i] = gsl_ran_gamma(rng,1000,0.001);
     }
 
@@ -478,14 +480,16 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
     double Rf_test    = pin.Rf *((1-var_selec[3])+var_selec[3]*proposal_factors[3]);
     double gam_in_test  = pin.gam_in *((1-var_selec[4])+var_selec[4]*proposal_factors[4]);
     double gam_out_test = pin.gam_out*((1-var_selec[5])+var_selec[5]*proposal_factors[5]);
+    double ca_half_test = pin.ca_half*((1 - var_selec[6]) + var_selec[6] * proposal_factors[6]);
+    double n_gate_test = pin.n_gate*((1 - var_selec[7]) + var_selec[7] * proposal_factors[7]);
     
-    arma::vec partest={G_tot_test,gamma_test,DCaT_test,Rf_test,gam_in_test,gam_out_test};
-    string parnames[] = {"G_tot", "gamma","DCaT","Rf","gam_in","gam_out"};
+    arma::vec partest={G_tot_test,gamma_test,DCaT_test,Rf_test,gam_in_test,gam_out_test,ca_half_test,n_gate_test};
+    string parnames[] = {"G_tot", "gamma","DCaT","Rf","gam_in","gam_out","ca_half", "n_gate"};
     arma::vec C_test(traj.size);
     double res_test;
 
     // resetting the GCaMP model
-    model->setParams(G_tot_test,gamma_test,DCaT_test,Rf_test,gam_in_test, gam_out_test);
+    model->setParams(G_tot_test,gamma_test,DCaT_test,Rf_test,gam_in_test, gam_out_test, ca_half_test, n_gate_test);
     model->init();
 
     res_test=0;
@@ -501,10 +505,12 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
                           -0.5*pow((Rf_test-constants->Rf_mean)/constants->Rf_sd,2)+ 0.5*pow((pin.Rf-constants->Rf_mean)/constants->Rf_sd,2) 
                           -0.5*pow((gam_in_test-constants->gam_in_mean)/constants->gam_in_sd,2)+ 0.5*pow((pin.gam_in-constants->gam_in_mean)/constants->gam_in_sd,2) 
                           -0.5*pow((gam_out_test-constants->gam_out_mean)/constants->gam_out_sd,2)+ 0.5*pow((pin.gam_out-constants->gam_out_mean)/constants->gam_out_sd,2) 
+                          -0.5*pow((ca_half_test-constants->ca_half_mean)/constants->ca_half_sd,2)+ 0.5*pow((pin.ca_half-constants->ca_half_mean)/constants->ca_half_sd,2)
+                          -0.5*pow((n_gate_test-constants->n_gate_mean)/constants->n_gate_sd,2)+ 0.5*pow((pin.n_gate-constants->n_gate_mean)/constants->n_gate_sd,2)
                           -0.5*(res_test)/pout.sigma2 + 0.5*(res/pout.sigma2);
 
     // add proposal factors
-    for (unsigned int i=0; i<6;i++){
+    for (unsigned int i=0; i<8;i++){
         //log_alpha_MH += stats::gsl_gamma_logpdf(1.0/proposal_factors[i],100,0.01) - stats::gsl_gamma_logpdf(proposal_factors[i],100,0.01);
     }
 
@@ -519,6 +525,8 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
         pout.Rf     = Rf_test;
         pout.gam_in = gam_in_test;
         pout.gam_out= gam_out_test;
+        pout.ca_half = ca_half_test;
+        pout.n_gate = n_gate_test;
         traj.C      = C_test;
     } else {
         pout.G_tot  = pin.G_tot;
@@ -527,6 +535,8 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
         pout.Rf     = pin.Rf;
         pout.gam_in = pin.gam_in;
         pout.gam_out= pin.gam_out;
+        pout.ca_half = pin.ca_half;
+        pout.n_gate = pin.n_gate;
     }
 
 
@@ -638,7 +648,7 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
     //omp_set_num_threads(1);
     
     // set model parameters
-    model->setParams(par.G_tot,par.gamma,par.DCaT,par.Rf, par.gam_in, par.gam_out);
+    model->setParams(par.G_tot,par.gamma,par.DCaT,par.Rf, par.gam_in, par.gam_out, par.ca_half, par.n_gate);
 
     // set particle 0 from input trajectory
     // Because trajectories do not store the full GCaMP state over time we have to re-evolve from the initial state.
@@ -657,7 +667,6 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
     }
 
     particleSystem[0][0].ancestor = -1;
-
     
     // set spike count to all particles if training
     if(constants->KNOWN_SPIKES){
@@ -672,7 +681,7 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
     // define weights
     double w[nparticles],logW[nparticles];
     double ar_w[nparticles], ar_logW[nparticles];
-	
+
     // initialize all particles at time 0 (excluded particle 0) and set all weights
     for(i=0;i<nparticles;++i){
         rmu(particleSystem[0][i],data_y(0),par,i==0); // i==0 allows to generate latent states only if i!=0

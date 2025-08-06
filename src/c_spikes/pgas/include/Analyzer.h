@@ -8,9 +8,9 @@ public:
 
     Analyzer(const arma::vec& time,const arma::vec& data, const std::string& constants_file, const std::string& output_folder,
                  unsigned int column, const std::string& tag, unsigned int niter = 0, const std::string& trainedPriorFile = "",
-                 bool append = false, unsigned int trim = 1, bool verbose = true, const arma::vec& gtSpikes=0,
+                 bool init_old = false, unsigned int trim = 1, bool verbose = true, const arma::vec& gtSpikes=0,
                  bool has_trained_priors = false, bool has_gtspikes = false, unsigned int maxlen = 0, const std::string& Gparam_file = "",
-                 int seed=0);
+                 int seed=0, const std::string& old_tag="");
 
     void run();
     //These are the methods for dealing with the pgas time-independent parameters
@@ -34,11 +34,12 @@ private:
     bool has_trained_priors;
     bool has_gtspikes;
     std::string Gparam_file;
-    bool append;
+    bool init_old;
     unsigned int niter;
     unsigned int trim;
     bool verbose;
     unsigned int maxlen;
+    std::string old_tag;
 
 	arma::mat parameter_samples;	
 };

@@ -15,6 +15,10 @@ struct GCaMP_params {
     double gamma;
     double DCaT;
     double Rf;
+    double gam_in;
+    double gam_out;
+    double ca_half; //half activation for the hill gate
+    double n_gate;  // hill coefficient for the gate
 
     // parameters that can be fixed
     // indicator 
@@ -29,9 +33,7 @@ struct GCaMP_params {
     const double c0     = 5e-8;
     const double FWHM   = 2.8e-4;
     double sigma2_calcium_spike;
-    double gam_in;
-    double gam_out;
-    
+
     // buffer
     const double koff_B = 1e4;
     const double kon_B  = 1e8;
@@ -51,11 +53,13 @@ struct GCaMP_params {
 class GCaMP {
 public:
     GCaMP(double G_tot,double gamma, double DCaT, double Rf, double gam_in, double gam_out, string Gparam_file="");
+    GCaMP(double G_tot,double gamma, double DCaT, double Rf, double gam_in, double gam_out, double ca_half, double n_gate, string Gparam_file="");
 		GCaMP(string Gparam_file, string Cparam_file);
 		GCaMP(const arma::vec Gparams_in, const arma::vec Cparams_in);
 		
 		void initial_setup();
     void setParams(double G_tot,double gamma, double DCaT, double Rf, double gam_in, double gam_out);
+    void setParams(double G_tot,double gamma, double DCaT, double Rf, double gam_in, double gam_out, double ca_half, double n_gate);
     
     void evolve(double deltat, int ns);
     void fixedStep(double deltat, int ns);
@@ -84,7 +88,7 @@ public:
     double DFF;
     
     arma::vec::fixed<14> Gparams;
-		arma::vec::fixed<6> Cparams;
+		arma::vec Cparams;
     arma::mat::fixed<9,9> Gmat;
     arma::uvec::fixed<5> brightStates;
 
@@ -114,6 +118,10 @@ private:
     double gamma;
     double DCaT;
     double Rf;
+    double gam_in;
+    double gam_out;
+    double ca_half; //half activation for the hill gate
+    double n_gate;  // hill coefficient for the gate
 
     // parameters that can be fixed
     // indicator 
@@ -128,8 +136,7 @@ private:
     const double c0     = 5e-8;
     const double FWHM   = 2.8e-4;
     double sigma2_calcium_spike;
-    double gam_in;
-    double gam_out;
+
     
     // buffer
     const double koff_B = 1e4;
