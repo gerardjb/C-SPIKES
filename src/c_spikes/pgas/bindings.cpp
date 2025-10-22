@@ -36,6 +36,10 @@ auto cleanup_callback = []() {
 
 
 PYBIND11_MODULE(pgas_bound, m) {
+  // Initialize kokkos on binding to prevent finalize() call prior to initialization
+  if (!Kokkos::is_initialized() && !Kokkos::is_finalized())
+        Kokkos::initialize();
+
 	// bindings for Analyzer.cpp
 		py::class_<Analyzer>(m, "Analyzer")
         .def(py::init<const arma::vec&, const arma::vec&, const std::string&, const std::string&, unsigned int, const std::string&, unsigned int,
