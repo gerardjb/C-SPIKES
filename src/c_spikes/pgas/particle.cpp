@@ -348,7 +348,8 @@ void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, 
 
 void SMC::move_and_weight(Particle &part, const Particle& parent, double y, const param &par, double g_noise, double u_noise, bool set=false){
 
-    const int maxspikes = 2;  // The number of spikes goes from 0 to maxspikes-1
+    //const int maxspikes = 2;  // The number of spikes goes from 0 to maxspikes-1
+    const auto maxspikes = constants->maxspikes;
     double probs[2*maxspikes];
     double log_probs[2*maxspikes];
     double Z;
@@ -684,7 +685,7 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
     init_kokkos();
     
     // Copy the state of particles for all times to our structure of arrays on device memory
-    ParticleArray particleArray(nparticles, TIME);
+    ParticleArray particleArray(nparticles, TIME, constants->maxspikes);
     for(t=0;t<TIME;t++)
         for(i=0;i<nparticles;i++)
             particleArray.set_particle(t, i, particleSystem[t][i]);

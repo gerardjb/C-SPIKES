@@ -54,6 +54,7 @@ constpar::constpar(string filename)
     nparticles          = cfg["MCMC"]["nparticles"].asInt();
     SAMPLE_PARAMETERS   = cfg["MCMC"]["SAMPLE_PARAMETERS"].asBool();
     KNOWN_SPIKES        = cfg["MCMC"]["KNOWN_SPIKES"].asBool();
+    maxspikes          = cfg["MCMC"]["maxspikes"].asInt();
 
     // proposals
     G_tot_prop_sd   = cfg["proposals"]["G_tot prop sd"].asDouble();

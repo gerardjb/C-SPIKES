@@ -29,25 +29,18 @@ void w_from_logW(const RowVectorType src, RowVectorType out){
 // https://publikationen.bibliothek.kit.edu/1000133378/115756109#:~:text=With%20weighted%20random%20sampling%2C%20each,1)%20is%20the%20alias%20table.
 // for a good description of this method and others to do this more efficiently.
 // I think for small N where we are only doing this once per particle, this is fine. 
-template<unsigned int N>
+//template<unsigned int N>
 KOKKOS_FUNCTION
-unsigned int discrete_from_uniform(const Scalar u, RowVectorType probs)
-{
-    // First we need to normalize the probabilities
-    Scalar p_total = 0.0;
-    for(int i=0; i<N; i++) p_total += probs(i);
+unsigned int discrete_from_uniform(int N, Scalar u, RowVectorType probs) {
+    Scalar total = 0.0;
+    for (int i = 0; i < N; ++i) total += probs(i);
 
-    Scalar C[N+1];
-    C[0] = 0.0;
-    for(int i=0; i<N; i++) C[i+1] = C[i] + probs(i)/p_total;
-
-    unsigned int idx;
-    for(idx=0; idx<(N+1); idx++)
-        if(C[idx] <= u && u < C[idx+1])
-            break;
-
-    return idx;
-
+    Scalar cumulative = 0.0;
+    for (int i = 0; i < N; ++i) {
+        cumulative += probs(i) / total;
+        if (u < cumulative) return i;
+    }
+    return static_cast<unsigned int>(N - 1);  // catch any round-off
 }
 
 KOKKOS_FUNCTION
@@ -198,7 +191,7 @@ Scalar fixedStep_LA_kernel(
 }
 
 
-ParticleArray::ParticleArray(int N, int T) : N(N), T(T) 
+ParticleArray::ParticleArray(int N, int T, int maxspikes) : N(N), T(T), maxspikes(maxspikes) 
 {
 
     random_pool = RandPoolType(42);
@@ -426,7 +419,7 @@ void ParticleArray::move_and_weight(
     VectorType u_noise_view,
     const GCaMP_params & params)
 {
-
+    const int maxspikes = this->maxspikes;
     Scalar dt = 1.0/constants->sampling_frequency;
 
     Scalar rate[2] = {par.r0*dt,par.r1*dt};
@@ -528,7 +521,7 @@ void ParticleArray::move_and_weight(
                     auto generator = random_pool.get_state();
 
                     Scalar u = Kokkos::rand<RandGenType, Scalar>::draw(generator, 0.0, 1.0);
-                    int idx = discrete_from_uniform<2*maxspikes>(u, Kokkos::subview(probs, part_idx, Kokkos::ALL));
+                    int idx = discrete_from_uniform(2*maxspikes, u, Kokkos::subview(probs, part_idx, Kokkos::ALL));
                     // int idx = discrete(part_idx);
 
                     burst(part_idx, t) = floor(idx/maxspikes);

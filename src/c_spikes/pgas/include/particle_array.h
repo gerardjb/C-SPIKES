@@ -47,7 +47,7 @@ using StateVectorType = Kokkos::Subview<StateMatrixType, int, int, decltype(Kokk
 
 class Particle;
 
-constexpr int maxspikes = 2;
+//constexpr int maxspikes = 2;
 
 // A class to store N particles over time. First dimension of all arrays is time, second is particle index
 class ParticleArray
@@ -71,7 +71,7 @@ class ParticleArray
         IntMatrixType::HostMirror ancestor_h;
         IntMatrixType::HostMirror index_h;
 
-        ParticleArray(int N, int T);
+        ParticleArray(int N, int T, int maxspikes);
 
         void set_particle(int t, int idx, const Particle &p);
         void get_particle(int t, int idx, Particle &p);
@@ -93,6 +93,9 @@ class ParticleArray
 
         // Number of time points
         int T;
+
+        // Max number of spikes
+        int maxspikes;
         
         // Random number generator requirement
         RandPoolType random_pool;

@@ -43,6 +43,7 @@ public:
     int seed;
     int niter;
     int nparticles;
+    int maxspikes;
 
     // Preprocessing
     int t_min, t_max;

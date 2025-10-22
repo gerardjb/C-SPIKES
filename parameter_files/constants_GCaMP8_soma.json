@@ -43,7 +43,8 @@
         "seed":2,
         "niter":1000,
         "nparticles":1000,
-        "SAMPLE_PARAMETERS":true
+        "SAMPLE_PARAMETERS":true,
+        "maxspikes":5
     },
 
     "ODE":{
