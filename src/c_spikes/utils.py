@@ -71,3 +71,44 @@ def unroll_pgas_traj(dat_file):
         Y = np.nan
     
     return index,B,S,C,Y
+
+def unroll_mean_pgas_traj(dat_file, logprob_file, burnin=100):
+    """
+    Read in and upack a PGAS trajectory file and take the mean trajectory across post-burnin. Spike
+    train is returned as MAP.
+    Args:
+        dat_file (str): Path to the .csv file containing PGAS trajectory data.
+        logprob_file (str): Path to the .csv file containing log-probabilities for each trajectory.
+        burnin (int): Number of initial samples to discard as burn-in.
+    Returns:
+        baseline_mean (np.ndarray): Baseline drift (Brownian motion).
+        burst_mean (np.ndarray): Burst state (discrete, 0 or 1).
+        spikes_mean (np.ndarray): Discretized spike number per time bin.
+        C_mean (np.ndarray): "Calcium" value, akin to DFF.
+    """
+    #Loading data
+    data = np.genfromtxt(dat_file, delimiter=',', skip_header=1)
+    logprob = np.genfromtxt(logprob_file)
+
+    #Dealing out data
+    index = data[:,0]
+    burst = data[:,1]
+    B = data[:,2]
+    S = data[:,3]
+    C = data[:,4]
+
+    # Reshape on trajectory indices and average across
+    S_mat = S.reshape((-1,np.sum(index==0))).T
+    spikes_mean = np.mean(S_mat[:,burnin:-1],axis=1)
+    burst_mat = burst.reshape((-1,np.sum(index==0))).T
+    burst_mean = np.mean(burst_mat[:,burnin:-1],axis=1)
+    B_mat = B.reshape((-1,np.sum(index==0))).T
+    baseline_mean = np.mean(B_mat[:,burnin:-1],axis=1)
+    C_mat = C.reshape((-1,np.sum(index==0))).T
+    C_mean = np.mean(C_mat[:,burnin:-1],axis=1)
+    
+    # MAP spike train
+    max_logprob_ind = np.argmax(logprob[burnin:-1]) + burnin
+    spikes_MAP = S_mat[:,max_logprob_ind]
+
+    return burst_mean,baseline_mean,spikes_mean,C_mean,spikes_MAP
