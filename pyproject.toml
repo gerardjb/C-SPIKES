@@ -50,9 +50,11 @@ dependencies = [
  cmake.args = [
   '-DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake', 
   '-DCMAKE_CXX_FLAGS=-DARMA_ALLOW_FAKE_GCC',
-  #'-DCMAKE_BUILD_TYPE=RelWithDebInfo',
-  '-DCMAKE_BUILD_TYPE=Release', # apparently this is needed for kokkos full speed potential
+  # Build with debug symbols
   # '-DCMAKE_BUILD_TYPE=Debug',
+  # '-DCMAKE_CXX_FLAGS=-g -O0',
+  # Or for Release
+  '-DCMAKE_BUILD_TYPE=Release',
 
   # Kokkos Debug
   #'-DKokkos_ENABLE_DEBUG=ON',
@@ -64,7 +66,7 @@ dependencies = [
   '-DKokkos_ENABLE_SERIAL=ON',
   '-DKokkos_ENABLE_OPENMP=ON',
   '-DKokkos_ENABLE_CUDA=ON',
-  '-DKokkos_ARCH_AMPERE80=ON', # A100 only for now.
+  '-DKokkos_ARCH_AMPERE80=ON', # A100 with this option
   '-DKokkos_ENABLE_CUDA_CONSTEXPR=ON',
   ]
  build-dir = "build/{wheel_tag}"
