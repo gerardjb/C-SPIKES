@@ -509,9 +509,9 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
         //log_alpha_MH += stats::gsl_gamma_logpdf(1.0/proposal_factors[i],100,0.01) - stats::gsl_gamma_logpdf(proposal_factors[i],100,0.01);
     }
 
-    cout<<"var: "<<setw(6)<<parnames[sampled_variable]<<' '
-        <<"value: "<<setw(15)<<partest(sampled_variable)<<' '
-        <<"logAlpha: "<<setw(10)<<log_alpha_MH<<endl;
+    // cout<<"var: "<<setw(6)<<parnames[sampled_variable]<<' '
+    //    <<"value: "<<setw(15)<<partest(sampled_variable)<<' '
+    //    <<"logAlpha: "<<setw(10)<<log_alpha_MH<<endl;
 
     if(gsl_rng_uniform(rng) < exp(log_alpha_MH)) {
         pout.G_tot  = G_tot_test;
