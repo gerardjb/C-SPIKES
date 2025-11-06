@@ -35,7 +35,15 @@ import time
 import numpy as np
 import warnings
 from pathlib import Path
+from typing import Dict, List, Tuple, TYPE_CHECKING
 from . import config, utils
+
+if TYPE_CHECKING:  # pragma: no cover - avoids heavy TF import during runtime
+    from tensorflow.keras.models import Model  # type: ignore
+
+
+# Cache loaded Keras ensembles keyed by resolved model directory and noise level
+_MODEL_CACHE: Dict[Tuple[str, int], List["Model"]] = {}
 
 
 def train_model(
@@ -226,7 +234,12 @@ def train_model(
 
 
 def predict(
-    model_name, traces, model_folder="Pretrained_models", threshold=0, padding=np.nan
+    model_name,
+    traces,
+    model_folder="Pretrained_models",
+    threshold=0,
+    padding=np.nan,
+    reuse_models=True,
 ):
 
     """Use a specific trained neural network ('model_name') to predict spiking activity for calcium traces ('traces')
@@ -266,6 +279,12 @@ def predict(
         Value which is inserted for datapoints, where no prediction can be made (because of window around timepoint of prediction)
         Default value: np.nan, another recommended value would be 0 which circumvents some problems with following analysis.
 
+    reuse_models : bool
+        When True, keep TensorFlow model graphs in an in-process cache so repeated
+        calls avoid re-loading checkpoints (dramatically reducing memory churn).
+        Set to False to restore the original behaviour that reloads and clears
+        models on every invocation.
+
     Returns
     --------
     predicted_activity: 2d numpy array (neurons x nr_timepoints)
@@ -276,8 +295,11 @@ def predict(
     import tensorflow.keras
     from tensorflow.keras.models import load_model
 
+    global _MODEL_CACHE
+
     model_path = os.path.join(model_folder, model_name)
     cfg_file = os.path.join(model_path, "config.yaml")
+    resolved_model_path = os.path.abspath(model_path)
 
     # check if configuration file can be found
     if not os.path.isfile(cfg_file):
@@ -388,9 +410,14 @@ def predict(
             continue  # jump to next noise level
 
         # load keras models for the given noise level
-        models = list()
-        for model_path in model_dict[model_noise]:
-            models.append(load_model(model_path))
+        if reuse_models:
+            cache_key = (resolved_model_path, model_noise)
+            models = _MODEL_CACHE.get(cache_key)
+            if models is None:
+                models = [load_model(path) for path in model_dict[model_noise]]
+                _MODEL_CACHE[cache_key] = models
+        else:
+            models = [load_model(path) for path in model_dict[model_noise]]
 
         # select neurons and merge neurons and timepoints into one dimension
         XX_sel = XX[neuron_idx, :, :]
@@ -412,7 +439,8 @@ def predict(
             Y_predict[neuron_idx, :] += prediction / len(models)  # average predictions
 
         # remove models from memory
-        tensorflow.keras.backend.clear_session()
+        if not reuse_models:
+            tensorflow.keras.backend.clear_session()
 
     if threshold is False:  # only if 'False' is passed as argument
         if verbose:
