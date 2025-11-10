@@ -61,6 +61,7 @@ class SMC{
         SMC(string,int,constpar&,bool,int seed=0, unsigned int maxlen=0, string GParam_file=""); 
         SMC(arma::vec,arma::vec,int,constpar&,bool,int seed=0, unsigned int maxlen=0, string GParam_file=""); 
         SMC(arma::vec&,constpar&,bool verbose); 
+        ~SMC();
 
         double logf(const Particle&,const Particle&, const param&);
         void move_and_weight(Particle&, const Particle&, double, const param &, double, double, bool); // move particles and weight

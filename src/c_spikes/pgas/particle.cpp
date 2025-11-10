@@ -258,6 +258,19 @@ SMC::SMC(arma::vec &Y, constpar& cst, bool v){
     }
 }
 
+SMC::~SMC() {
+    for (auto* row : particleSystem) {
+        delete[] row;
+    }
+    particleSystem.clear();
+    delete model;
+    model = nullptr;
+    if (rng) {
+        gsl_rng_free(rng);
+        rng = nullptr;
+    }
+}
+
 
 void SMC::rmu(Particle &p, double y, const param &par, bool set=false){
 
