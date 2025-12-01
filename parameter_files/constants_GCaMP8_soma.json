@@ -44,7 +44,15 @@
         "niter":1000,
         "nparticles":1000,
         "SAMPLE_PARAMETERS":true,
-        "maxspikes":5
+        "maxspikes":5,
+        "c0_is_first_y":false
+    },
+
+    "substepping":{
+        "physics_frequency_hz":120,
+        "substeps_per_frame":0,
+        "min_substeps":1,
+        "time_integrated_observations":true
     },
 
     "ODE":{

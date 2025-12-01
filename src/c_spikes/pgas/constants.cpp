@@ -1,4 +1,5 @@
 #include "include/constants.h"
+#include <algorithm>
 #include <cmath>
 #include <json/json.h>
 #include <fstream>
@@ -55,6 +56,7 @@ constpar::constpar(string filename)
     SAMPLE_PARAMETERS   = cfg["MCMC"]["SAMPLE_PARAMETERS"].asBool();
     KNOWN_SPIKES        = cfg["MCMC"]["KNOWN_SPIKES"].asBool();
     maxspikes          = cfg["MCMC"]["maxspikes"].asInt();
+    c0_is_first_y      = cfg["MCMC"]["c0_is_first_y"].asBool();
 
     // proposals
     G_tot_prop_sd   = cfg["proposals"]["G_tot prop sd"].asDouble();
@@ -67,10 +69,44 @@ constpar::constpar(string filename)
     // Integration of the GCaMP model
     TSMode = cfg["ODE"]["time step mode"].asInt();
 
+    // Sub-stepping / observation handling
+    physics_frequency_hz = cfg.get("physics_frequency_hz", physics_frequency_hz).asDouble();
+    substeps_per_frame = cfg.get("substeps_per_frame", substeps_per_frame).asInt();
+    min_substeps = cfg.get("min_substeps", min_substeps).asInt();
+    time_integrated_observations = cfg.get("time_integrated_observations", time_integrated_observations).asBool();
+    if (cfg.isMember("substepping")) {
+        const Json::Value& substep_cfg = cfg["substepping"];
+        physics_frequency_hz = substep_cfg.get("physics_frequency_hz", physics_frequency_hz).asDouble();
+        substeps_per_frame = substep_cfg.get("substeps_per_frame", substeps_per_frame).asInt();
+        min_substeps = substep_cfg.get("min_substeps", min_substeps).asInt();
+        time_integrated_observations = substep_cfg.get("time_integrated_observations", time_integrated_observations).asBool();
+    }
+
 }
 
 void constpar::set_time_scales()
 {
+    double obs_dt = (sampling_frequency > 0) ? 1.0 / sampling_frequency : 0.0;
+    int computed_substeps = (substeps_per_frame > 0) ? substeps_per_frame : 0;
+
+    if (computed_substeps <= 0 && physics_frequency_hz > 0 && obs_dt > 0) {
+        computed_substeps = static_cast<int>(round(obs_dt * physics_frequency_hz));
+    }
+
+    if (computed_substeps < 1) {
+        computed_substeps = 1;
+    }
+
+    if (min_substeps > 1) {
+        computed_substeps = std::max(computed_substeps, min_substeps);
+    }
+
+    num_substeps = computed_substeps;
+    if (obs_dt > 0 && num_substeps > 0) {
+        sim_dt = obs_dt / static_cast<double>(num_substeps);
+    } else {
+        sim_dt = 0.0;
+    }
 }
 
 void constpar::print()
