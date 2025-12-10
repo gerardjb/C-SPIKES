@@ -33,7 +33,7 @@ class PgasConfig:
     output_root: Path
     constants_file: Path
     gparam_file: Path
-    resample_fs: float = PGAS_RESAMPLE_FS
+    resample_fs: Optional[float] = None  # None => use raw/native rate
     niter: int = PGAS_NITER
     burnin: int = PGAS_BURNIN
     downsample_label: str = "raw"
@@ -200,18 +200,23 @@ def run_pgas_inference(
     else:
         trials_for_pgas = list(trials)
 
-    trials_resampled = resample_trials_to_fs(trials_for_pgas, config.resample_fs)
+    resample_fs_val = config.resample_fs if config.resample_fs is not None else raw_fs
+
+    if config.resample_fs is not None:
+        trials_resampled = resample_trials_to_fs(trials_for_pgas, config.resample_fs)
+    else:
+        trials_resampled = list(trials_for_pgas)
     from .types import flatten_trials
 
     time_flat, trace_flat = flatten_trials(trials_resampled)
     trace_hash = hash_series(time_flat, trace_flat)
     maxspikes = config.maxspikes if config.maxspikes is not None else maxspikes_for_rate(
-        config.resample_fs, raw_fs
+        resample_fs_val, raw_fs
     )
     bm_sigma = (
         config.bm_sigma
         if config.bm_sigma is not None
-        else estimate_bm_sigma_for_trials(trials_for_pgas, spike_times, config.resample_fs, config.bm_sigma_gap_s)
+        else estimate_bm_sigma_for_trials(trials_for_pgas, spike_times, resample_fs_val, config.bm_sigma_gap_s)
     )
     constants_path = prepare_constants_with_params(
         config.constants_file,
@@ -219,7 +224,7 @@ def run_pgas_inference(
         bm_sigma=bm_sigma,
     )
     label_token = format_tag_token(config.downsample_label)
-    pgas_resample_token = format_tag_token(f"{config.resample_fs:g}")
+    pgas_resample_token = "raw" if config.resample_fs is None else format_tag_token(f"{config.resample_fs:g}")
     bm_token = format_tag_token(f"{bm_sigma:.3g}")
     run_tag = f"{config.dataset_tag}_s{label_token}_ms{maxspikes}_rs{pgas_resample_token}_bm{bm_token}"
     cfg_dict = {
@@ -229,7 +234,7 @@ def run_pgas_inference(
         "constants_file": str(constants_path),
         "gparam_file": str(config.gparam_file),
         "maxspikes": maxspikes,
-        "input_resample_fs": config.resample_fs,
+        "input_resample_fs": config.resample_fs if config.resample_fs is not None else raw_fs,
         "bm_sigma": bm_sigma,
     }
     if config.edges is not None:

@@ -22,8 +22,15 @@ from .types import MethodResult, TrialSeries, extract_spike_times, flatten_trial
 
 @dataclass
 class SmoothingLevel:
-    label: str
     target_fs: Optional[float]
+    label: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.label is None:
+            if self.target_fs is None:
+                self.label = "raw"
+            else:
+                self.label = f"{self.target_fs:.1f}Hz"
 
 
 @dataclass
@@ -37,12 +44,14 @@ class MethodSelection:
 class DatasetRunConfig:
     dataset_path: Path
     neuron_type: str = "Exc"
-    smoothing: SmoothingLevel = SmoothingLevel("30Hz", 30.0)
+    smoothing: SmoothingLevel = SmoothingLevel(target_fs=None)
     reference_fs: Optional[float] = None
     edges: Optional[np.ndarray] = None
     selection: MethodSelection = field(default_factory=MethodSelection)
     use_cache: bool = True
     bm_sigma_gap_s: float = 0.15
+    pgas_resample_fs: Optional[float] = None  # None => use raw/native
+    cascade_resample_fs: Optional[float] = None  # None => default CASCADE_RESAMPLE_FS
 
 
 def run_inference_for_dataset(
@@ -77,14 +86,14 @@ def run_inference_for_dataset(
     if cfg.smoothing.target_fs is None:
         trials_for_methods = trials_native
         down_time_flat, down_trace_flat = raw_time_flat, raw_trace_flat
-        downsample_label = "raw"
+        downsample_label = cfg.smoothing.label or "raw"
     else:
         trials_for_methods = [
             mean_downsample_trace(trial.times, trial.values, cfg.smoothing.target_fs)
             for trial in trials_native
         ]
         down_time_flat, down_trace_flat = flatten_trials(trials_for_methods)
-        downsample_label = f"{cfg.smoothing.target_fs:.2f}"
+        downsample_label = cfg.smoothing.label or f"{cfg.smoothing.target_fs:.2f}"
 
     methods: Dict[str, MethodResult] = {}
 
@@ -94,7 +103,7 @@ def run_inference_for_dataset(
             output_root=pgas_output_root,
             constants_file=pgas_constants,
             gparam_file=pgas_gparam,
-            resample_fs=PGAS_RESAMPLE_FS,
+            resample_fs=cfg.pgas_resample_fs,
             niter=PGAS_NITER,
             burnin=PGAS_BURNIN,
             downsample_label=downsample_label,
@@ -132,12 +141,13 @@ def run_inference_for_dataset(
         ens2_result = None
 
     if cfg.selection.run_cascade:
-        cascade_trials = resample_trials_to_fs(trials_for_methods, CASCADE_RESAMPLE_FS)
+        cascade_fs = cfg.cascade_resample_fs or CASCADE_RESAMPLE_FS
+        cascade_trials = resample_trials_to_fs(trials_for_methods, cascade_fs)
         cascade_cfg = CascadeConfig(
             dataset_tag=dataset_tag,
             model_folder=cascade_model_root,
             model_name="Cascade_Universal_30Hz",
-            resample_fs=CASCADE_RESAMPLE_FS,
+            resample_fs=cascade_fs,
             downsample_label=downsample_label,
             use_cache=cfg.use_cache,
         )
@@ -226,5 +236,4 @@ def run_inference_for_dataset(
         "reference_trace": ref_trace,
         "windows": windows,
     }
-
 
