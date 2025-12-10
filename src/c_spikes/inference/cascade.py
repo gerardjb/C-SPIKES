@@ -85,17 +85,14 @@ def run_cascade_inference(
         indices = indices[(indices >= 0) & (indices < discrete_matrix.shape[1])]
         discrete_matrix[neuron_idx, indices] += 1
 
-    rate_flat, time_flat_all = [], []
-    discrete_flat = []
-    for idx in range(pred_rate.shape[0]):
-        rate_flat.append(pred_rate[idx])
-        discrete_flat.append(discrete_matrix[idx])
-        time_flat_all.append(time_matrix[idx])
-    rate_flat_arr = np.concatenate(rate_flat)
-    discrete_flat_arr = np.concatenate(discrete_flat)
-    time_flat_arr = np.concatenate(time_flat_all)
-    from .types import compute_sampling_rate
+    from .types import flatten_trials, compute_sampling_rate
 
+    time_flat_arr, rate_flat_arr = flatten_trials(
+        [TrialSeries(times=time_matrix[idx], values=pred_rate[idx]) for idx in range(pred_rate.shape[0])]
+    )
+    _, discrete_flat_arr = flatten_trials(
+        [TrialSeries(times=time_matrix[idx], values=discrete_matrix[idx]) for idx in range(discrete_matrix.shape[0])]
+    )
     fs_est = compute_sampling_rate(time_flat_arr)
     result = MethodResult(
         name="cascade",

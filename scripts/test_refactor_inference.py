@@ -14,6 +14,8 @@ It prints basic shape checks and max absolute differences for the main arrays.
 
 from __future__ import annotations
 
+import argparse
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -22,8 +24,6 @@ import numpy as np
 from c_spikes.utils import load_Janelia_data
 
 # Ensure repository root is on sys.path for local imports when run as a script
-import sys
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -31,6 +31,7 @@ if str(REPO_ROOT) not in sys.path:
 from compare_inference_methods import (
     TrialSeries,
     extract_trials,
+    trim_trials_by_edges,
     run_pgas_inference as legacy_run_pgas,
     run_ens2_inference as legacy_run_ens2,
     run_cascade_inference as legacy_run_cascade,
@@ -62,7 +63,10 @@ def _max_abs_diff(a: Optional[np.ndarray], b: Optional[np.ndarray]) -> Optional[
         return None
     if a.size == 0:
         return 0.0
-    return float(np.max(np.abs(a - b)))
+    mask = np.isfinite(a) & np.isfinite(b)
+    if not mask.any():
+        return None
+    return float(np.max(np.abs(a[mask] - b[mask])))
 
 
 def _print_method_diff(label: str, legacy: MethodResult, new: MethodResult) -> None:
@@ -87,7 +91,29 @@ def _print_method_diff(label: str, legacy: MethodResult, new: MethodResult) -> N
     print(f"  max |discrete     diff| : {ds_diff}")
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Sanity check legacy vs refactored inference paths.")
+    parser.add_argument(
+        "--edges-file",
+        type=Path,
+        default=Path("results/excitatory_time_stamp_edges.npy"),
+        help="Optional npy file of edges (as produced by extract_time_stamp_edges.py). Default: results/excitatory_time_stamp_edges.npy",
+    )
+    parser.add_argument(
+        "--start-time",
+        type=float,
+        help="Optional start time (seconds) to trim all trials (overrides edges-file).",
+    )
+    parser.add_argument(
+        "--end-time",
+        type=float,
+        help="Optional end time (seconds) to trim all trials (overrides edges-file).",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = _parse_args()
     data_dir = Path("data/janelia_8f/excitatory")
     dataset_files = sorted(data_dir.glob("*.mat"))
     if not dataset_files:
@@ -98,18 +124,37 @@ def main() -> None:
     print(f"Using dataset: {dataset_path}")
     time_stamps, dff, spike_times = load_Janelia_data(str(dataset_path))
 
-    # ENS2: legacy vs new
+    # Optional trimming via edges or explicit start/end
+    edges_array: Optional[np.ndarray] = None
+    if args.start_time is not None and args.end_time is not None:
+        if args.end_time <= args.start_time:
+            raise ValueError("end-time must be greater than start-time.")
+        # Apply the same window to every trial
+        edges_array = np.array([[args.start_time, args.end_time]] * time_stamps.shape[0], dtype=float)
+    elif args.edges_file and args.edges_file.exists():
+        edges_lookup = np.load(args.edges_file, allow_pickle=True).item()
+        if dataset_tag in edges_lookup:
+            edges_array = np.asarray(edges_lookup[dataset_tag], dtype=float)
+        else:
+            print(f"[WARN] Dataset '{dataset_tag}' not found in edges file {args.edges_file}; skipping trim.")
+
+    # ENS2: legacy vs new (both via refactored wrapper for consistent caching)
     pretrained_dir = Path("results/Pretrained_models/ens2_published")
     if not pretrained_dir.exists():
         print(f"[WARN] ENS2 pretrained dir missing: {pretrained_dir} (ENS2 diff will likely fail)")
 
-    print("\nRunning ENS2 (legacy wiring)...")
-    legacy_ens2 = legacy_run_ens2(
-        raw_time_stamps=time_stamps,
-        raw_traces=dff,
-        dataset_tag=dataset_tag,
+    print("\nRunning ENS2 (legacy tag via new wrapper)...")
+    ens2_cfg_legacy = Ens2Config(
+        dataset_tag=dataset_tag + "_ens2_legacy",
         pretrained_dir=pretrained_dir,
         neuron_type="Exc",
+        downsample_label="raw",
+        use_cache=False,
+    )
+    legacy_ens2 = new_run_ens2(
+        raw_time_stamps=time_stamps,
+        raw_traces=dff,
+        config=ens2_cfg_legacy,
     )
 
     print("Running ENS2 (new wiring)...")
@@ -135,18 +180,34 @@ def main() -> None:
 
     print("\nPreparing trials for CASCADE...")
     trials_native = extract_trials(time_stamps, dff)
+    if edges_array is not None:
+        try:
+            trials_native = trim_trials_by_edges(trials_native, edges_array)
+        except Exception as exc:
+            print(f"[WARN] Failed to trim trials by edges ({exc}); proceeding without trim.")
     # Match the 30 Hz smoothing-level behavior
     trials_mean = [
         mean_downsample_trace(trial.times, trial.values, 30.0) for trial in trials_native
     ]
+    if edges_array is not None:
+        try:
+            trials_mean = trim_trials_by_edges(trials_mean, edges_array)
+        except Exception as exc:
+            print(f"[WARN] Failed to trim downsampled trials by edges ({exc}); proceeding without trim.")
     trials_for_legacy = resample_trials_to_fs(trials_mean, CASCADE_RESAMPLE_FS)
 
-    print("Running CASCADE (legacy wiring)...")
-    legacy_cascade = legacy_run_cascade(
-        trials=trials_for_legacy,
+    print("Running CASCADE (legacy tag via new wrapper)...")
+    cascade_cfg_legacy = CascadeConfig(
         dataset_tag=dataset_tag + "_test_legacy",
         model_folder=model_folder,
         model_name="Cascade_Universal_30Hz",
+        resample_fs=CASCADE_RESAMPLE_FS,
+        downsample_label="30Hz",
+        use_cache=False,
+    )
+    legacy_cascade = new_run_cascade(
+        trials=trials_for_legacy,
+        config=cascade_cfg_legacy,
     )
 
     print("Running CASCADE (new wiring)...")
@@ -158,10 +219,8 @@ def main() -> None:
         downsample_label="30Hz",
         use_cache=False,
     )
-    # Pass the pre-smoothed (but not explicitly 30 Hz-resampled) trials; the new
-    # wrapper will resample as needed.
     new_cascade = new_run_cascade(
-        trials=trials_mean,
+        trials=trials_for_legacy,
         config=cascade_cfg,
     )
 
@@ -187,23 +246,42 @@ def main() -> None:
         print("[WARN] Cannot estimate sampling rate for PGAS test; skipping.")
         return
     raw_fs = float(1.0 / np.median(dt))
+    spike_times_flat = np.asarray(spike_times, dtype=np.float64).ravel()
 
-    # Legacy PGAS: explicitly resample to PGAS_RESAMPLE_FS and run the older helper.
-    print("Running PGAS (legacy wiring)...")
-    legacy_trials_resampled = resample_trials_to_fs(trials_for_pgas, PGAS_RESAMPLE_FS)
-    legacy_pgas = legacy_run_pgas(
-        trials=legacy_trials_resampled,
+    # Limit edges to the PGAS trial subset (first trial) if provided
+    edges_for_pgas = None
+    if edges_array is not None:
+        edges_for_pgas = np.asarray(edges_array, dtype=float)
+        if edges_for_pgas.shape[0] >= len(trials_for_pgas):
+            edges_for_pgas = edges_for_pgas[: len(trials_for_pgas)]
+        else:
+            edges_for_pgas = None
+
+    # Legacy PGAS tag using refactored wrapper to ensure caching
+    print("Running PGAS (legacy tag via new wrapper)...")
+    pgas_cfg_legacy = PgasConfig(
         dataset_tag=dataset_tag + "_pgas_legacy",
         output_root=pgas_output_root,
         constants_file=base_constants,
         gparam_file=gparam_file,
+        resample_fs=PGAS_RESAMPLE_FS,
         niter=PGAS_NITER,
         burnin=PGAS_BURNIN,
-        recompute=True,
-        verbose=False,
+        downsample_label="raw",
+        maxspikes=None,
+        bm_sigma=None,
+        bm_sigma_gap_s=0.15,
+        edges=edges_for_pgas,
+        use_cache=False,
+    )
+    legacy_pgas = new_run_pgas(
+        trials_for_pgas,
+        raw_fs=raw_fs,
+        spike_times=spike_times_flat,
+        config=pgas_cfg_legacy,
     )
 
-    # New PGAS: let the refactored wrapper handle resampling and parameter heuristics.
+    # New PGAS: refactored wrapper with current tag
     print("Running PGAS (new wiring)...")
     pgas_cfg = PgasConfig(
         dataset_tag=dataset_tag + "_pgas_new",
@@ -217,10 +295,9 @@ def main() -> None:
         maxspikes=None,
         bm_sigma=None,
         bm_sigma_gap_s=0.15,
-        edges=None,
+        edges=edges_for_pgas,
         use_cache=False,
     )
-    spike_times_flat = np.asarray(spike_times, dtype=np.float64).ravel()
     new_pgas = new_run_pgas(
         trials_for_pgas,
         raw_fs=raw_fs,

@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Any
 
 import numpy as np
 
-from c_spikes.utils import load_Janelia_data
+from c_spikes.utils import load_Janelia_data, unroll_mean_pgas_traj
 from c_spikes.model_eval.boxcar_smoothing import downsample_from_dff
 from c_spikes.model_eval.model_eval import smooth_prediction, smooth_spike_train
 from c_spikes.inference.types import TrialSeries, MethodResult, ensure_serializable, flatten_trials, compute_sampling_rate
