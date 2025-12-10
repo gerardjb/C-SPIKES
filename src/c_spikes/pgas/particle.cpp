@@ -8,6 +8,8 @@
 #include<ctime>
 #include"include/GCaMP_model.h"
 #include<iomanip>
+#include<vector>
+#include<algorithm>
 
 
 using namespace std;
@@ -212,6 +214,13 @@ SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_head
     constants->sampling_frequency = 1.0 / (data_time(2)-data_time(1));
     cout << "setting sampling frequency to: "<<constants->sampling_frequency << endl;
     constants->set_time_scales();
+
+    cout << "Setting time scales:" << endl;
+    cout << "  physics_frequency_hz = " << constants->physics_frequency_hz << " Hz" << endl;
+    cout << "  substeps_per_frame = " << constants->substeps_per_frame << endl;
+    cout << "  min_substeps = " << constants->min_substeps << endl;
+    cout << "  => num_substeps = " << constants->num_substeps << endl;
+    cout << "  => sim_dt = " << constants->sim_dt << " s" << endl;
     data_y = data;
 
     // set number of particles
@@ -366,29 +375,59 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
     double probs[2*maxspikes];
     double log_probs[2*maxspikes];
     double Z;
-    double ct;
     unsigned int burst, ns;
     double dt = 1.0/constants->sampling_frequency;
+    const int num_substeps = std::max(1, constants->num_substeps);
+    const double sim_dt = (constants->sim_dt > 0.0) ? constants->sim_dt : dt/static_cast<double>(num_substeps);
+    const bool integrate_obs = constants->time_integrated_observations;
 
     double rate[2] = {par.r0*dt,par.r1*dt};
     double W[2][2] = {{1-par.wbb[0]*dt, par.wbb[0]*dt},
         {par.wbb[1]*dt, 1-par.wbb[1]*dt}};
     
-    double z[2] = {par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)),
-                   dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2))};
-    //double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));
-    
-    arma::vec state_out(12); // <xxx flag for removal xxx>
+    const double obs_var = par.sigma2 + pow(constants->bm_sigma,2);
+    const double inv_obs_var = 1.0/obs_var;
+
+    arma::vec state_out(12);
+    std::vector<int> spike_assignments(maxspikes, 0);
+
+    auto run_substeps = [&](const arma::vec &initial_state, int spike_count, double &avg_prediction, arma::vec *final_state){
+        arma::vec work_state = initial_state;
+        double fluorescence_sum = 0.0;
+        double last_ct = 0.0;
+
+        for(int spike_idx = 0; spike_idx < spike_count; ++spike_idx){
+            spike_assignments[spike_idx] = gsl_rng_uniform_int(rng, num_substeps);
+        }
+
+        for(int step = 0; step < num_substeps; ++step){
+            int spikes_this_step = 0;
+            for(int spike_idx = 0; spike_idx < spike_count; ++spike_idx){
+                if(spike_assignments[spike_idx] == step) ++spikes_this_step;
+            }
+
+            model->evolve_threadsafe(sim_dt, spikes_this_step, work_state, state_out, last_ct);
+            fluorescence_sum += last_ct;
+            work_state = state_out;
+        }
+
+        avg_prediction = integrate_obs ? fluorescence_sum/static_cast<double>(num_substeps) : last_ct;
+        if(final_state){
+            *final_state = work_state;
+        }
+    };
+
     for(unsigned int i=0;i<2*maxspikes;i++){
 
         burst = floor(i/maxspikes);
         ns    = i%maxspikes;
 
-        model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
+        double avg_ct = 0.0;
+        run_substeps(parent.C, (int)ns, avg_ct, nullptr);
         
         log_probs[i] = log(W[parent.burst][burst]);
         log_probs[i] += ns*log(rate[burst]) - log(tgamma(ns+1)) -rate[burst];
-        log_probs[i] += -0.5/(par.sigma2+pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2); 
+        log_probs[i] += -0.5*inv_obs_var*pow(y-avg_ct-parent.B,2); 
         
     } 
 
@@ -411,8 +450,10 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
         gsl_ran_discrete_free(rdisc);
     }
     
-    model->evolve_threadsafe(dt, part.S, parent.C, state_out, ct);
-    part.C     = state_out;
+    arma::vec new_state(12);
+    double dummy_avg = 0.0;
+    run_substeps(parent.C, part.S, dummy_avg, &new_state);
+    part.C = new_state;
 
 }
 

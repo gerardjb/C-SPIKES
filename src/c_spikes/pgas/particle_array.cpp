@@ -5,8 +5,12 @@
 #include "include/GCaMP_model.h"
 #include "include/utils.h"
 #include <Kokkos_Random.hpp>
+#include <algorithm>
+#include <stdexcept>
 
 using namespace std;
+
+constexpr int MAX_SPIKE_BUFFER = 64;
 
 template<unsigned int N>
 KOKKOS_FUNCTION
@@ -45,23 +49,23 @@ unsigned int discrete_from_uniform(int N, Scalar u, RowVectorType probs) {
 
 KOKKOS_FUNCTION
 
-Scalar fixedStep_LA_kernel(
+Scalar fixedStep_LA_kernel_raw(
     Scalar deltat, int ns,
-    const StateVectorType state_in,
-    StateVectorType state_out,
+    const Scalar* state_in_ptr,
+    Scalar* state_out_ptr,
     const GCaMP_params & p,
     bool save_state)
 {
 
     Scalar G[9];
 
-    for(int i=0;i<9;i++) G[i] = state_in(i);
+    for(int i=0;i<9;i++) G[i] = state_in_ptr[i];
 
-    Scalar BCa = state_in(9);
+    Scalar BCa = state_in_ptr[9];
     Scalar dBCa_dt;
 
-    Scalar Ca  = state_in(10);
-    Scalar Ca_in = state_in(11);
+    Scalar Ca  = state_in_ptr[10];
+    Scalar Ca_in = state_in_ptr[11];
     Scalar dCa_dt, dCa_in_dt;
     
     Scalar Gflux, Cflux;
@@ -174,20 +178,34 @@ Scalar fixedStep_LA_kernel(
         tstep_i++;
     }
 
-    if (save_state) {
-        for(unsigned int i=0;i<9;i++) state_out(i) = G[i];
-        state_out(9)  = BCa;
-        state_out(10) = Ca;
-        state_out(11) = Ca_in;
+    if (save_state && state_out_ptr) {
+        for(unsigned int i=0;i<9;i++) state_out_ptr[i] = G[i];
+        state_out_ptr[9]  = BCa;
+        state_out_ptr[10] = Ca;
+        state_out_ptr[11] = Ca_in;
     }
 
     int brightStates[5] = {2, 3, 5, 6, 8};
     Scalar brightStatesSum = 0.0;
     for(unsigned int i=0;i<5;i++) brightStatesSum += G[brightStates[i]];
 
-    Scalar DFF_out = (brightStatesSum - p.Ginit)/(p.Ginit-p.G0+(p.Gsat-p.G0)/(p.Rf-1));
+Scalar DFF_out = (brightStatesSum - p.Ginit)/(p.Ginit-p.G0+(p.Gsat-p.G0)/(p.Rf-1));
 
     return DFF_out;
+}
+
+
+KOKKOS_FUNCTION
+Scalar fixedStep_LA_kernel(
+    Scalar deltat, int ns,
+    const StateVectorType state_in,
+    StateVectorType state_out,
+    const GCaMP_params & p,
+    bool save_state)
+{
+    const Scalar* in_ptr = &state_in(0);
+    Scalar* out_ptr = save_state ? &state_out(0) : nullptr;
+    return fixedStep_LA_kernel_raw(deltat, ns, in_ptr, out_ptr, p, save_state);
 }
 
 
@@ -420,7 +438,13 @@ void ParticleArray::move_and_weight(
     const GCaMP_params & params)
 {
     const int maxspikes = this->maxspikes;
+    if (maxspikes > MAX_SPIKE_BUFFER) {
+        throw std::runtime_error("maxspikes exceeds MAX_SPIKE_BUFFER");
+    }
     Scalar dt = 1.0/constants->sampling_frequency;
+    const int num_substeps = std::max(1, constants->num_substeps);
+    Scalar sim_dt = (constants->sim_dt > 0.0) ? constants->sim_dt : dt/static_cast<Scalar>(num_substeps);
+    const bool integrate_obs = constants->time_integrated_observations;
 
     Scalar rate[2] = {par.r0*dt,par.r1*dt};
     Scalar W[2][2] = {{1-par.wbb[0]*dt, par.wbb[0]*dt},
@@ -430,20 +454,17 @@ void ParticleArray::move_and_weight(
                    dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2))};
 
     Scalar bm_sigma = constants->bm_sigma;
+    Scalar obs_var = par.sigma2 + bm_sigma*bm_sigma;
+    Scalar inv_obs_var = 1.0/obs_var;
 
-    // We don't actually need this value, but we need to pass it to the kernel
-    // save_state=false will make sure it isn't written to, which would cause 
-    // problems because it is the same address for all particles.
-    //StateMatrixType state_out_tmp("state_out_tmp", 1, 1, 12);
-    // StateVectorType state_out("state_out", 12);
-    StateVectorType state_out = Kokkos::subview(C, 0, 0, Kokkos::ALL);
-
+    const int combo_count = maxspikes*2;
     Kokkos::parallel_for("evolve_for_maxspikes",
-		Kokkos::RangePolicy<ExecSpace>(0, N*maxspikes*2),
+		Kokkos::RangePolicy<ExecSpace>(0, N*combo_count),
             KOKKOS_CLASS_LAMBDA(const int idx) {
-                int particle_idx = idx / (maxspikes*2);
-                int spike_idx = idx % (maxspikes*2);
-                int b = floor(spike_idx/maxspikes);
+                auto generator = random_pool.get_state();
+                int particle_idx = idx / combo_count;
+                int spike_idx = idx % combo_count;
+                int b = spike_idx / maxspikes;
                 int ns    = spike_idx % maxspikes;
 
                 // Update the ancestors that we generated on the CPU
@@ -453,16 +474,38 @@ void ParticleArray::move_and_weight(
                 int parent_b = burst(a, t-1);
                 Scalar parent_B = B(a, t-1);
                 
-                // Evolve
-                // model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
-                StateVectorType state_in = Kokkos::subview(C, a, t-1, Kokkos::ALL);
-                Scalar ct = fixedStep_LA_kernel(dt, ns, state_in, state_out, params, false);
+                StateVectorType parent_state = Kokkos::subview(C, a, t-1, Kokkos::ALL);
+                Scalar state_buffer[12];
+                for(int dim = 0; dim < 12; ++dim) state_buffer[dim] = parent_state(dim);
+
+                int spike_slots[MAX_SPIKE_BUFFER];
+                for(int spike_idx_local = 0; spike_idx_local < ns; ++spike_idx_local){
+                    Scalar u = Kokkos::rand<RandGenType, Scalar>::draw(generator, 0.0, 1.0);
+                    int slot = static_cast<int>(u * num_substeps);
+                    if(slot >= num_substeps) slot = num_substeps - 1;
+                    spike_slots[spike_idx_local] = slot;
+                }
+
+                Scalar fluorescence_sum = 0.0;
+                Scalar last_ct = 0.0;
+                for(int step = 0; step < num_substeps; ++step){
+                    int spikes_this_step = 0;
+                    for(int spike_idx_local = 0; spike_idx_local < ns; ++spike_idx_local){
+                        if(spike_slots[spike_idx_local] == step) ++spikes_this_step;
+                    }
+                    last_ct = fixedStep_LA_kernel_raw(sim_dt, spikes_this_step, state_buffer, state_buffer, params, true);
+                    fluorescence_sum += last_ct;
+                }
+
+                Scalar predicted = integrate_obs ? fluorescence_sum/static_cast<Scalar>(num_substeps) : last_ct;
+                Scalar residual = y(t) - predicted - parent_B;
 
                 Scalar log_prob_tmp = log(W[parent_b][b]);
                 log_prob_tmp += ns*log(rate[b]) - log(tgamma(ns+1)) - rate[b];
-                log_prob_tmp += -0.5/(par.sigma2+pow(bm_sigma,2))*pow(y(t)-ct-parent_B,2);
+                log_prob_tmp += -0.5*inv_obs_var*residual*residual;
                 log_probs(particle_idx, spike_idx) = log_prob_tmp;
 
+                random_pool.free_state(generator);
             });
 
     // // Wait for kernel to complete
@@ -516,30 +559,46 @@ void ParticleArray::move_and_weight(
         Kokkos::RangePolicy<ExecSpace>(0, N),
             KOKKOS_CLASS_LAMBDA(const int part_idx) {
 
+                auto generator = random_pool.get_state();
+
                 // move particle if not already set
                 if(part_idx != 0){
-                    auto generator = random_pool.get_state();
 
                     Scalar u = Kokkos::rand<RandGenType, Scalar>::draw(generator, 0.0, 1.0);
                     int idx = discrete_from_uniform(2*maxspikes, u, Kokkos::subview(probs, part_idx, Kokkos::ALL));
                     // int idx = discrete(part_idx);
 
-                    burst(part_idx, t) = floor(idx/maxspikes);
+                    burst(part_idx, t) = idx/maxspikes;
                     S(part_idx, t) = idx%maxspikes;
 
-                    // B(part_idx, t) = B(ancestor(part_idx, t), t-1) + g_noise(part_idx);
                     B(part_idx, t) = B(ancestor(part_idx, t), t-1) + generator.normal(0.0, sigma_B_posterior);
-
-                    // do not forget to release the state of the engine
-                    random_pool.free_state(generator);
                 }
                 
-                // model->evolve_threadsafe(dt, part.S, parent.C, state_out, ct);
-                // part.C     = state_out;
-                StateVectorType state_in = Kokkos::subview(C, ancestor(part_idx, t), t-1, Kokkos::ALL);
-                StateVectorType state_out = Kokkos::subview(C, part_idx, t, Kokkos::ALL);
-                Scalar ct = fixedStep_LA_kernel(dt, S(part_idx, t), state_in, state_out, params, true);
+                StateVectorType parent_state = Kokkos::subview(C, ancestor(part_idx, t), t-1, Kokkos::ALL);
+                Scalar state_buffer[12];
+                for(int dim = 0; dim < 12; ++dim) state_buffer[dim] = parent_state(dim);
 
+                int spike_slots[MAX_SPIKE_BUFFER];
+                int ns = S(part_idx, t);
+                for(int spike_idx_local = 0; spike_idx_local < ns; ++spike_idx_local){
+                    Scalar u = Kokkos::rand<RandGenType, Scalar>::draw(generator, 0.0, 1.0);
+                    int slot = static_cast<int>(u * num_substeps);
+                    if(slot >= num_substeps) slot = num_substeps - 1;
+                    spike_slots[spike_idx_local] = slot;
+                }
+
+                for(int step = 0; step < num_substeps; ++step){
+                    int spikes_this_step = 0;
+                    for(int spike_idx_local = 0; spike_idx_local < ns; ++spike_idx_local){
+                        if(spike_slots[spike_idx_local] == step) ++spikes_this_step;
+                    }
+                    fixedStep_LA_kernel_raw(sim_dt, spikes_this_step, state_buffer, state_buffer, params, true);
+                }
+
+                StateVectorType state_out = Kokkos::subview(C, part_idx, t, Kokkos::ALL);
+                for(int dim = 0; dim < 12; ++dim) state_out(dim) = state_buffer[dim];
+
+                random_pool.free_state(generator);
             });
     Kokkos::fence("fence_move_particles");
 
