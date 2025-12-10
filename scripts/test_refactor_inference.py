@@ -28,14 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from compare_inference_methods import (
-    TrialSeries,
-    extract_trials,
-    trim_trials_by_edges,
-    run_pgas_inference as legacy_run_pgas,
-    run_ens2_inference as legacy_run_ens2,
-    run_cascade_inference as legacy_run_cascade,
-)
+from compare_inference_methods import TrialSeries, extract_trials
 
 from c_spikes.inference.types import MethodResult
 from c_spikes.inference.ens2 import Ens2Config, run_ens2_inference as new_run_ens2
@@ -51,6 +44,7 @@ from c_spikes.inference.pgas import (
     PGAS_NITER,
     PgasConfig,
     run_pgas_inference as new_run_pgas,
+    trim_trials_by_edges,
 )
 
 

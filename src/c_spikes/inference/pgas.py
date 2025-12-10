@@ -16,7 +16,9 @@ from .types import (
     ensure_serializable,
     hash_array,
     hash_series,
+    flatten_trials,
 )
+from c_spikes.utils import unroll_mean_pgas_traj
 
 
 PGAS_RESAMPLE_FS: float = 120.0
@@ -194,8 +196,6 @@ def run_pgas_inference(
 ) -> MethodResult:
     trials_for_pgas: Sequence[TrialSeries]
     if config.edges is not None:
-        from compare_inference_methods import trim_trials_by_edges  # reuse existing helper
-
         trials_for_pgas = trim_trials_by_edges(trials, config.edges)
     else:
         trials_for_pgas = list(trials)
@@ -312,3 +312,126 @@ def pgas_windows_from_result(result: MethodResult) -> List[Tuple[float, float]]:
     return windows
 
 
+def trim_trials_by_edges(
+    trials: Sequence[TrialSeries],
+    edges: np.ndarray,
+    tolerance: float = 1e-6,
+) -> List[TrialSeries]:
+    edges = np.asarray(edges, dtype=float)
+    if edges.shape[0] != len(trials) or edges.shape[1] != 2:
+        raise ValueError(
+            f"Expected edges with shape (n_trials, 2); got {edges.shape} for {len(trials)} trials."
+        )
+    trimmed: List[TrialSeries] = []
+    for idx, (trial, (start, end)) in enumerate(zip(trials, edges)):
+        if not np.isfinite(start) or not np.isfinite(end):
+            raise ValueError(f"Non-finite window bounds ({start}, {end}) for trial {idx}.")
+        if end <= start:
+            raise ValueError(f"Window end must exceed start for trial {idx}: ({start}, {end}).")
+        mask = (trial.times >= start - tolerance) & (trial.times <= end + tolerance)
+        if not mask.any():
+            raise ValueError(
+                f"No samples within window ({start}, {end}) for trial {idx}; check edges resolution."
+            )
+        trimmed.append(
+            TrialSeries(times=trial.times[mask].copy(), values=trial.values[mask].copy())
+        )
+    return trimmed
+
+
+def load_pgas_component_series(
+    trials: Sequence[TrialSeries],
+    dataset_tag: str,
+    output_root: Path,
+    burnin: int,
+) -> Dict[str, np.ndarray]:
+    spike_segments: List[np.ndarray] = []
+    time_segments: List[np.ndarray] = []
+    baseline_segments: List[np.ndarray] = []
+    calcium_segments: List[np.ndarray] = []
+    burst_segments: List[np.ndarray] = []
+    map_segments: List[np.ndarray] = []
+    for trial_idx, trial in enumerate(trials):
+        tag = f"{dataset_tag}_trial{trial_idx}"
+        dat_file = output_root / f"traj_samples_{tag}.dat"
+        log_file = output_root / f"logp_{tag}.dat"
+        if not dat_file.exists() or not log_file.exists():
+            raise FileNotFoundError(
+                f"Missing PGAS output files for tag '{tag}'. Expected {dat_file} and {log_file}."
+            )
+        (
+            burst_mean,
+            baseline_mean,
+            spikes_mean,
+            C_mean,
+            spikes_map,
+        ) = unroll_mean_pgas_traj(str(dat_file), str(log_file), burnin=burnin)
+        time_segments.append(trial.times.copy())
+        spike_segments.append(np.asarray(spikes_mean, dtype=np.float64))
+        baseline_segments.append(np.asarray(baseline_mean, dtype=np.float64))
+        calcium_segments.append(np.asarray(C_mean + baseline_mean, dtype=np.float64))
+        burst_segments.append(np.asarray(burst_mean, dtype=np.float64))
+        map_segments.append(np.asarray(spikes_map, dtype=np.float64))
+
+    def align_and_concat(values: Sequence[np.ndarray], label: str) -> Tuple[np.ndarray, np.ndarray]:
+        aligned_times: List[np.ndarray] = []
+        aligned_vals: List[np.ndarray] = []
+        for idx, (times_arr, vals_arr) in enumerate(zip(time_segments, values)):
+            n = min(times_arr.size, vals_arr.size)
+            if n == 0:
+                continue
+            if times_arr.size != vals_arr.size:
+                print(
+                    f"[PGAS QC] Warning: truncating {label} segment for trial {idx} "
+                    f"(time={times_arr.size}, values={vals_arr.size})."
+                )
+            aligned_times.append(times_arr[:n])
+            aligned_vals.append(vals_arr[:n])
+        if not aligned_times:
+            raise ValueError(f"No samples available for PGAS {label} traces.")
+        return np.concatenate(aligned_times), np.concatenate(aligned_vals)
+
+    times, spikes = align_and_concat(spike_segments, "spike")
+    baseline_times, baseline = align_and_concat(baseline_segments, "baseline")
+    calcium_times, calcium = align_and_concat(calcium_segments, "calcium")
+    map_times, map_values = align_and_concat(map_segments, "map")
+    burst_times, burst = align_and_concat(burst_segments, "burst")
+
+    for label, arr_times in {
+        "baseline": baseline_times,
+        "calcium": calcium_times,
+        "map": map_times,
+        "burst": burst_times,
+    }.items():
+        if arr_times.shape != times.shape or not np.allclose(arr_times, times):
+            raise ValueError(f"PGAS {label} timestamps do not align with spike traces.")
+
+    return {
+        "time_stamps": times,
+        "spikes_mean": spikes,
+        "baseline_mean": baseline,
+        "burst_mean": burst,
+        "calcium_mean": calcium,
+        "spikes_map": map_values,
+    }
+
+
+def load_pgas_method_result(
+    trials: Sequence[TrialSeries],
+    dataset_tag: str,
+    output_root: Path,
+    burnin: int,
+    metadata: Optional[Dict[str, object]] = None,
+) -> MethodResult:
+    traces = load_pgas_component_series(trials, dataset_tag, output_root, burnin)
+    fs_est = compute_sampling_rate(traces["time_stamps"])
+    meta = dict(metadata) if metadata else {}
+    return MethodResult(
+        name="pgas",
+        time_stamps=traces["time_stamps"],
+        spike_prob=traces["spikes_mean"],
+        sampling_rate=fs_est,
+        metadata=meta,
+        reconstruction=traces["calcium_mean"],
+        discrete_spikes=traces["spikes_map"],
+    )
