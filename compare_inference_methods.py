@@ -24,232 +24,35 @@ import json
 import hashlib
 import datetime
 import math
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Any
 
 import numpy as np
-import scipy.io as sio
 
-from c_spikes.utils import load_Janelia_data, unroll_mean_pgas_traj
+from c_spikes.utils import load_Janelia_data
 from c_spikes.model_eval.boxcar_smoothing import downsample_from_dff
 from c_spikes.model_eval.model_eval import smooth_prediction, smooth_spike_train
-
-
-@dataclass
-class TrialSeries:
-    """Container for a single trial/segment of fluorescence data."""
-
-    times: np.ndarray
-    values: np.ndarray
-
-    def current_fs(self) -> float:
-        diffs = np.diff(self.times)
-        diffs = diffs[np.isfinite(diffs) & (diffs > 0)]
-        if diffs.size == 0:
-            raise ValueError("Cannot estimate sampling rate for empty or degenerate trial.")
-        return float(1.0 / np.median(diffs))
-
-
-@dataclass
-class MethodResult:
-    """Standardised result bundle returned by each inference backend."""
-
-    name: str
-    time_stamps: np.ndarray
-    spike_prob: np.ndarray
-    sampling_rate: float
-    metadata: Dict[str, object] = field(default_factory=dict)
-    reconstruction: Optional[np.ndarray] = None
-    discrete_spikes: Optional[np.ndarray] = None
-
-
-CACHE_ROOT = Path("results") / "inference_cache"
-
-PGAS_RESAMPLE_FS = 120.0
-CASCADE_RESAMPLE_FS = 30.0
-PGAS_MAX_SPIKES_PER_BIN = 1  # actual per-bin limit
-PGAS_MAX_SPIKES_PARAM = PGAS_MAX_SPIKES_PER_BIN + 1  # analyzer expects +1 slack
-PGAS_REFINE_COUNT_THRESHOLD = 0.8  # trigger refinement when MAP count nears limit
-PGAS_REFINE_MIN_DURATION = 0.15  # seconds; ignore very short excursions
-PGAS_REFINE_MAX_WINDOWS = 6
-PGAS_REFINEMENT_MULTIPLIER = 2.0  # halves the bin width when refining
-PGAS_REFINE_PADDING = 0.05  # seconds of context on each side of a window
-
-
-def ensure_serializable(obj: Any) -> Any:
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    if isinstance(obj, np.generic):
-        return obj.item()
-    if isinstance(obj, (list, tuple)):
-        return [ensure_serializable(x) for x in obj]
-    if isinstance(obj, dict):
-        return {k: ensure_serializable(v) for k, v in obj.items()}
-    return obj
-
-
-def compute_config_signature(config: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
-    config_ser = ensure_serializable(config)
-    encoded = json.dumps(config_ser, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()[:16], config_ser
-
-
-def hash_series(times: np.ndarray, values: np.ndarray) -> str:
-    h = hashlib.sha256()
-    h.update(np.asarray(times, dtype=np.float64).tobytes())
-    h.update(np.asarray(values, dtype=np.float32).tobytes())
-    return h.hexdigest()
-
-
-def hash_array(arr: np.ndarray) -> str:
-    return hashlib.sha256(np.asarray(arr).astype(np.float32).tobytes()).hexdigest()
-
-
-def get_cache_paths(method: str, dataset_tag: str, config_hash: str, ensure_dir: bool = False) -> Tuple[Path, Path]:
-    cache_dir = CACHE_ROOT / method / dataset_tag
-    if ensure_dir:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"{config_hash}.mat", cache_dir / f"{config_hash}.json"
-
-
-def build_constants_cache_path(base_constants: Path, tokens: Sequence[str]) -> Path:
-    cache_dir = CACHE_ROOT / "pgas_constants"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    suffix = "_".join(tokens)
-    return cache_dir / f"{base_constants.stem}_{suffix}{base_constants.suffix}"
-
-
-def prepare_constants_with_params(
-    base_constants: Path,
-    *,
-    maxspikes: int,
-    bm_sigma: Optional[float] = None,
-    substeps_per_frame: Optional[int] = None,
-    physics_frequency_hz: Optional[float] = None,
-    min_substeps: Optional[int] = None,
-    time_integrated_observations: Optional[bool] = None,
-    c0_is_first_y: Optional[bool] = None,
-) -> Path:
-    base_constants = Path(base_constants)
-    tokens = [f"ms{maxspikes}"]
-    if bm_sigma is not None:
-        tokens.append(f"bm{format_tag_token(f'{bm_sigma:.4g}')}")
-    if substeps_per_frame is not None:
-        tokens.append(f"spf{substeps_per_frame}")
-    elif physics_frequency_hz is not None:
-        tokens.append(f"pfreq{format_tag_token(f'{physics_frequency_hz:g}')}")
-    if min_substeps is not None:
-        tokens.append(f"mins{min_substeps}")
-    if time_integrated_observations is not None:
-        tokens.append("int" if time_integrated_observations else "inst")
-    if c0_is_first_y:
-        tokens.append("c0y")
-    target_path = build_constants_cache_path(base_constants, tokens)
-    if target_path.exists():
-        return target_path
-    with base_constants.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    data.setdefault("MCMC", {})["maxspikes"] = int(maxspikes)
-    if bm_sigma is not None:
-        data.setdefault("BM", {})["bm_sigma"] = float(bm_sigma)
-    if c0_is_first_y is not None:
-        data.setdefault("MCMC", {})["c0_is_first_y"] = bool(c0_is_first_y)
-    if any(
-        val is not None
-        for val in (substeps_per_frame, physics_frequency_hz, min_substeps, time_integrated_observations)
-    ):
-        sub_cfg = data.setdefault("substepping", {})
-        if substeps_per_frame is not None:
-            sub_cfg["substeps_per_frame"] = int(substeps_per_frame)
-        if physics_frequency_hz is not None:
-            sub_cfg["physics_frequency_hz"] = float(physics_frequency_hz)
-        if min_substeps is not None:
-            sub_cfg["min_substeps"] = int(min_substeps)
-        if time_integrated_observations is not None:
-            sub_cfg["time_integrated_observations"] = bool(time_integrated_observations)
-    with target_path.open("w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-    return target_path
-
-
-def maxspikes_for_rate(target_fs: Optional[float], native_fs: float) -> int:
-    """
-    Choose a PGAS maxspikes setting that grants extra headroom when traces are heavily
-    downsampled (e.g., 10 Hz). Allowing additional spikes per bin prevents the sampler
-    from flattening bursty firing rates, which in turn improves downstream correlations.
-    """
-    if target_fs is None or np.isclose(target_fs, native_fs):
-        return PGAS_MAX_SPIKES_PARAM
-    if target_fs <= 0:
-        raise ValueError("target_fs must be positive when provided.")
-
-    ratio = max(native_fs / target_fs, 1.0)
-    dynamic_limit = max(PGAS_MAX_SPIKES_PARAM + 1, int(math.ceil(ratio)) + 1)
-
-    if np.isclose(target_fs, 30.0, atol=1e-1):
-        # 30 Hz bins rarely require very high spike counts but still benefit from a
-        # little slack beyond the single-spike-per-bin default.
-        return max(4, int(math.ceil(ratio * 0.5)) + 1)
-    if np.isclose(target_fs, 10.0, atol=1e-1):
-        # 10 Hz smoothing aggregates 100 ms of activity; permit substantially more spikes.
-        return max(9, dynamic_limit)
-    return dynamic_limit
-
-
-def compute_robust_diff_std(
-    times: np.ndarray,
-    values: np.ndarray,
-    clip_percentiles: Tuple[float, float] = (5.0, 95.0),
-) -> float:
-    """
-    Estimate the standard deviation of first differences using a robust MAD-based scale.
-    """
-    times = np.asarray(times, dtype=np.float64)
-    values = np.asarray(values, dtype=np.float64)
-    if times.size < 2 or values.size < 2:
-        return 0.0
-    order = np.argsort(times)
-    diffs = np.diff(values[order])
-    diffs = diffs[np.isfinite(diffs)]
-    if diffs.size == 0:
-        return 0.0
-    if clip_percentiles is not None:
-        lo, hi = np.percentile(diffs, clip_percentiles)
-        mask = (diffs >= lo) & (diffs <= hi)
-        if mask.any():
-            diffs = diffs[mask]
-    median = np.median(diffs)
-    mad = np.median(np.abs(diffs - median))
-    if mad <= 0:
-        return float(np.std(diffs)) if diffs.size > 0 else 0.0
-    return float(1.4826 * mad)
-
-
-def build_low_activity_mask(
-    sample_times: np.ndarray,
-    spike_times: np.ndarray,
-    exclusion: float,
-) -> np.ndarray:
-    """Mark samples that lie farther than `exclusion` seconds from any spike."""
-    times = np.asarray(sample_times, dtype=np.float64)
-    if times.size == 0 or exclusion <= 0:
-        return np.ones_like(times, dtype=bool)
-    spikes = np.asarray(spike_times, dtype=np.float64).ravel()
-    if spikes.size == 0:
-        return np.ones_like(times, dtype=bool)
-    spikes = np.sort(spikes)
-    idx = np.searchsorted(spikes, times)
-    prev = np.full(times.shape, -np.inf)
-    next_ = np.full(times.shape, np.inf)
-    mask_prev = idx > 0
-    prev[mask_prev] = spikes[idx[mask_prev] - 1]
-    mask_next = idx < spikes.size
-    next_[mask_next] = spikes[idx[mask_next]]
-    dist_prev = np.abs(times - prev)
-    dist_next = np.abs(next_ - times)
-    min_dist = np.minimum(dist_prev, dist_next)
-    return min_dist >= exclusion
+from c_spikes.inference.types import TrialSeries, MethodResult, ensure_serializable, flatten_trials, compute_sampling_rate
+from c_spikes.inference.cache import save_method_cache, load_method_cache
+from c_spikes.inference.pgas import (
+    PGAS_RESAMPLE_FS,
+    PGAS_MAX_SPIKES_PER_BIN,
+    PgasConfig,
+    run_pgas_inference as core_run_pgas_inference,
+)
+from c_spikes.inference.ens2 import Ens2Config, run_ens2_inference as core_run_ens2_inference
+from c_spikes.inference.cascade import (
+    CASCADE_RESAMPLE_FS,
+    CascadeConfig,
+    run_cascade_inference as core_run_cascade_inference,
+)
+from c_spikes.inference.eval import (
+    build_ground_truth_series,
+    compute_correlations,
+    resample_prediction_to_reference,
+    segment_indices,
+)
+from c_spikes.inference.smoothing import mean_downsample_trace, resample_trials_to_fs
 
 
 def derive_bm_sigma(
@@ -569,121 +372,6 @@ def resample_trials_to_fs(trials: Sequence[TrialSeries], target_fs: float) -> Li
     return [resample_trial_to_fs(trial, target_fs) for trial in trials]
 
 
-def find_refinement_windows(
-    result: MethodResult,
-    threshold: float = PGAS_REFINE_COUNT_THRESHOLD,
-    min_duration: float = PGAS_REFINE_MIN_DURATION,
-    max_windows: int = PGAS_REFINE_MAX_WINDOWS,
-) -> List[Dict[str, float]]:
-    """Locate contiguous intervals where the MAP spikes exceed the allowed per-bin limit."""
-    if result.discrete_spikes is not None:
-        values = np.asarray(result.discrete_spikes, dtype=np.float64)
-    else:
-        values = np.asarray(result.spike_prob, dtype=np.float64)
-    times = np.asarray(result.time_stamps, dtype=np.float64)
-    if times.size == 0 or values.size != times.size:
-        return []
-    mask = values >= threshold
-    if not np.any(mask):
-        return []
-    idx = np.flatnonzero(mask)
-    segments: List[Tuple[int, int]] = []
-    start = idx[0]
-    prev = idx[0]
-    for current in idx[1:]:
-        if current == prev + 1:
-            prev = current
-            continue
-        segments.append((start, prev))
-        start = current
-        prev = current
-    segments.append((start, prev))
-
-    windows: List[Dict[str, float]] = []
-    for seg_start, seg_end in segments:
-        t_start = float(times[seg_start])
-        t_end = float(times[seg_end])
-        if t_end - t_start < min_duration:
-            continue
-        peak = float(values[seg_start : seg_end + 1].max())
-        windows.append({"start": t_start, "end": t_end, "peak": peak})
-        if len(windows) >= max_windows:
-            break
-    return windows
-
-
-def extract_window_series(
-    trials: Sequence[TrialSeries], start: float, end: float
-) -> TrialSeries:
-    """Collect samples within [start, end] from a list of trials."""
-    if start >= end:
-        raise ValueError("window start must precede end")
-    segments: List[TrialSeries] = []
-    for trial in trials:
-        mask = (trial.times >= start) & (trial.times <= end)
-        if mask.any():
-            segments.append(
-                TrialSeries(times=trial.times[mask].copy(), values=trial.values[mask].copy())
-            )
-    if not segments:
-        raise ValueError("No samples found within refinement window.")
-    times, values = flatten_trials(segments)
-    if times.size < 2:
-        raise ValueError("Insufficient samples to refine window.")
-    return TrialSeries(times=times, values=values)
-
-
-def merge_pgas_refined_segments(
-    base_result: MethodResult,
-    segments: List[Dict[str, object]],
-) -> MethodResult:
-    """Replace coarse PGAS outputs within each refined window using higher-rate results."""
-    if not segments:
-        return base_result
-    base_times = np.asarray(base_result.time_stamps, dtype=np.float64)
-    keep_mask = np.ones(base_times.shape, dtype=bool)
-    for segment in segments:
-        window = segment["window"]  # type: ignore[index]
-        start = float(window["start"])  # type: ignore[index]
-        end = float(window["end"])  # type: ignore[index]
-        keep_mask &= ~((base_times >= start) & (base_times <= end))
-
-    ordered_segments = sorted(segments, key=lambda seg: float(seg["window"]["start"]))  # type: ignore[index]
-    time_blocks = [base_times[keep_mask]] + [np.asarray(seg["result"].time_stamps) for seg in ordered_segments]  # type: ignore[index]
-    combined_times = np.concatenate(time_blocks)
-    order = np.argsort(combined_times)
-
-    def combine_attr(attr: str) -> Optional[np.ndarray]:
-        parts: List[np.ndarray] = []
-        base_attr = getattr(base_result, attr)
-        if base_attr is not None:
-            parts.append(np.asarray(base_attr)[keep_mask])
-        for seg in ordered_segments:
-            seg_attr = getattr(seg["result"], attr)  # type: ignore[index]
-            if seg_attr is not None:
-                parts.append(np.asarray(seg_attr))
-        if not parts:
-            return None
-        combined = np.concatenate(parts)
-        return combined[order]
-
-    combined_time_axis = combined_times[order]
-    spike_prob = combine_attr("spike_prob")
-    if spike_prob is None:
-        raise ValueError("PGAS refinement merge produced empty spike_prob array.")
-
-    merged_result = MethodResult(
-        name=base_result.name,
-        time_stamps=combined_time_axis,
-        spike_prob=spike_prob,
-        sampling_rate=compute_sampling_rate(combined_time_axis),
-        metadata=dict(base_result.metadata),
-        reconstruction=combine_attr("reconstruction"),
-        discrete_spikes=combine_attr("discrete_spikes"),
-    )
-    return merged_result
-
-
 def resample_method_to_grid(method: MethodResult, target_time: np.ndarray) -> MethodResult:
     """
     Resample a MethodResult onto a specified time grid while preserving metadata.
@@ -913,149 +601,12 @@ def run_pgas_inference(
     )
 
 
-def refine_pgas_result(
-    base_result: MethodResult,
-    trials_resampled: Sequence[TrialSeries],
-    dataset_tag: str,
-    output_root: Path,
-    constants_file: Path,
-    gparam_file: Path,
-    niter: int,
-    burnin: int,
-    base_fs: float,
-    threshold: float = PGAS_REFINE_COUNT_THRESHOLD,
-    min_duration: float = PGAS_REFINE_MIN_DURATION,
-    max_windows: int = PGAS_REFINE_MAX_WINDOWS,
-) -> MethodResult:
-    """Run PGAS on high-priority windows using a finer grid and merge the results."""
-    windows = find_refinement_windows(
-        base_result, threshold=threshold, min_duration=min_duration, max_windows=max_windows
-    )
-    if not windows:
+def refine_pgas_result(*args: Any, **kwargs: Any) -> MethodResult:
+    """Backward-compatible stub kept for older entrypoints; refinement is no longer supported."""
+    base_result = args[0] if args else kwargs.get("base_result")
+    if isinstance(base_result, MethodResult):
         return base_result
-
-    min_time = min(trial.times[0] for trial in trials_resampled)
-    max_time = max(trial.times[-1] for trial in trials_resampled)
-    refined_fs = base_fs * PGAS_REFINEMENT_MULTIPLIER
-    segments: List[Dict[str, object]] = []
-
-    for idx, window in enumerate(windows):
-        start = max(window["start"] - PGAS_REFINE_PADDING, min_time)
-        end = min(window["end"] + PGAS_REFINE_PADDING, max_time)
-        try:
-            window_series = extract_window_series(trials_resampled, start, end)
-        except ValueError:
-            continue
-        refined_trial = resample_trial_to_fs(window_series, refined_fs)
-        refined_tag = f"{dataset_tag}_refined_{idx}"
-        trace_hash = hash_series(refined_trial.times, refined_trial.values)
-        refine_config = {
-            "niter": niter,
-            "burnin": burnin,
-            "constants_file": str(constants_file),
-            "gparam_file": str(gparam_file),
-            "refined_window": [float(window["start"]), float(window["end"])],
-            "input_resample_fs": refined_fs,
-            "adaptive_refine": True,
-        }
-        cached = load_method_cache("pgas", refined_tag, refine_config, trace_hash)
-        if cached:
-            refined_result = cached
-            refined_result.metadata.setdefault("refined_window", refine_config["refined_window"])
-            refined_result.metadata.setdefault("input_resample_fs", refined_fs)
-            refined_result.metadata.setdefault("cache_tag", refined_tag)
-            from_cache = True
-        else:
-            refined_result = run_pgas_inference(
-                trials=[refined_trial],
-                dataset_tag=refined_tag,
-                output_root=output_root,
-                constants_file=constants_file,
-                gparam_file=gparam_file,
-                niter=niter,
-                burnin=burnin,
-                recompute=True,
-            )
-            refined_result.metadata.setdefault("niter", niter)
-            refined_result.metadata.setdefault("burnin", burnin)
-            refined_result.metadata.setdefault("config", ensure_serializable(refine_config))
-            refined_result.metadata.setdefault("input_resample_fs", refined_fs)
-            refined_result.metadata.setdefault("refined_window", refine_config["refined_window"])
-            refined_result.metadata["cache_tag"] = refined_tag
-            save_method_cache("pgas", refined_tag, refined_result, refine_config, trace_hash)
-            from_cache = False
-        # Store padded window bounds for downstream use/metadata
-        window_padded = dict(window)
-        window_padded["start"] = float(start)
-        window_padded["end"] = float(end)
-        segments.append(
-            {"window": window_padded, "result": refined_result, "cache_tag": refined_tag, "from_cache": from_cache}
-        )
-
-    if not segments:
-        return base_result
-
-    base_times = np.asarray(base_result.time_stamps, dtype=np.float64)
-    spike_prob_base = np.asarray(base_result.spike_prob, dtype=np.float64)
-    recon_base = (
-        None if base_result.reconstruction is None else np.asarray(base_result.reconstruction, dtype=np.float64)
-    )
-    # Keep discrete_spikes on the base grid unchanged; refinement is treated as
-    # a spike-probability / reconstruction improvement only.
-
-    # Project each refined window back onto the base PGAS grid.
-    for seg in segments:
-        window = seg["window"]  # type: ignore[index]
-        refined = seg["result"]  # type: ignore[index]
-        start = float(window["start"])
-        end = float(window["end"])
-        mask = (base_times >= start) & (base_times <= end)
-        if not mask.any():
-            continue
-        # Resample refined spike_prob onto the base grid, then overwrite within the window.
-        refined_prob_on_base = resample_prediction_to_reference(
-            np.asarray(refined.time_stamps, dtype=np.float64),
-            np.asarray(refined.spike_prob, dtype=np.float64),
-            base_times,
-            fs_est=refined.sampling_rate,
-        )
-        spike_prob_base[mask] = refined_prob_on_base[mask]
-
-        if recon_base is not None and refined.reconstruction is not None:
-            refined_recon_on_base = resample_prediction_to_reference(
-                np.asarray(refined.time_stamps, dtype=np.float64),
-                np.asarray(refined.reconstruction, dtype=np.float64),
-                base_times,
-                fs_est=refined.sampling_rate,
-            )
-            recon_base[mask] = refined_recon_on_base[mask]
-
-    merged = MethodResult(
-        name=base_result.name,
-        time_stamps=base_times,
-        spike_prob=spike_prob_base,
-        sampling_rate=compute_sampling_rate(base_times) if base_times.size > 1 else base_result.sampling_rate,
-        metadata=dict(base_result.metadata),
-        reconstruction=recon_base,
-        discrete_spikes=base_result.discrete_spikes,
-    )
-    refined_info: List[Dict[str, object]] = []
-    for seg in segments:
-        window = dict(seg["window"])  # type: ignore[arg-type]
-        window.update(
-            {
-                "cache_tag": seg["cache_tag"],
-                "sampling_rate": getattr(seg["result"], "sampling_rate", refined_fs),
-                "from_cache": seg["from_cache"],
-            }
-        )
-        refined_info.append(window)
-    merged.metadata["pgas_refined_windows"] = refined_info
-    merged.metadata["adaptive_refine"] = True
-    merged.metadata["refine_threshold"] = threshold
-    merged.metadata["refine_multiplier"] = PGAS_REFINEMENT_MULTIPLIER
-    merged.metadata.setdefault("input_resample_fs", base_fs)
-    return merged
+    raise RuntimeError("refine_pgas_result is deprecated and no longer supported.")
 
 
 def run_ens2_inference(
@@ -1629,36 +1180,42 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         f"{dataset_tag}_s{label_token}_ms{maxspikes}_rs{pgas_resample_token}_bm{bm_token}"
     )
 
-    pgas_result: Optional[MethodResult] = None
-    if args.skip_pgas or args.pgas_use_cache:
-        cached_pgas = load_method_cache("pgas", pgas_cache_tag, pgas_config, pgas_trace_hash)
-        if cached_pgas:
-            print("Loaded PGAS result from cache.")
-            pgas_result = cached_pgas
-            pgas_result.metadata.setdefault("input_resample_fs", PGAS_RESAMPLE_FS)
-            pgas_result.metadata.setdefault("maxspikes_per_bin", PGAS_MAX_SPIKES_PER_BIN)
-        elif args.skip_pgas:
-            raise FileNotFoundError("PGAS cache not found; run without --skip-pgas first.")
-    if pgas_result is None:
-        print("Running PGAS inference...")
-        pgas_result = run_pgas_inference(
-            trials=trials_for_pgas,
-            dataset_tag=pgas_cache_tag,
-            output_root=pgas_output_root,
-            constants_file=constants_path,
-            gparam_file=pgas_gparam,
-            recompute=not args.pgas_use_cache,
-        )
-        pgas_result.metadata.setdefault("niter", pgas_niter)
-        save_method_cache("pgas", pgas_cache_tag, pgas_result, pgas_config, pgas_trace_hash)
+    pgas_cfg = PgasConfig(
+        dataset_tag=pgas_cache_tag,
+        output_root=pgas_output_root,
+        constants_file=constants_path,
+        gparam_file=pgas_gparam,
+        resample_fs=PGAS_RESAMPLE_FS,
+        niter=pgas_niter,
+        burnin=pgas_burnin,
+        downsample_label=downsample_label,
+        maxspikes=maxspikes,
+        bm_sigma=bm_sigma,
+        bm_sigma_gap_s=args.bm_sigma_spike_gap,
+        edges=dataset_edges,
+        use_cache=args.pgas_use_cache or args.skip_pgas,
+    )
 
-    pgas_result.metadata.setdefault("burnin", pgas_burnin)
+    if args.skip_pgas:
+        cached_pgas = core_run_pgas_inference(
+            trials=trials_for_pgas,
+            raw_fs=raw_fs,
+            spike_times=spike_times,
+            config=pgas_cfg,
+        )
+        if cached_pgas is None:
+            raise FileNotFoundError("PGAS cache not found; run without --skip-pgas first.")
+        pgas_result = cached_pgas
+    else:
+        print("Running PGAS inference...")
+        pgas_result = core_run_pgas_inference(
+            trials=trials_for_pgas,
+            raw_fs=raw_fs,
+            spike_times=spike_times,
+            config=pgas_cfg,
+        )
+
     pgas_result.metadata["window_edges"] = dataset_edges.tolist()
-    pgas_result.metadata.setdefault("config", ensure_serializable(pgas_config))
-    pgas_result.metadata["maxspikes"] = maxspikes
-    pgas_result.metadata["maxspikes_per_bin"] = PGAS_MAX_SPIKES_PER_BIN
-    pgas_result.metadata["input_resample_fs"] = PGAS_RESAMPLE_FS
-    pgas_result.metadata["bm_sigma"] = bm_sigma
     methods.append(pgas_result)
     pgas_windows = [
         (pgas_result.time_stamps[seg.start], pgas_result.time_stamps[seg.stop - 1])

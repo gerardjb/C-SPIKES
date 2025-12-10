@@ -18,283 +18,24 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from compare_inference_methods import (
-    MethodResult,
-    build_ground_truth_series,
-    compute_correlations,
-    derive_bm_sigma,
-    extract_trials,
-    hash_array,
-    hash_series,
-    load_Janelia_data,
-    load_method_cache,
-    load_pgas_method_result,
-    mean_downsample_trace,
-    run_cascade_inference,
-    run_ens2_inference,
-    run_pgas_inference,
-    refine_pgas_result,
-    save_method_cache,
-    trim_trials_by_edges,
-    flatten_trials,
-    ensure_serializable,
-    segment_indices,
-    prepare_constants_with_params,
-    maxspikes_for_rate,
-    resample_trials_to_fs,
-    PGAS_RESAMPLE_FS,
+from c_spikes.inference.eval import build_ground_truth_series, compute_correlations
+from c_spikes.inference.pgas import PGAS_RESAMPLE_FS, PgasConfig, pgas_windows_from_result, run_pgas_inference
+from c_spikes.inference.smoothing import mean_downsample_trace, resample_trials_to_fs, resolve_smoothing_levels
+from c_spikes.inference.types import MethodResult, TrialSeries, ensure_serializable, extract_spike_times, flatten_trials
+from c_spikes.inference.ens2 import Ens2Config, run_ens2_inference
+from c_spikes.inference.cascade import (
     CASCADE_RESAMPLE_FS,
-    format_tag_token,
-    PGAS_MAX_SPIKES_PER_BIN,
-    build_low_activity_mask,
+    CascadeConfig,
+    run_cascade_inference,
 )
+from c_spikes.utils import load_Janelia_data
 
-SMOOTHING_LEVELS: Sequence[Tuple[str, Optional[float]]] = [
-    ("raw", None),
-    ("30Hz", 30.0),
-    ("10Hz", 10.0),
-]
 
-CASCADE_MODEL = "Cascade_Universal_30Hz"
-CASCADE_MODEL_FOLDER = Path("results/Pretrained_models")
-ENS2_PRETRAINED = Path("results/Pretrained_models/ens2_published")
 PGAS_CONSTANTS = Path("parameter_files/constants_GCaMP8_soma.json")
 PGAS_GPARAM = Path("src/c_spikes/pgas/20230525_gold.dat")
 PGAS_OUTPUT_ROOT = Path("results/pgas_output/comparison")
 PGAS_BURNIN = 100
 PGAS_NITER = 200
-CASCADE_RESAMPLE_TOKEN = format_tag_token(f"{CASCADE_RESAMPLE_FS:g}")
-
-
-def resolve_smoothing_levels(
-    selection: Optional[Sequence[str]],
-) -> Sequence[Tuple[str, Optional[float]]]:
-    """Map user-provided smoothing tokens to (label, target_fs) pairs."""
-    if not selection:
-        return SMOOTHING_LEVELS
-    mapping: Dict[str, Tuple[str, Optional[float]]] = {
-        "raw": ("raw", None),
-        "30": ("30Hz", 30.0),
-        "30hz": ("30Hz", 30.0),
-        "10": ("10Hz", 10.0),
-        "10hz": ("10Hz", 10.0),
-    }
-    resolved: List[Tuple[str, Optional[float]]] = []
-    for token in selection:
-        key = token.strip().lower()
-        if key not in mapping:
-            raise ValueError(
-                f"Invalid smoothing level '{token}'. Expected one of: "
-                + ", ".join(sorted(mapping.keys()))
-            )
-        entry = mapping[key]
-        if entry not in resolved:
-            resolved.append(entry)
-    return resolved
-
-
-def extract_spike_times(result: MethodResult) -> Optional[np.ndarray]:
-    if result.discrete_spikes is None:
-        return None
-    counts = np.asarray(result.discrete_spikes, dtype=float)
-    times = []
-    for t, c in zip(result.time_stamps, counts):
-        n = int(round(c))
-        if n > 0:
-            times.extend([t] * n)
-    return np.asarray(times, dtype=float)
-
-
-def fetch_pgas_result(
-    dataset_tag: str,
-    trials_for_pgas,
-    dataset_edges: np.ndarray,
-    downsample_label: str,
-    downsample_target: Optional[float],
-    raw_fs: float,
-    use_cache: bool,
-    refine_bins: bool = False,
-    pgas_resample_fs: float = PGAS_RESAMPLE_FS,
-    maxspikes_override: Optional[int] = None,
-    bm_sigma_series: Optional[Tuple[np.ndarray, np.ndarray]] = None,
-    substeps_per_frame: Optional[int] = None,
-    physics_frequency_hz: Optional[float] = None,
-    c0_is_first_y: Optional[bool] = None,
-) -> MethodResult:
-    trials_for_pgas = list(trials_for_pgas)
-    trials_resampled = resample_trials_to_fs(trials_for_pgas, pgas_resample_fs)
-    time_flat, trace_flat = flatten_trials(trials_resampled)
-    trace_hash = hash_series(time_flat, trace_flat)
-    maxspikes = maxspikes_override if maxspikes_override is not None else maxspikes_for_rate(
-        downsample_target, raw_fs
-    )
-    if bm_sigma_series is not None and bm_sigma_series[0].size >= 2:
-        sigma_times, sigma_values = bm_sigma_series
-    else:
-        sigma_times, sigma_values = time_flat, trace_flat
-    bm_sigma = derive_bm_sigma(
-        sigma_times,
-        sigma_values,
-        target_fs=pgas_resample_fs,
-    )
-    bm_token = format_tag_token(f"{bm_sigma:.3g}")
-    constants_path = prepare_constants_with_params(
-        PGAS_CONSTANTS,
-        maxspikes=maxspikes,
-        bm_sigma=bm_sigma,
-        substeps_per_frame=substeps_per_frame,
-        physics_frequency_hz=physics_frequency_hz,
-        c0_is_first_y=c0_is_first_y,
-    )
-    label_token = format_tag_token(downsample_label)
-    pgas_resample_token = format_tag_token(f"{pgas_resample_fs:g}")
-    substep_token = None
-    if substeps_per_frame is not None:
-        substep_token = f"spf{substeps_per_frame}"
-    elif physics_frequency_hz is not None:
-        substep_token = f"pfreq{format_tag_token(f'{physics_frequency_hz:g}')}"
-    pgas_run_tag = f"{dataset_tag}_s{label_token}_ms{maxspikes}_rs{pgas_resample_token}_bm{bm_token}"
-    if substep_token:
-        pgas_run_tag = f"{pgas_run_tag}_{substep_token}"
-    config = {
-        "niter": PGAS_NITER,
-        "burnin": PGAS_BURNIN,
-        "downsample_target": downsample_label,
-        "constants_file": str(constants_path),
-        "gparam_file": str(PGAS_GPARAM),
-        "edge_hash": hash_array(dataset_edges),
-        "maxspikes": maxspikes,
-        "input_resample_fs": pgas_resample_fs,
-        "adaptive_refine": refine_bins,
-        "bm_sigma": bm_sigma,
-    }
-    if substeps_per_frame is not None:
-        config["substeps_per_frame"] = substeps_per_frame
-    if physics_frequency_hz is not None:
-        config["physics_frequency_hz"] = physics_frequency_hz
-    if c0_is_first_y is not None:
-        config["c0_is_first_y"] = bool(c0_is_first_y)
-    result: Optional[MethodResult] = None
-    if use_cache:
-        result = load_method_cache("pgas", pgas_run_tag, config, trace_hash)
-        if result:
-            result.metadata.setdefault("input_resample_fs", pgas_resample_fs)
-            result.metadata.setdefault("maxspikes_per_bin", PGAS_MAX_SPIKES_PER_BIN)
-            result.metadata.setdefault("cache_tag", pgas_run_tag)
-            return result
-
-    print(
-        f"  [PGAS] running inference (target={downsample_label}, ms={maxspikes}, "
-        f"resample={pgas_resample_fs:.1f}Hz)…"
-    )
-    result = run_pgas_inference(
-        trials=trials_resampled,
-        dataset_tag=pgas_run_tag,
-        output_root=PGAS_OUTPUT_ROOT,
-        constants_file=constants_path,
-        gparam_file=PGAS_GPARAM,
-        niter=PGAS_NITER,
-        burnin=PGAS_BURNIN,
-        recompute=True,
-    )
-    if refine_bins:
-        result = refine_pgas_result(
-            base_result=result,
-            trials_resampled=trials_resampled,
-            dataset_tag=pgas_run_tag,
-            output_root=PGAS_OUTPUT_ROOT,
-            constants_file=constants_path,
-            gparam_file=PGAS_GPARAM,
-            niter=PGAS_NITER,
-            burnin=PGAS_BURNIN,
-            base_fs=pgas_resample_fs,
-        )
-    result.metadata.setdefault("niter", PGAS_NITER)
-    result.metadata.setdefault("burnin", PGAS_BURNIN)
-    result.metadata.setdefault("config", ensure_serializable(config))
-    result.metadata["maxspikes"] = maxspikes
-    result.metadata["maxspikes_per_bin"] = PGAS_MAX_SPIKES_PER_BIN
-    result.metadata["input_resample_fs"] = pgas_resample_fs
-    result.metadata["bm_sigma"] = bm_sigma
-    result.metadata["cache_tag"] = pgas_run_tag
-    if substeps_per_frame is not None:
-        result.metadata["substeps_per_frame"] = substeps_per_frame
-    if physics_frequency_hz is not None:
-        result.metadata["physics_frequency_hz"] = physics_frequency_hz
-    save_method_cache("pgas", pgas_run_tag, result, config, trace_hash)
-    return result
-
-
-def fetch_ens2_result(
-    dataset_tag: str,
-    raw_time_stamps: np.ndarray,
-    raw_traces: np.ndarray,
-    neuron_type: str,
-    downsample_label: str,
-    use_cache: bool,
-) -> MethodResult:
-    trace_hash = hash_series(raw_time_stamps.ravel(), raw_traces.ravel())
-    config = {
-        "neuron_type": neuron_type,
-        "pretrained_dir": str(ENS2_PRETRAINED),
-        "downsample_target": downsample_label,
-    }
-    result: Optional[MethodResult] = None
-    if use_cache:
-        result = load_method_cache("ens2", dataset_tag, config, trace_hash)
-        if result:
-            return result
-
-    print(f"  [ENS2] running inference (type={neuron_type})…")
-    result = run_ens2_inference(
-        raw_time_stamps=raw_time_stamps,
-        raw_traces=raw_traces,
-        dataset_tag=dataset_tag,
-        pretrained_dir=ENS2_PRETRAINED,
-        neuron_type=neuron_type,
-    )
-    result.metadata.setdefault("config", ensure_serializable(config))
-    save_method_cache("ens2", dataset_tag, result, config, trace_hash)
-    return result
-
-
-def fetch_cascade_result(
-    dataset_tag: str,
-    trials: Sequence,
-    downsample_label: str,
-    use_cache: bool,
-) -> MethodResult:
-    trials = list(trials)
-    trials_resampled = resample_trials_to_fs(trials, CASCADE_RESAMPLE_FS)
-    time_flat, trace_flat = flatten_trials(trials_resampled)
-    trace_hash = hash_series(time_flat, trace_flat)
-    label_token = format_tag_token(downsample_label)
-    cascade_cache_tag = f"{dataset_tag}_s{label_token}_rs{CASCADE_RESAMPLE_TOKEN}"
-    config = {
-        "model_name": CASCADE_MODEL,
-        "downsample_target": downsample_label,
-        "input_resample_fs": CASCADE_RESAMPLE_FS,
-    }
-    result: Optional[MethodResult] = None
-    if use_cache:
-        result = load_method_cache("cascade", cascade_cache_tag, config, trace_hash)
-        if result:
-            result.metadata.setdefault("input_resample_fs", CASCADE_RESAMPLE_FS)
-            result.metadata.setdefault("cache_tag", cascade_cache_tag)
-            return result
-
-    print("  [CASCADE] running inference…")
-    result = run_cascade_inference(
-        trials=trials_resampled,
-        dataset_tag=cascade_cache_tag,
-        model_folder=CASCADE_MODEL_FOLDER,
-        model_name=CASCADE_MODEL,
-    )
-    result.metadata.setdefault("config", ensure_serializable(config))
-    result.metadata["input_resample_fs"] = CASCADE_RESAMPLE_FS
-    result.metadata["cache_tag"] = cascade_cache_tag
-    save_method_cache("cascade", cascade_cache_tag, result, config, trace_hash)
-    return result
 
 
 def main() -> None:
@@ -314,11 +55,6 @@ def main() -> None:
         "--skip-ens2",
         action="store_true",
         help="Skip ENS2 inference (useful when only PGAS/CASCADE need reruns).",
-    )
-    parser.add_argument(
-        "--pgas-refine-bins",
-        action="store_true",
-        help="Enable adaptive PGAS bin refinement on high-activity windows.",
     )
     parser.add_argument(
         "--pgas-c0-first-y",
@@ -395,21 +131,8 @@ def main() -> None:
         parser.error("--pgas-resample-fs must be positive.")
     if args.pgas_maxspikes is not None and args.pgas_maxspikes <= 0:
         parser.error("--pgas-maxspikes must be positive.")
-    if args.pgas_substeps_per_frame is not None and args.pgas_substeps_per_frame < 1:
-        parser.error("--pgas-substeps-per-frame must be >=1 when provided.")
-    if args.pgas_physics_freq is not None and args.pgas_physics_freq <= 0:
-        parser.error("--pgas-physics-freq must be positive when provided.")
-
     pgas_resample_fs = args.pgas_resample_fs or PGAS_RESAMPLE_FS
-    pgas_resample_token = format_tag_token(f"{pgas_resample_fs:g}")
-    substep_token = None
-    if args.pgas_substeps_per_frame is not None:
-        substep_token = f"spf{args.pgas_substeps_per_frame}"
-    elif args.pgas_physics_freq is not None:
-        substep_token = f"pfreq{format_tag_token(f'{args.pgas_physics_freq:g}')}"
-    run_resample_tag = f"pgas{pgas_resample_token}_cascade{CASCADE_RESAMPLE_TOKEN}"
-    if substep_token:
-        run_resample_tag = f"{run_resample_tag}_{substep_token}"
+    run_resample_tag = f"pgas{pgas_resample_fs:g}_cascade{CASCADE_RESAMPLE_FS:g}"
     effective_run_tag = args.run_tag if args.run_tag else run_resample_tag
 
     data_dir = Path("data/janelia_8f/excitatory")
@@ -467,31 +190,27 @@ def main() -> None:
                 down_time_flat, down_trace_flat = flatten_trials(trials_for_methods)
                 downsample_label = f"{target:.2f}"
 
-            bm_sigma_series: Optional[Tuple[np.ndarray, np.ndarray]] = None
-            if trials_for_methods:
-                resampled_full = resample_trials_to_fs(trials_for_methods, pgas_resample_fs)
-                full_time_flat, full_trace_flat = flatten_trials(resampled_full)
-                mask = build_low_activity_mask(full_time_flat, spike_times, args.bm_sigma_spike_gap)
-                if np.count_nonzero(mask) >= 2:
-                    bm_sigma_series = (full_time_flat[mask], full_trace_flat[mask])
-
-            trials_for_pgas = trim_trials_by_edges(trials_for_methods, dataset_edges)
-
-            pgas_result = fetch_pgas_result(
-                dataset_tag,
-                trials_for_pgas,
-                dataset_edges,
-                downsample_label,
-                target,
-                raw_fs,
+            pgas_cfg = PgasConfig(
+                dataset_tag=dataset_tag,
+                output_root=PGAS_OUTPUT_ROOT,
+                constants_file=PGAS_CONSTANTS,
+                gparam_file=PGAS_GPARAM,
+                resample_fs=pgas_resample_fs,
+                niter=PGAS_NITER,
+                burnin=PGAS_BURNIN,
+                downsample_label=downsample_label,
+                maxspikes=pgas_maxspikes_override,
+                bm_sigma=None,
+                bm_sigma_gap_s=args.bm_sigma_spike_gap,
+                edges=dataset_edges,
                 use_cache=args.use_cache,
-                refine_bins=args.pgas_refine_bins,
-                pgas_resample_fs=pgas_resample_fs,
-                maxspikes_override=pgas_maxspikes_override,
-                bm_sigma_series=bm_sigma_series,
-                substeps_per_frame=args.pgas_substeps_per_frame,
-                physics_frequency_hz=args.pgas_physics_freq,
-                c0_is_first_y=args.pgas_c0_first_y if hasattr(args, "pgas_c0_first_y") else None,
+            )
+
+            pgas_result = run_pgas_inference(
+                trials_for_methods,
+                raw_fs=raw_fs,
+                spike_times=spike_times,
+                config=pgas_cfg,
             )
             pgas_result.metadata["window_edges"] = dataset_edges.tolist()
 
@@ -499,20 +218,31 @@ def main() -> None:
             if args.skip_ens2:
                 print("  [ENS2] skipping inference (--skip-ens2).")
             else:
-                ens2_result = fetch_ens2_result(
-                    dataset_tag,
-                    time_stamps,
-                    dff,
-                    args.neuron_type,
-                    downsample_label,
+                ens2_cfg = Ens2Config(
+                    dataset_tag=dataset_tag,
+                    pretrained_dir=Path("results/Pretrained_models/ens2_published"),
+                    neuron_type=args.neuron_type,
+                    downsample_label=downsample_label,
                     use_cache=args.use_cache,
                 )
+                ens2_result = run_ens2_inference(
+                    raw_time_stamps=time_stamps,
+                    raw_traces=dff,
+                    config=ens2_cfg,
+                )
 
-            cascade_result = fetch_cascade_result(
-                dataset_tag,
-                trials_for_methods,
-                downsample_label,
+            cascade_trials = resample_trials_to_fs(trials_for_methods, CASCADE_RESAMPLE_FS)
+            cascade_cfg = CascadeConfig(
+                dataset_tag=dataset_tag,
+                model_folder=Path("results/Pretrained_models"),
+                model_name="Cascade_Universal_30Hz",
+                resample_fs=CASCADE_RESAMPLE_FS,
+                downsample_label=downsample_label,
                 use_cache=args.use_cache,
+            )
+            cascade_result = run_cascade_inference(
+                trials=cascade_trials,
+                config=cascade_cfg,
             )
 
             ref_fs = target if target is not None else raw_fs
@@ -563,9 +293,6 @@ def main() -> None:
                 "pgas_maxspikes": pgas_result.metadata.get("maxspikes"),
                 "pgas_maxspikes_per_bin": pgas_result.metadata.get("maxspikes_per_bin"),
                 "pgas_input_resample_fs": pgas_result.metadata.get("input_resample_fs"),
-                "pgas_refined_windows": ensure_serializable(
-                    pgas_result.metadata.get("pgas_refined_windows", [])
-                ),
                 "ens2_cache": ens2_result.metadata.get("config", {}) if ens2_result else {},
                 "cascade_cache": cascade_result.metadata.get("config", {}),
                 "cascade_input_resample_fs": cascade_result.metadata.get("input_resample_fs"),
@@ -579,7 +306,6 @@ def main() -> None:
                 if cascade_result.discrete_spikes is not None
                 else 0,
                 "ens2_skipped": bool(args.skip_ens2),
-                "pgas_refine_bins": bool(args.pgas_refine_bins),
                 "gt_count": int(spike_times.size),
             }
             with (summary_dir / "summary.json").open("w", encoding="utf-8") as fh:
