@@ -25,6 +25,7 @@ PGAS_RESAMPLE_FS: float = 120.0
 PGAS_MAX_SPIKES_PER_BIN: int = 1
 PGAS_BURNIN: int = 100
 PGAS_NITER: int = 200
+PGAS_BM_SIGMA_DEFAULT: float = 2e-2
 
 
 @dataclass
@@ -282,8 +283,6 @@ def run_pgas_inference(
             seed=2 + trial_idx,
         )
         analyzer.run()
-
-    from compare_inference_methods import load_pgas_method_result  # reuse existing loader
 
     traces = load_pgas_method_result(
         trials=trial_list,

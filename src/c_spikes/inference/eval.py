@@ -17,16 +17,25 @@ def build_ground_truth_series(
 ) -> Tuple[np.ndarray, np.ndarray]:
     spikes = np.asarray(spike_times, dtype=float).ravel()
     duration = float(global_end - global_start)
-    n_samples = max(2, int(np.round(duration * reference_fs)) + 1)
+    if duration <= 0:
+        raise ValueError("global_end must exceed global_start when building ground truth.")
+
+    # Match the length convention used by smooth_spike_train (ceil instead of round).
+    n_samples = int(np.ceil(duration * reference_fs)) + 1
     time_grid = np.linspace(global_start, global_end, n_samples, dtype=np.float64)
-    series = np.zeros_like(time_grid)
     if spikes.size == 0:
-        return time_grid, series
-    bin_idx = np.searchsorted(time_grid, spikes, side="left")
-    bin_idx = bin_idx[(bin_idx >= 0) & (bin_idx < time_grid.size)]
-    if bin_idx.size:
-        np.add.at(series, bin_idx, 1.0)
-    smoothed = smooth_spike_train(series, reference_fs, sigma_ms=50.0)
+        return time_grid, np.zeros_like(time_grid)
+
+    valid_spikes = spikes[np.isfinite(spikes)]
+    valid_spikes = valid_spikes[(valid_spikes >= global_start) & (valid_spikes <= global_end)]
+    rel_spikes = valid_spikes - float(global_start)
+
+    smoothed = smooth_spike_train(rel_spikes, reference_fs, duration=duration, sigma_ms=50.0)
+    # smooth_spike_train derives length from the provided duration; if rounding differs,
+    # interpolate to align with the reference grid.
+    if smoothed.size != time_grid.size:
+        smoothed_time = np.linspace(global_start, global_end, smoothed.size, dtype=np.float64)
+        smoothed = np.interp(time_grid, smoothed_time, smoothed)
     return time_grid, smoothed
 
 
@@ -84,6 +93,13 @@ def compute_correlations(
     sigma_ms: float = 50.0,
     windows: Optional[Sequence[Tuple[float, float]]] = None,
 ) -> Dict[str, float]:
+    reference_time = np.asarray(reference_time, dtype=float).ravel()
+    reference_trace = np.asarray(reference_trace, dtype=float).ravel()
+    if reference_time.shape != reference_trace.shape:
+        raise ValueError(
+            f"reference_time shape {reference_time.shape} does not match reference_trace {reference_trace.shape}"
+        )
+
     correlations: Dict[str, float] = {}
     if windows:
         window_mask = np.zeros(reference_time.shape, dtype=bool)
@@ -113,5 +129,3 @@ def compute_correlations(
         denom = np.linalg.norm(x) * np.linalg.norm(y)
         correlations[method.name] = float(np.nan if denom == 0 else np.dot(x, y) / denom)
     return correlations
-
-

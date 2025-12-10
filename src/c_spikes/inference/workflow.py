@@ -13,11 +13,16 @@ from .ens2 import Ens2Config, run_ens2_inference
 from .eval import build_ground_truth_series, compute_correlations
 from .pgas import (
     PGAS_RESAMPLE_FS,
+    PGAS_BURNIN,
+    PGAS_NITER,
+    PGAS_BM_SIGMA_DEFAULT,
     PgasConfig,
+    run_pgas_inference,
     pgas_windows_from_result,
+    trim_trials_by_edges,
 )
 from .smoothing import mean_downsample_trace, resample_trials_to_fs
-from .types import MethodResult, TrialSeries, extract_spike_times, flatten_trials
+from .types import MethodResult, TrialSeries, ensure_serializable, extract_spike_times, flatten_trials
 
 
 @dataclass
@@ -44,7 +49,7 @@ class MethodSelection:
 class DatasetRunConfig:
     dataset_path: Path
     neuron_type: str = "Exc"
-    smoothing: SmoothingLevel = SmoothingLevel(target_fs=None)
+    smoothing: SmoothingLevel = field(default_factory=lambda: SmoothingLevel(target_fs=None))
     reference_fs: Optional[float] = None
     edges: Optional[np.ndarray] = None
     selection: MethodSelection = field(default_factory=MethodSelection)
@@ -52,6 +57,7 @@ class DatasetRunConfig:
     bm_sigma_gap_s: float = 0.15
     pgas_resample_fs: Optional[float] = None  # None => use raw/native
     cascade_resample_fs: Optional[float] = None  # None => default CASCADE_RESAMPLE_FS
+    pgas_fixed_bm_sigma: Optional[float] = None  # Optional fixed bm_sigma (skip tuning)
 
 
 def run_inference_for_dataset(
@@ -62,9 +68,13 @@ def run_inference_for_dataset(
     pgas_output_root: Path,
     ens2_pretrained_root: Path,
     cascade_model_root: Path,
+    dataset_data: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]] = None,
 ) -> Dict[str, object]:
     dataset_tag = cfg.dataset_path.stem
-    time_stamps, dff, spike_times = load_Janelia_data(str(cfg.dataset_path))
+    if dataset_data is None:
+        time_stamps, dff, spike_times = load_Janelia_data(str(cfg.dataset_path))
+    else:
+        time_stamps, dff, spike_times = dataset_data
     spike_times = np.asarray(spike_times, dtype=np.float64).ravel()
 
     trials_native: List[TrialSeries] = []
@@ -79,6 +89,13 @@ def run_inference_for_dataset(
         trials_native.append(TrialSeries(times=t, values=y))
     if not trials_native:
         raise RuntimeError(f"No valid trials for dataset {dataset_tag}.")
+
+    if cfg.edges is not None:
+        if cfg.edges.shape[0] != len(trials_native):
+            raise ValueError(
+                f"Edges shape {cfg.edges.shape} does not match {len(trials_native)} trials after slicing."
+            )
+        trials_native = trim_trials_by_edges(trials_native, cfg.edges)
 
     raw_time_flat, raw_trace_flat = flatten_trials(trials_native)
     raw_fs = 1.0 / np.median(np.diff(raw_time_flat))
@@ -108,7 +125,7 @@ def run_inference_for_dataset(
             burnin=PGAS_BURNIN,
             downsample_label=downsample_label,
             maxspikes=None,
-            bm_sigma=None,
+            bm_sigma=cfg.pgas_fixed_bm_sigma if cfg.pgas_fixed_bm_sigma is not None else PGAS_BM_SIGMA_DEFAULT,
             bm_sigma_gap_s=cfg.bm_sigma_gap_s,
             edges=cfg.edges,
             use_cache=cfg.use_cache,
@@ -236,4 +253,3 @@ def run_inference_for_dataset(
         "reference_trace": ref_trace,
         "windows": windows,
     }
-

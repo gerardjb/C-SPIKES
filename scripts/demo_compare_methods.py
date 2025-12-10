@@ -23,8 +23,7 @@ from c_spikes.inference.workflow import (
     SmoothingLevel,
     run_inference_for_dataset,
 )
-from c_spikes.inference.eval import build_ground_truth_series, compute_correlations
-from c_spikes.inference.pgas import pgas_windows_from_result
+from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
 from c_spikes.utils import load_Janelia_data
 
 
@@ -37,6 +36,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--edges-file", type=Path, help="Optional edges npy (dict dataset->edges) for trimming.")
     parser.add_argument("--start-time", type=float, help="Manual trim start (sec).")
     parser.add_argument("--end-time", type=float, help="Manual trim end (sec).")
+    parser.add_argument("--epoch-start", type=int, default=None, help="Start trial/epoch index (0-based).")
+    parser.add_argument("--epoch-stop", type=int, default=None, help="Stop trial/epoch index (exclusive).")
     parser.add_argument("--skip-pgas", action="store_true", help="Skip PGAS.")
     parser.add_argument("--skip-ens2", action="store_true", help="Skip ENS2.")
     parser.add_argument("--skip-cascade", action="store_true", help="Skip CASCADE.")
@@ -81,7 +82,20 @@ def main() -> None:
     time_stamps, dff, spike_times = load_Janelia_data(str(args.dataset))
     dataset_tag = args.dataset.stem
 
+    total_trials = time_stamps.shape[0]
+    epoch_start = args.epoch_start if args.epoch_start is not None else 0
+    epoch_stop = args.epoch_stop if args.epoch_stop is not None else total_trials
+    if epoch_start < 0 or epoch_stop > total_trials or epoch_start >= epoch_stop:
+        raise ValueError(f"Invalid epoch range [{epoch_start}, {epoch_stop}) for {total_trials} trials.")
+
+    # Optional epoch slicing
+    if epoch_start != 0 or epoch_stop != total_trials:
+        time_stamps = time_stamps[epoch_start:epoch_stop]
+        dff = dff[epoch_start:epoch_stop]
+
     edges = None
+    if (args.start_time is not None) ^ (args.end_time is not None):
+        raise ValueError("Provide both --start-time and --end-time, or neither.")
     if args.start_time is not None and args.end_time is not None:
         if args.end_time <= args.start_time:
             raise ValueError("end-time must exceed start-time.")
@@ -89,9 +103,42 @@ def main() -> None:
     elif args.edges_file and args.edges_file.exists():
         edges_lookup = np.load(args.edges_file, allow_pickle=True).item()
         if dataset_tag in edges_lookup:
-            edges = np.asarray(edges_lookup[dataset_tag], dtype=float)
+            candidate = np.asarray(edges_lookup[dataset_tag], dtype=float)
+            if candidate.shape[0] >= epoch_stop:
+                edges = candidate[epoch_start:epoch_stop]
+            else:
+                print(
+                    f"[WARN] Edges for dataset '{dataset_tag}' shorter than requested epoch slice; skipping trim."
+                )
         else:
             print(f"[WARN] Dataset '{dataset_tag}' not in edges file {args.edges_file}; skipping trim.")
+
+    trial_bounds = np.column_stack((time_stamps[:, 0], time_stamps[:, -1]))
+    if edges is not None and edges.shape[0] != time_stamps.shape[0]:
+        print(f"[WARN] Edges shape {edges.shape} does not match selected trials; ignoring edges.")
+        edges = None
+    if edges is not None:
+        clipped = []
+        for idx, (start, end) in enumerate(edges):
+            if not np.isfinite(start) or not np.isfinite(end) or end <= start:
+                raise ValueError(f"Invalid edge bounds ({start}, {end}) for trial {idx}.")
+            s = max(start, trial_bounds[idx, 0])
+            e = min(end, trial_bounds[idx, 1])
+            if e <= s:
+                raise ValueError(
+                    f"Edge window ({start}, {end}) for trial {idx} is outside data range "
+                    f"[{trial_bounds[idx,0]}, {trial_bounds[idx,1]}]."
+                )
+            clipped.append((s, e))
+        edges = np.asarray(clipped, dtype=float)
+
+    windows_for_spikes = edges if edges is not None else trial_bounds
+    spike_times = np.asarray(spike_times, dtype=np.float64).ravel()
+    if spike_times.size:
+        mask = np.zeros(spike_times.shape, dtype=bool)
+        for start, end in windows_for_spikes:
+            mask |= (spike_times >= start) & (spike_times <= end)
+        spike_times = spike_times[mask]
 
     smoothing = SmoothingLevel(target_fs=args.smoothing)
     selection = MethodSelection(
@@ -109,6 +156,8 @@ def main() -> None:
         bm_sigma_gap_s=0.15,
         pgas_resample_fs=args.pgas_resample,
         cascade_resample_fs=args.cascade_resample,
+        # Force PGAS bm_sigma to a fixed default to avoid data-driven tuning
+        pgas_fixed_bm_sigma=PGAS_BM_SIGMA_DEFAULT,
     )
 
     outputs = run_inference_for_dataset(
@@ -118,20 +167,16 @@ def main() -> None:
         pgas_output_root=Path("results/pgas_output/demo"),
         ens2_pretrained_root=Path("results/Pretrained_models/ens2_published"),
         cascade_model_root=Path("results/Pretrained_models"),
+        dataset_data=(time_stamps, dff, spike_times),
     )
 
     methods = outputs["methods"]
+    correlations = outputs.get("correlations", {})
     print("Methods run:", list(methods.keys()))
 
     # Correlations (if spike_times provided)
     if spike_times.size > 0 and methods:
-        ref_fs = args.smoothing if args.smoothing is not None else 1.0 / np.median(np.diff(outputs["raw_time"]))
-        global_start = min(outputs["raw_time"])
-        global_end = max(outputs["raw_time"])
-        ref_time, ref_trace = build_ground_truth_series(spike_times, global_start, global_end, reference_fs=ref_fs)
-        pgas_windows = pgas_windows_from_result(methods["pgas"]) if "pgas" in methods else None
-        corr = compute_correlations(methods.values(), ref_time, ref_trace, windows=pgas_windows)
-        print("Correlations vs GT:", corr)
+        print("Correlations vs GT:", correlations)
     else:
         print("No spike_times provided; skipping correlation.")
 
@@ -141,4 +186,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
