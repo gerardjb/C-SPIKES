@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--end-time", type=float, help="Manual trim end (sec).")
     parser.add_argument("--epoch-start", type=int, default=None, help="Start trial/epoch index (0-based).")
     parser.add_argument("--epoch-stop", type=int, default=None, help="Stop trial/epoch index (exclusive).")
+    parser.add_argument("--no-cache", action="store_true", help="Disable all method caches (force recompute).")
     parser.add_argument("--skip-pgas", action="store_true", help="Skip PGAS.")
     parser.add_argument("--skip-ens2", action="store_true", help="Skip ENS2.")
     parser.add_argument("--skip-cascade", action="store_true", help="Skip CASCADE.")
@@ -45,28 +46,42 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def plot_overlay(methods, title: str, xlim: Optional[tuple[float, float]] = None) -> None:
+def plot_overlay(
+    raw_time: np.ndarray,
+    raw_trace: np.ndarray,
+    spike_times: np.ndarray,
+    methods,
+    title: str,
+    xlim: Optional[tuple[float, float]] = None,
+) -> None:
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=(12, 5))
+    ax.plot(raw_time, raw_trace, color="k", linewidth=0.7, alpha=0.9, label="Raw dff")
+    if spike_times.size:
+        ax.vlines(
+            spike_times,
+            ymin=np.nanmin(raw_trace),
+            ymax=np.nanmax(raw_trace),
+            color="tab:red",
+            alpha=0.2,
+            linewidth=0.8,
+            label="GT spikes",
+        )
     colors = ["tab:blue", "tab:orange", "tab:green", "tab:red"]
-    for idx, m in enumerate(methods):
+    for idx, m in enumerate(methods or []):
         c = colors[idx % len(colors)]
-        ax.plot(m.time_stamps, m.spike_prob + idx * 0.5, label=f"{m.name} spike_prob", color=c, alpha=0.8)
-        if m.discrete_spikes is not None and m.discrete_spikes.size == m.time_stamps.size:
-            mask = m.discrete_spikes > 0
-            if np.any(mask):
-                ax.vlines(
-                    m.time_stamps[mask],
-                    ymin=np.nanmin(m.spike_prob) + idx * 0.5,
-                    ymax=np.nanmax(m.spike_prob) + idx * 0.5,
-                    color=c,
-                    alpha=0.2,
-                    linewidth=0.8,
-                )
+        times = np.asarray(m.time_stamps, dtype=float)
+        values = np.asarray(m.spike_prob, dtype=float) - (idx + 1) * 1
+        finite_mask = np.isfinite(values)
+        if not finite_mask.any():
+            continue
+        valid_times = times[finite_mask]
+        valid_vals = values[finite_mask]
+        ax.plot(valid_times, valid_vals, label=f"{m.name} spike_prob", color=c, alpha=0.8)
     ax.set_title(title)
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Spike prob (offset per method)")
+    ax.set_ylabel("Signal / spike prob (offset per method)")
     ax.legend()
     if xlim:
         ax.set_xlim(*xlim)
@@ -152,7 +167,7 @@ def main() -> None:
         reference_fs=None,
         edges=edges,
         selection=selection,
-        use_cache=True,
+        use_cache=not args.no_cache,
         bm_sigma_gap_s=0.15,
         pgas_resample_fs=args.pgas_resample,
         cascade_resample_fs=args.cascade_resample,
@@ -180,8 +195,14 @@ def main() -> None:
     else:
         print("No spike_times provided; skipping correlation.")
 
-    if args.plot and methods:
-        plot_overlay(list(methods.values()), title=f"{dataset_tag}: method comparison")
+    if args.plot:
+        plot_overlay(
+            outputs["raw_time"],
+            outputs["raw_trace"],
+            spike_times,
+            list(methods.values()) if methods else [],
+            title=f"{dataset_tag}: raw + GT spikes + methods",
+        )
 
 
 if __name__ == "__main__":
