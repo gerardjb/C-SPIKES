@@ -31,7 +31,27 @@ def run_cascade_inference(
     trials_resampled = resample_trials_to_fs(trials, config.resample_fs)
     from .types import flatten_trials
 
-    time_flat, trace_flat = flatten_trials(trials_resampled)
+    lengths = [trial.values.size for trial in trials_resampled]
+    max_len = max(lengths)
+    aligned_trials: list[TrialSeries] = []
+    for trial, length in zip(trials_resampled, lengths):
+        if length == max_len:
+            aligned_trials.append(TrialSeries(times=trial.times.copy(), values=trial.values.copy()))
+            continue
+        dt = np.median(np.diff(trial.times)) if trial.times.size > 1 else 1.0 / config.resample_fs
+        if not np.isfinite(dt) or dt <= 0:
+            dt = 1.0 / config.resample_fs
+        pad = max_len - length
+        extra_times = trial.times[-1] + np.arange(1, pad + 1, dtype=np.float64) * dt
+        extra_values = np.full(pad, trial.values[-1], dtype=np.float64)
+        aligned_trials.append(
+            TrialSeries(
+                times=np.concatenate([trial.times, extra_times]),
+                values=np.concatenate([trial.values, extra_values]),
+            )
+        )
+
+    time_flat, trace_flat = flatten_trials(aligned_trials)
     trace_hash = hash_series(time_flat, trace_flat)
     from .pgas import format_tag_token
 
@@ -54,15 +74,6 @@ def run_cascade_inference(
     from c_spikes.cascade2p import cascade
     from c_spikes.cascade2p.utils_discrete_spikes import infer_discrete_spikes
 
-    min_len = min(trial.values.size for trial in trials_resampled)
-    if any(trial.values.size != min_len for trial in trials_resampled):
-        aligned_trials = [
-            TrialSeries(times=trial.times[:min_len], values=trial.values[:min_len])
-            for trial in trials_resampled
-        ]
-    else:
-        aligned_trials = list(trials_resampled)
-
     traces_matrix = np.stack([trial.values for trial in aligned_trials], axis=0)
     time_matrix = np.stack([trial.times for trial in aligned_trials], axis=0)
     frame_rate = float(1.0 / np.median(np.diff(time_matrix[0])))
@@ -84,6 +95,12 @@ def run_cascade_inference(
         indices = np.asarray(spike_list, dtype=int)
         indices = indices[(indices >= 0) & (indices < discrete_matrix.shape[1])]
         discrete_matrix[neuron_idx, indices] += 1
+
+    # Mask padded regions (if any) with NaN so downstream metrics ignore them.
+    for idx, valid_len in enumerate(lengths):
+        if valid_len < pred_rate.shape[1]:
+            pred_rate[idx, valid_len:] = np.nan
+            discrete_matrix[idx, valid_len:] = np.nan
 
     from .types import flatten_trials, compute_sampling_rate
 

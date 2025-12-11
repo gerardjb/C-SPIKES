@@ -88,9 +88,10 @@ def extract_spike_times(result: MethodResult) -> Optional[np.ndarray]:
     counts = np.asarray(result.discrete_spikes, dtype=float)
     times: List[float] = []
     for t, c in zip(result.time_stamps, counts):
+        if not np.isfinite(c) or not np.isfinite(t):
+            continue
         n = int(round(c))
         if n > 0:
             times.extend([float(t)] * n)
     return np.asarray(times, dtype=float)
-
 

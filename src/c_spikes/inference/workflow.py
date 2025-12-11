@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -95,10 +95,36 @@ def run_inference_for_dataset(
             raise ValueError(
                 f"Edges shape {cfg.edges.shape} does not match {len(trials_native)} trials after slicing."
             )
-        trials_native = trim_trials_by_edges(trials_native, cfg.edges)
+        trials_trimmed = trim_trials_by_edges(trials_native, cfg.edges)
+    else:
+        trials_trimmed = trials_native
 
-    raw_time_flat, raw_trace_flat = flatten_trials(trials_native)
+    raw_time_full, raw_trace_full = flatten_trials(trials_native)
+    raw_time_flat, raw_trace_flat = flatten_trials(trials_trimmed)
     raw_fs = 1.0 / np.median(np.diff(raw_time_flat))
+
+    def _pad_trials_to_arrays(trials: Sequence[TrialSeries]) -> tuple[np.ndarray, np.ndarray, list[int]]:
+        lengths = [trial.times.size for trial in trials]
+        max_len = max(lengths)
+        times_arr = np.zeros((len(trials), max_len), dtype=np.float64)
+        traces_arr = np.zeros_like(times_arr)
+        for idx, trial in enumerate(trials):
+            times = trial.times
+            values = trial.values
+            if times.size < max_len:
+                dt = np.median(np.diff(times)) if times.size > 1 else (1.0 / raw_fs)
+                if not np.isfinite(dt) or dt <= 0:
+                    dt = 1.0 / raw_fs
+                pad = max_len - times.size
+                extra_times = times[-1] + np.arange(1, pad + 1, dtype=np.float64) * dt
+                extra_values = np.full(pad, values[-1], dtype=np.float64)
+                times = np.concatenate([times, extra_times])
+                values = np.concatenate([values, extra_values])
+            times_arr[idx] = times
+            traces_arr[idx] = values
+        return times_arr, traces_arr, lengths
+
+    ens2_time_array, ens2_trace_array, ens2_lengths = _pad_trials_to_arrays(trials_native)
 
     if cfg.smoothing.target_fs is None:
         trials_for_methods = trials_native
@@ -149,9 +175,10 @@ def run_inference_for_dataset(
             use_cache=cfg.use_cache,
         )
         ens2_result = run_ens2_inference(
-            raw_time_stamps=time_stamps,
-            raw_traces=dff,
+            raw_time_stamps=ens2_time_array,
+            raw_traces=ens2_trace_array,
             config=ens2_cfg,
+            valid_lengths=ens2_lengths,
         )
         methods["ens2"] = ens2_result
     else:
@@ -199,12 +226,41 @@ def run_inference_for_dataset(
     )
 
     windows: Optional[List[Tuple[float, float]]] = None
-    if pgas_result is not None:
+    if cfg.edges is not None:
+        windows = [(float(s), float(e)) for s, e in cfg.edges]
+    elif pgas_result is not None:
         windows = pgas_windows_from_result(pgas_result)
 
-    method_list = list(methods.values())
+    def _mask_method_to_windows(result: MethodResult, win: Optional[List[Tuple[float, float]]]) -> MethodResult:
+        if not win:
+            return result
+        mask = np.zeros(result.time_stamps.shape, dtype=bool)
+        for start, end in win:
+            if not np.isfinite(start) or not np.isfinite(end) or end < start:
+                continue
+            mask |= (result.time_stamps >= start) & (result.time_stamps <= end)
+        if mask.all():
+            return result
+        spike_prob = np.asarray(result.spike_prob, dtype=float).copy()
+        spike_prob[~mask] = np.nan
+        discrete = None
+        if result.discrete_spikes is not None:
+            discrete = np.asarray(result.discrete_spikes, dtype=float).copy()
+            discrete[~mask] = np.nan
+        return MethodResult(
+            name=result.name,
+            time_stamps=result.time_stamps,
+            spike_prob=spike_prob,
+            sampling_rate=result.sampling_rate,
+            metadata=result.metadata,
+            reconstruction=result.reconstruction,
+            discrete_spikes=discrete,
+        )
+
+    masked_methods_seq = [_mask_method_to_windows(m, windows) for m in methods.values()]
+    methods = {m.name: m for m in masked_methods_seq}
     correlations = compute_correlations(
-        method_list,
+        masked_methods_seq,
         ref_time,
         ref_trace,
         windows=windows,
@@ -246,9 +302,31 @@ def run_inference_for_dataset(
         "spike_times": spike_times_dict,
         "summary": summary,
         "raw_time": raw_time_flat,
-        "raw_trace": raw_trace_flat,
+        "raw_trace": np.where(
+            np.logical_or.reduce(
+                [
+                    (raw_time_flat >= start) & (raw_time_flat <= end)
+                    for start, end in windows
+                ]
+            )
+            if windows
+            else True,
+            raw_trace_flat,
+            np.nan,
+        ),
         "down_time": down_time_flat,
-        "down_trace": down_trace_flat,
+        "down_trace": np.where(
+            np.logical_or.reduce(
+                [
+                    (down_time_flat >= start) & (down_time_flat <= end)
+                    for start, end in windows
+                ]
+            )
+            if windows
+            else True,
+            down_trace_flat,
+            np.nan,
+        ),
         "reference_time": ref_time,
         "reference_trace": ref_trace,
         "windows": windows,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 import numpy as np
 
@@ -23,6 +23,7 @@ def run_ens2_inference(
     raw_time_stamps: np.ndarray,
     raw_traces: np.ndarray,
     config: Ens2Config,
+    valid_lengths: Optional[Sequence[int]] = None,
 ) -> MethodResult:
     trace_hash = hash_series(raw_time_stamps.ravel(), raw_traces.ravel())
     cfg_dict: Dict[str, Any] = {
@@ -102,6 +103,13 @@ def run_ens2_inference(
         rate_values = np.asarray(temp_pd_rate, dtype=np.float64).ravel()
         discrete_values = np.asarray(temp_pd_spike, dtype=np.float64).ravel()
 
+        valid_len = (
+            int(valid_lengths[trial_idx]) if valid_lengths is not None and trial_idx < len(valid_lengths) else None
+        )
+        if valid_len is not None and valid_len < rate_values.size:
+            rate_values[valid_len:] = np.nan
+            discrete_values[valid_len:] = np.nan
+
         time_segments.append(abs_time)
         rate_segments.append(rate_values)
         discrete_segments.append(discrete_values)
@@ -137,5 +145,4 @@ def run_ens2_inference(
     )
     save_method_cache("ens2", config.dataset_tag, result, cfg_dict, trace_hash)
     return result
-
 

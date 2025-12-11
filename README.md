@@ -68,4 +68,4 @@ python scripts/demo_compare_methods.py \
 ## Where to look next
 - `c_spikes/inference/workflow.py` for the end-to-end runner.
 - `c_spikes/inference/pgas.py` for PGAS-specific knobs and trajectory loading.
-- `scripts/inference_cache_compare.ipynb` for quick cache comparisons/plots.
+- `inference_cache_compare.ipynb` for quick cache comparisons/plots.
