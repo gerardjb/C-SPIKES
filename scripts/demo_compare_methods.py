@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional
 
 import numpy as np
 
@@ -42,6 +42,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-pgas", action="store_true", help="Skip PGAS.")
     parser.add_argument("--skip-ens2", action="store_true", help="Skip ENS2.")
     parser.add_argument("--skip-cascade", action="store_true", help="Skip CASCADE.")
+    parser.add_argument(
+        "--ens2-pretrained-root",
+        type=Path,
+        default=Path("results/Pretrained_models/ens2_published"),
+        help="Root directory for the stock/published ENS2 checkpoints.",
+    )
+    parser.add_argument(
+        "--ens2-custom-root",
+        type=Path,
+        default=None,
+        help="Optional custom ENS2 checkpoint root (runs an additional ENS2 labeled 'ens2_custom').",
+    )
+    parser.add_argument(
+        "--corr-sigma-ms",
+        type=float,
+        default=50.0,
+        help="Gaussian sigma (ms) used to smooth GT spikes and method predictions for correlation (default: 50).",
+    )
     parser.add_argument("--plot", action="store_true", help="Show overlay plots.")
     return parser.parse_args()
 
@@ -50,7 +68,7 @@ def plot_overlay(
     raw_time: np.ndarray,
     raw_trace: np.ndarray,
     spike_times: np.ndarray,
-    methods,
+    methods: Mapping[str, object],
     title: str,
     xlim: Optional[tuple[float, float]] = None,
 ) -> None:
@@ -69,16 +87,16 @@ def plot_overlay(
             label="GT spikes",
         )
     colors = ["tab:blue", "tab:orange", "tab:green", "tab:red"]
-    for idx, m in enumerate(methods or []):
+    for idx, (label, m) in enumerate((methods or {}).items()):
         c = colors[idx % len(colors)]
-        times = np.asarray(m.time_stamps, dtype=float)
-        values = np.asarray(m.spike_prob, dtype=float) - (idx + 1) * 1
+        times = np.asarray(getattr(m, "time_stamps"), dtype=float)
+        values = np.asarray(getattr(m, "spike_prob"), dtype=float) - (idx + 1) * 1
         finite_mask = np.isfinite(values)
         if not finite_mask.any():
             continue
         valid_times = times[finite_mask]
         valid_vals = values[finite_mask]
-        ax.plot(valid_times, valid_vals, label=f"{m.name} spike_prob", color=c, alpha=0.8)
+        ax.plot(valid_times, valid_vals, label=f"{label} spike_prob", color=c, alpha=0.8)
     ax.set_title(title)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Signal / spike prob (offset per method)")
@@ -169,6 +187,7 @@ def main() -> None:
         selection=selection,
         use_cache=not args.no_cache,
         bm_sigma_gap_s=0.15,
+        corr_sigma_ms=float(args.corr_sigma_ms),
         pgas_resample_fs=args.pgas_resample,
         cascade_resample_fs=args.cascade_resample,
         # Force PGAS bm_sigma to a fixed default to avoid data-driven tuning
@@ -180,13 +199,42 @@ def main() -> None:
         pgas_constants=Path("parameter_files/constants_GCaMP8_soma.json"),
         pgas_gparam=Path("src/c_spikes/pgas/20230525_gold.dat"),
         pgas_output_root=Path("results/pgas_output/demo"),
-        ens2_pretrained_root=Path("results/Pretrained_models/ens2_published"),
+        ens2_pretrained_root=args.ens2_pretrained_root,
         cascade_model_root=Path("results/Pretrained_models"),
         dataset_data=(time_stamps, dff, spike_times),
     )
 
     methods = outputs["methods"]
     correlations = outputs.get("correlations", {})
+
+    # Optional second ENS2 run with custom checkpoints
+    if args.ens2_custom_root is not None and not args.skip_ens2:
+        custom_cfg = DatasetRunConfig(
+            dataset_path=args.dataset,
+            smoothing=smoothing,
+            reference_fs=None,
+            edges=edges,
+            selection=MethodSelection(run_pgas=False, run_ens2=True, run_cascade=False),
+            use_cache=not args.no_cache,
+            bm_sigma_gap_s=0.15,
+            corr_sigma_ms=float(args.corr_sigma_ms),
+            pgas_resample_fs=args.pgas_resample,
+            cascade_resample_fs=args.cascade_resample,
+            pgas_fixed_bm_sigma=PGAS_BM_SIGMA_DEFAULT,
+        )
+        custom_outputs = run_inference_for_dataset(
+            custom_cfg,
+            pgas_constants=Path("parameter_files/constants_GCaMP8_soma.json"),
+            pgas_gparam=Path("src/c_spikes/pgas/20230525_gold.dat"),
+            pgas_output_root=Path("results/pgas_output/demo"),
+            ens2_pretrained_root=args.ens2_custom_root,
+            cascade_model_root=Path("results/Pretrained_models"),
+            dataset_data=(time_stamps, dff, spike_times),
+        )
+        if "ens2" in custom_outputs["methods"]:
+            methods["ens2_custom"] = custom_outputs["methods"]["ens2"]
+            if "ens2" in custom_outputs.get("correlations", {}):
+                correlations["ens2_custom"] = custom_outputs["correlations"]["ens2"]
     print("Methods run:", list(methods.keys()))
 
     # Correlations (if spike_times provided)
@@ -200,7 +248,7 @@ def main() -> None:
             outputs["raw_time"],
             outputs["raw_trace"],
             spike_times,
-            list(methods.values()) if methods else [],
+            methods,
             title=f"{dataset_tag}: raw + GT spikes + methods",
         )
 

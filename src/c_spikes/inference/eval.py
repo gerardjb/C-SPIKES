@@ -14,6 +14,8 @@ def build_ground_truth_series(
     global_start: float,
     global_end: float,
     reference_fs: float,
+    *,
+    sigma_ms: float = 50.0,
 ) -> Tuple[np.ndarray, np.ndarray]:
     spikes = np.asarray(spike_times, dtype=float).ravel()
     duration = float(global_end - global_start)
@@ -30,7 +32,7 @@ def build_ground_truth_series(
     valid_spikes = valid_spikes[(valid_spikes >= global_start) & (valid_spikes <= global_end)]
     rel_spikes = valid_spikes - float(global_start)
 
-    smoothed = smooth_spike_train(rel_spikes, reference_fs, duration=duration, sigma_ms=50.0)
+    smoothed = smooth_spike_train(rel_spikes, reference_fs, duration=duration, sigma_ms=sigma_ms)
     # smooth_spike_train derives length from the provided duration; if rounding differs,
     # interpolate to align with the reference grid.
     if smoothed.size != time_grid.size:

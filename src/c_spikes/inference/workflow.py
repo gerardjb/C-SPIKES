@@ -55,6 +55,7 @@ class DatasetRunConfig:
     selection: MethodSelection = field(default_factory=MethodSelection)
     use_cache: bool = True
     bm_sigma_gap_s: float = 0.15
+    corr_sigma_ms: float = 50.0
     pgas_resample_fs: Optional[float] = None  # None => use raw/native
     cascade_resample_fs: Optional[float] = None  # None => default CASCADE_RESAMPLE_FS
     pgas_fixed_bm_sigma: Optional[float] = None  # Optional fixed bm_sigma (skip tuning)
@@ -222,7 +223,11 @@ def run_inference_for_dataset(
     global_start = min(trial.times[0] for trial in trials_native)
     global_end = max(trial.times[-1] for trial in trials_native)
     ref_time, ref_trace = build_ground_truth_series(
-        spike_times, global_start, global_end, reference_fs=ref_fs
+        spike_times,
+        global_start,
+        global_end,
+        reference_fs=ref_fs,
+        sigma_ms=cfg.corr_sigma_ms,
     )
 
     windows: Optional[List[Tuple[float, float]]] = None
@@ -263,6 +268,7 @@ def run_inference_for_dataset(
         masked_methods_seq,
         ref_time,
         ref_trace,
+        sigma_ms=cfg.corr_sigma_ms,
         windows=windows,
     )
 
