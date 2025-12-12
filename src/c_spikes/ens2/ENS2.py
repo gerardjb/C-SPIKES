@@ -58,6 +58,17 @@ opt.sample_interval = opt.epochs
 def load_all_ground_truth(sampling_rate):
     ground_truth_folder='./ground_truth/'
     datasets = glob.glob(os.path.join(ground_truth_folder, 'DS*'))
+    # Glob order is not guaranteed; ENS2 assumes DS1, DS2, ... ordering when
+    # assigning dataset indices. Sort numerically so DS1 placeholder stays index 1
+    # and synthetic DS2+ land in the expected Exc/Inh ranges.
+    def _ds_sort_key(path):
+        name = os.path.basename(path)
+        suffix = name[2:] if name.lower().startswith("ds") else name
+        try:
+            return int(suffix)
+        except ValueError:
+            return 10 ** 9
+    datasets = sorted(datasets, key=_ds_sort_key)
     dataset_trial = dict()
     dataset_neuron = dict()
     dataset_prop = dict()
@@ -525,6 +536,12 @@ class ENS2(object):
                 dset_indexes = self.anticluster[dsets]
             else:
                 dset_indexes = np.arange(ds_on, ds_off+1)
+            # Keep only available dataset keys to avoid KeyErrors with custom DS layouts
+            available_keys = set(datasets.keys())
+            dset_indexes = [idx for idx in dset_indexes if idx in available_keys]
+            if not dset_indexes:
+                print("No matching datasets found for training; skipping.")
+                continue
             
             for dset_index in dset_indexes:
                 if dset_index == dsets:
@@ -552,6 +569,9 @@ class ENS2(object):
             train_trace = train_trace[0:count,:]
             train_rate = train_rate[0:count,:]
             train_spike = train_spike[0:count,:]
+            if count == 0:
+                print("No training segments found for this dataset; skipping.")
+                continue
 
             if hour != 'all':
                 np.random.seed(dsets)
@@ -560,9 +580,22 @@ class ENS2(object):
                 train_rate = train_rate[shrink_idx,:]
                 train_spike = train_spike[shrink_idx,:]
             
-            if np.sum(train_trace==np.nan) or np.sum(train_rate==np.nan) or np.sum(train_spike==np.nan):
-                print('NaN error...')
-                break
+            # Drop rows with any NaN/inf in inputs or targets to avoid NaN loss
+            finite_mask = (
+                np.isfinite(train_trace).all(axis=1)
+                & np.isfinite(train_rate).all(axis=1)
+                & np.isfinite(train_spike).all(axis=1)
+            )
+            if not np.all(finite_mask):
+                bad = np.count_nonzero(~finite_mask)
+                total = train_trace.shape[0]
+                print(f"NaN/inf rows detected: {bad}/{total}; filtering out.")
+                train_trace = train_trace[finite_mask, :]
+                train_rate = train_rate[finite_mask, :]
+                train_spike = train_spike[finite_mask, :]
+                if train_trace.size == 0:
+                    print("No valid training samples remain after filtering; skipping.")
+                    continue
 
             Training_dataset = TensorDataset(torch.FloatTensor(train_trace),torch.FloatTensor(train_rate),torch.FloatTensor(train_spike))
             Training_dataloader = DataLoader(Training_dataset, shuffle=True, batch_size=opt.batch_size)
@@ -616,7 +649,15 @@ class ENS2(object):
             
             #### start training
             start_time = datetime.datetime.now()
-            t = trange(1, opt.epochs+1, leave=True,  ncols=1000)
+            is_tty = sys.stdout.isatty()
+            t = trange(
+                1,
+                opt.epochs + 1,
+                leave=is_tty,
+                ncols=1000,
+                disable=not is_tty,  # avoid spamming lines when not in a TTY
+                mininterval=5.0,     # rate-limit updates in case tqdm still prints
+            )
             for epoch in t:
 
                 # extract training batch
@@ -650,7 +691,7 @@ class ENS2(object):
                     is_earlystop = 1
                     
                 # gather status
-                t.set_description(inputs+' '+nets+' ['+losses+': %0.3f]' % loss.item())
+                t.set_description(inputs+' '+nets+' ['+losses+': %.2g]' % loss.item())
 
                 self.DATA[dsets-1]['loss'].append(loss.item())
                 

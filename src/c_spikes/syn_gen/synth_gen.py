@@ -18,18 +18,27 @@
 %%%
 '''
 
+import os
+import hashlib
+from pathlib import Path
+from typing import Optional, Sequence, Union
+
 import numpy as np
 import scipy.io as sio
-import os
 from scipy.stats import norm
 
 
 class synth_gen():
   def __init__(self, spike_rate=2, spike_params=[5, 0.5],cell_params=[30e-6, 10e2, 1e-5, 5, 30, 10],
-    noise_dir="gt_noise_dir", GCaMP_model=None, tag="default", plot_on=False,use_noise=False,noise_val=2):
+    noise_dir="gt_noise_dir", GCaMP_model=None, tag="default", plot_on=False,use_noise=False,noise_val=2,
+    noise_fraction: float = 1.0, noise_seed: Optional[Union[int, Sequence[int]]] = None):
     
     # Get current directory of this file, prepend to noise_dir
-    self.noise_dir = noise_dir
+    base_dir = Path(__file__).resolve().parent
+    noise_dir_path = Path(noise_dir)
+    if not noise_dir_path.is_absolute():
+      noise_dir_path = base_dir / noise_dir_path
+    self.noise_dir = str(noise_dir_path)
     full_noise_path = self.noise_dir
 
     # Synth data settings
@@ -38,18 +47,29 @@ class synth_gen():
     self.Cparams = cell_params
 
     
-    # Determine noise directory and get the file list, get path elements
-    self.noise_files = [os.path.join(full_noise_path, f) for f in os.listdir(full_noise_path) if f.endswith('.mat')]
+    # Determine noise directory and store the file list
+    self._all_noise_files = sorted([os.path.join(full_noise_path, f) for f in os.listdir(full_noise_path) if f.endswith('.mat')])
+    self.noise_fraction = float(noise_fraction)
+    # Normalize seeds to a list
+    if noise_seed is None:
+      self.noise_seeds = [None]
+    elif isinstance(noise_seed, (list, tuple)):
+      self.noise_seeds = list(noise_seed)
+    else:
+      self.noise_seeds = [noise_seed]
     self.tag = tag
     #Handling noise cases
     self.use_noise = use_noise
     self.noise_val = noise_val
     
     # Load the GCaMP_model
-    if not GCaMP_model:
+    if GCaMP_model is None:
       import c_spikes.pgas.pgas_bound as pgas
 
-      self.gcamp = pgas.GCaMP(Gparams,cell_params)
+      # Default GCaMP parameter file colocated with the PGAS module
+      gparam_path = Path(__file__).resolve().parents[1] / "pgas" / "20230525_gold.dat"
+      Gparams = np.loadtxt(gparam_path)
+      self.gcamp = pgas.GCaMP(Gparams, cell_params)
     else:
       self.gcamp = GCaMP_model
     
@@ -114,14 +134,23 @@ class synth_gen():
     # translate, and scale the rate vector
     thr = norm.ppf(1 - rnonzero)
     vrate = np.maximum(0, vrate - thr)
-    vrate = self.spike_rate*vrate/np.max((vrate))
+    max_vrate = np.max(vrate)
+    if not np.isfinite(max_vrate) or max_vrate <= 0:
+      return np.array([], dtype=float)
+    vrate = self.spike_rate * vrate / max_vrate
     
 
     #2 generate spikes
     # choose sampling rate with at most one spike per bin
-    dt1 = 1 / np.max(vrate) / 100
-    print(f"vrate max = {np.max(vrate)}, dt1 = {dt1}, dt = {dt}")
-    nt1 = int(np.floor(T / dt1))
+    max_vrate = np.max(vrate)
+    if not np.isfinite(max_vrate) or max_vrate <= 0:
+      return np.array([], dtype=float)
+    dt1 = 1 / max_vrate / 100
+    if not np.isfinite(dt1) or dt1 <= 0:
+      return np.array([], dtype=float)
+    nt1 = int(np.floor(T / dt1)) if np.isfinite(T) else 0
+    if nt1 <= 0:
+      return np.array([], dtype=float)
     t = np.linspace(0, T, nt1)
     vrate_interp = np.interp(t, np.arange(nt) * dt, vrate)
     # make spikes
@@ -154,13 +183,29 @@ class synth_gen():
     """
       Method to allow resetting of the synthetic generator parameters
     """
-    if spike_rate:
+    if spike_rate is not None:
       self.spike_rate = spike_rate
-    if spike_params:
+    if spike_params is not None:
       self.spike_params = spike_params
-    if cell_params:
-      self.cell_params = cell_params
+    if cell_params is not None:
+      self.Cparams = cell_params
   
+  def _select_noise_subset(self, seed: Optional[int]):
+    """Deterministically select a subset of noise files based on fraction and seed."""
+    if self.noise_fraction >= 1.0:
+      return self._all_noise_files
+    n_total = len(self._all_noise_files)
+    n_keep = max(1, int(np.ceil(self.noise_fraction * n_total)))
+    if seed is None:
+      key = f"{self.noise_dir}|{float(self.noise_fraction):.6f}".encode("utf-8")
+      seed_val = int(hashlib.sha256(key).hexdigest()[:8], 16)
+    else:
+      seed_val = int(seed)
+    rng = np.random.RandomState(seed_val)
+    idx = rng.choice(n_total, size=n_keep, replace=False)
+    return [self._all_noise_files[i] for i in sorted(idx)]
+
+
   def generate(self,Cparams=None,tag=None,output_folder="."):
     """
       This generates the actual synthetic data.
@@ -171,6 +216,7 @@ class synth_gen():
     synth_dir = os.path.join(output_folder, "Ground_truth", f"synth_{self.tag}")
     #print(synth_dir)
     os.makedirs(synth_dir,exist_ok=True)
+    print(f"[syn_gen] Generating synthetic data to {synth_dir}")
     
     #Pass in Cparams and initialize the model
     Cparams = Cparams if Cparams else self.Cparams
@@ -181,93 +227,130 @@ class synth_gen():
     # This is for if we'd like to plot one output
     test_plot = True
     
-    # Loop over and add synthetic simulations to each noise file
-    for file in self.noise_files:
-      # load CASCADE-formatted noise traces
-      noise_data = sio.loadmat(file)
-      CAttached = noise_data['CAttached']
-      keys = CAttached[0][0].dtype.descr
-      noisy_idxs = []
-      
-      for ii in np.arange(len(CAttached[0])):
-        existing_fields = CAttached[0][ii].dtype.names
-        new_fields = []
-        if 'fluo_mean' not in existing_fields:
-            new_fields.append(('fluo_mean', '|O'))
-        if 'events_AP' not in existing_fields:
-            new_fields.append(('events_AP', '|O'))
-        if 'fluo_time' not in existing_fields:
-            new_fields.append(('fluo_time', '|O'))
+    # Loop over seeds and add synthetic simulations to each selected noise file
+    for seed in self.noise_seeds:
+      noise_files = self._select_noise_subset(seed)
+      seed_suffix = f"_seed{seed}" if seed is not None else "_seedauto"
+      for file in noise_files:
+        # load CASCADE-formatted noise traces
+        noise_data = sio.loadmat(file)
+        CAttached = noise_data['CAttached']
+        keys = CAttached[0][0].dtype.descr
+        noisy_idxs = []
+        
+        for ii in np.arange(len(CAttached[0])):
+          existing_fields = CAttached[0][ii].dtype.names
+          new_fields = []
+          if 'fluo_mean' not in existing_fields:
+              new_fields.append(('fluo_mean', '|O'))
+          if 'events_AP' not in existing_fields:
+              new_fields.append(('events_AP', '|O'))
+          if 'fluo_time' not in existing_fields:
+              new_fields.append(('fluo_time', '|O'))
 
-        # Add new field for noise + simulation
-        new_inner_dtype = np.dtype(CAttached[0][ii].dtype.descr + \
-          new_fields)
-        
-        #Set up structure to hold fluo_mean
-        inner_array = CAttached[0][ii]
-        new_inner_array = np.empty(inner_array.shape, dtype=new_inner_dtype)
-        
-        # Copy existing data to the new structured array
-        for field in inner_array.dtype.names:
-            new_inner_array[field] = inner_array[field]
-            
-        #Noise, time, get spikes
-        noise = inner_array['gt_noise'][0][0]
-
-        # Hack for now - I didn't capture the time stamps in the noise files when I generated them
-        try:
-          time = inner_array['fluo_time'][0][0]
-        except:
-          sampling_rate = 121.9  # Hz
-          n_samples = noise.shape[0]
-          time = np.arange(n_samples) / sampling_rate
-        T = time[-1] - time[0]
-        print(f"Generating synthetic data for file {file}, cell {ii} with T = {T} seconds")
-        
-        # Generate spikes
-        spikes = self.spk_gen(T) + time[0]
-        print(f"Data type of spikes: {type(spikes)}, shape: {spikes.shape}, spikes: {spikes}")
+          # Add new field for noise + simulation
+          new_inner_dtype = np.dtype(CAttached[0][ii].dtype.descr + \
+            new_fields)
           
-        # Handle cases where we have no spikes - spike at time point 3
-        #if not len(spikes)>0: 
-        #  spikes = time[2]
+          #Set up structure to hold fluo_mean
+          inner_array = CAttached[0][ii]
+          new_inner_array = np.empty(inner_array.shape, dtype=new_inner_dtype)
+          
+          # Copy existing data to the new structured array
+          for field in inner_array.dtype.names:
+              new_inner_array[field] = inner_array[field]
+              
+          #Noise, time, get spikes
+          noise = inner_array['gt_noise'][0][0]
+
+          # Hack for now - I didn't capture the time stamps in the noise files when I generated them
+          try:
+            time = inner_array['fluo_time'][0][0]
+          except:
+            sampling_rate = 121.9  # Hz
+            n_samples = noise.shape[0]
+            time = np.arange(n_samples) / sampling_rate
+          T = time[-1] - time[0]
+          
+          # Generate spikes
+          spikes = self.spk_gen(T) + time[0]
+            
+          # Handle cases where we have no spikes - spike at time point 3
+          #if not len(spikes)>0: 
+          #  spikes = time[2]
+          
+          # Simulation
+          self.gcamp.integrateOverTime(time.flatten().astype(float), spikes.flatten().astype(float))
+          dff_clean = self.gcamp.getDFFValues()
+
+          # Clean non-finite values (replace with finite fallbacks) and log summary
+          mask_dff = ~np.isfinite(dff_clean)
+          mask_noise = ~np.isfinite(noise)
+          mask_time = ~np.isfinite(time)
+          mask_spikes = ~np.isfinite(spikes)
+          if mask_dff.any() or mask_noise.any() or mask_time.any() or mask_spikes.any():
+            pct_dff = 100.0 * np.count_nonzero(mask_dff) / float(dff_clean.size if dff_clean.size else 1)
+            pct_noise = 100.0 * np.count_nonzero(mask_noise) / float(noise.size if noise.size else 1)
+            pct_time = 100.0 * np.count_nonzero(mask_time) / float(time.size if time.size else 1)
+            pct_spk = 100.0 * np.count_nonzero(mask_spikes) / float(spikes.size if spikes.size else 1)
+            msg = (
+              f"[syn_gen] Cleaning non-finite values "
+              f"dff={pct_dff:.3f}% noise={pct_noise:.3f}% time={pct_time:.3f}% spikes={pct_spk:.3f}%"
+            )
+            try:
+              msg += f" file={os.path.basename(file)}"
+            except Exception:
+              pass
+            try:
+              msg += f" time_range=({np.nanmin(time):.3f},{np.nanmax(time):.3f})"
+            except Exception:
+              pass
+            if spikes.size:
+              try:
+                msg += f" spikes_range=({np.nanmin(spikes):.3f},{np.nanmax(spikes):.3f})"
+              except Exception:
+                pass
+            print(msg)
+            # Replace NaN/inf with zeros for dff/noise, clip time/spikes by interpolation or fill
+            if mask_dff.any():
+              dff_clean = np.where(mask_dff, 0.0, dff_clean)
+            if mask_noise.any():
+              noise = np.where(mask_noise, 0.0, noise)
+            if mask_time.any():
+              # simple forward-fill/back-fill for time
+              valid = np.isfinite(time)
+              if valid.any():
+                time = np.interp(np.arange(time.size), np.flatnonzero(valid), time[valid])
+              else:
+                time = np.linspace(0, T, time.size)
+            if mask_spikes.any():
+              spikes = spikes[np.isfinite(spikes)]
+              if spikes.size == 0:
+                spikes = np.array([], dtype=float)
+          
+          # Add new field and fill with sim + noise, spike times, and time
+          new_inner_array['fluo_mean'][0][0] = np.array([2*dff_clean.flatten() + noise.flatten()])
+          new_inner_array['events_AP'][0][0] = spikes.reshape(-1,1)*1e4
+          new_inner_array['fluo_time'][0][0] = time.flatten()
+          
+          # Update the CAttached structure with the new inner array entries
+          CAttached[0][ii] = new_inner_array
         
-        # Simulation
-        self.gcamp.integrateOverTime(time.flatten().astype(float), spikes.flatten().astype(float))
-        dff_clean = self.gcamp.getDFFValues()
+        # Remove noisy traces
+        if len(noisy_idxs)>0:
+          CAttached = np.delete(CAttached, noisy_idxs, axis=1)
+        # Save the modified CAttached structure back to the file
+        basename = os.path.basename(file)
+        file_name, extension = os.path.splitext(basename)
+        fname = 'rate='+str(self.spike_rate) + 'param='+str(self.spike_params[0])+ '_'+ str(self.spike_params[1]) +\
+          seed_suffix + '_' + file_name + extension
+        save_path = os.path.join(synth_dir, fname)
+        sio.savemat(save_path, {'CAttached': CAttached})
         
-        # Add new field and fill with sim + noise, spike times, and time
-        new_inner_array['fluo_mean'][0][0] = np.array([2*dff_clean.flatten() + noise.flatten()])
-        new_inner_array['events_AP'][0][0] = spikes.reshape(-1,1)*1e4
-        new_inner_array['fluo_time'][0][0] = time.flatten()
+        # reset the model (might want to add this to the end of the c++ method to reduce pybind exposure)
+        self.gcamp.init()
         
-        # Update the CAttached structure with the new inner array entries
-        CAttached[0][ii] = new_inner_array
-      
-      # Remove noisy traces
-      if len(noisy_idxs)>0:
-        CAttached = np.delete(CAttached, noisy_idxs, axis=1)
-      # Save the modified CAttached structure back to the file
-      basename = os.path.basename(file)
-      file_name, extension = os.path.splitext(basename)
-      fname = 'rate='+str(self.spike_rate) + 'param='+str(self.spike_params[0])+ '_'+ str(self.spike_params[1]) +\
-        file_name + extension
-      save_path = os.path.join(synth_dir, fname)
-      print("syn_gen save_path = ", save_path)
-      sio.savemat(save_path, {'CAttached': CAttached})
-      
-      # reset the model (might want to add this to the end of the c++ method to reduce pybind exposure)
-      self.gcamp.init()
-      
-      if self.plot_on and test_plot:
-        test_plot = False
-        import matplotlib.pyplot as plt
-        plt.figure()
-        plt.plot(time.flatten(), dff_clean.flatten())
-        #plt.plot(time.flatten(), noise.flatten())
-        for spike in spikes:
-          plt.axvline(x=spike,color='k',linestyle='-')
-        plt.show()
+    print(f"[syn_gen] Synthetic data generated at {synth_dir}")
         
 
 if __name__ == "__main__":
@@ -285,4 +368,3 @@ if __name__ == "__main__":
   synth = synth_gen.synth_gen(plot_on=False,GCaMP_model=gcamp,\
     spike_rate=rate,cell_params=Cparams,tag=tag,use_noise=True, noise_dir="gt_noise_dir")
   synth.generate(output_folder=f"results")
-  #synth.spk_gen(np.array([200]))
