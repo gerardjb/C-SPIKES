@@ -31,7 +31,8 @@ from scipy.stats import norm
 class synth_gen():
   def __init__(self, spike_rate=2, spike_params=[5, 0.5],cell_params=[30e-6, 10e2, 1e-5, 5, 30, 10],
     noise_dir="gt_noise_dir", GCaMP_model=None, tag="default", plot_on=False,use_noise=False,noise_val=2,
-    noise_fraction: float = 1.0, noise_seed: Optional[Union[int, Sequence[int]]] = None):
+    noise_fraction: float = 1.0, noise_seed: Optional[Union[int, Sequence[int]]] = None,
+    log_nonfinite: bool = False):
     
     # Get current directory of this file, prepend to noise_dir
     base_dir = Path(__file__).resolve().parent
@@ -75,6 +76,7 @@ class synth_gen():
     
     #For QC plots
     self.plot_on = plot_on
+    self.log_nonfinite = bool(log_nonfinite)
 
   def calculate_standardized_noise(self,dff,frame_rate):
     noise_levels = np.nanmedian(np.abs(np.diff(dff, axis=-1)), axis=-1) / np.sqrt(frame_rate)
@@ -127,7 +129,8 @@ class synth_gen():
     # If sr<=0, return a single spike at dt*3
     if sr<=0:
       spikes = dt*3
-      print("Warning: NaN in vrate, returning single spike at dt*3")
+      if self.log_nonfinite:
+        print("Warning: NaN in vrate, returning single spike at dt*3")
       return spikes
     
     vrate = vrate / sr
@@ -289,28 +292,29 @@ class synth_gen():
           mask_time = ~np.isfinite(time)
           mask_spikes = ~np.isfinite(spikes)
           if mask_dff.any() or mask_noise.any() or mask_time.any() or mask_spikes.any():
-            pct_dff = 100.0 * np.count_nonzero(mask_dff) / float(dff_clean.size if dff_clean.size else 1)
-            pct_noise = 100.0 * np.count_nonzero(mask_noise) / float(noise.size if noise.size else 1)
-            pct_time = 100.0 * np.count_nonzero(mask_time) / float(time.size if time.size else 1)
-            pct_spk = 100.0 * np.count_nonzero(mask_spikes) / float(spikes.size if spikes.size else 1)
-            msg = (
-              f"[syn_gen] Cleaning non-finite values "
-              f"dff={pct_dff:.3f}% noise={pct_noise:.3f}% time={pct_time:.3f}% spikes={pct_spk:.3f}%"
-            )
-            try:
-              msg += f" file={os.path.basename(file)}"
-            except Exception:
-              pass
-            try:
-              msg += f" time_range=({np.nanmin(time):.3f},{np.nanmax(time):.3f})"
-            except Exception:
-              pass
-            if spikes.size:
+            if self.log_nonfinite:
+              pct_dff = 100.0 * np.count_nonzero(mask_dff) / float(dff_clean.size if dff_clean.size else 1)
+              pct_noise = 100.0 * np.count_nonzero(mask_noise) / float(noise.size if noise.size else 1)
+              pct_time = 100.0 * np.count_nonzero(mask_time) / float(time.size if time.size else 1)
+              pct_spk = 100.0 * np.count_nonzero(mask_spikes) / float(spikes.size if spikes.size else 1)
+              msg = (
+                f"[syn_gen] Cleaning non-finite values "
+                f"dff={pct_dff:.3f}% noise={pct_noise:.3f}% time={pct_time:.3f}% spikes={pct_spk:.3f}%"
+              )
               try:
-                msg += f" spikes_range=({np.nanmin(spikes):.3f},{np.nanmax(spikes):.3f})"
+                msg += f" file={os.path.basename(file)}"
               except Exception:
                 pass
-            print(msg)
+              try:
+                msg += f" time_range=({np.nanmin(time):.3f},{np.nanmax(time):.3f})"
+              except Exception:
+                pass
+              if spikes.size:
+                try:
+                  msg += f" spikes_range=({np.nanmin(spikes):.3f},{np.nanmax(spikes):.3f})"
+                except Exception:
+                  pass
+              print(msg)
             # Replace NaN/inf with zeros for dff/noise, clip time/spikes by interpolation or fill
             if mask_dff.any():
               dff_clean = np.where(mask_dff, 0.0, dff_clean)
@@ -365,6 +369,6 @@ if __name__ == "__main__":
 
   # Use gcamp model instantiation to create a synthetic generator
   rate = 2; tag = "test_synth"
-  synth = synth_gen.synth_gen(plot_on=False,GCaMP_model=gcamp,\
+  synth = synth_gen(plot_on=False,GCaMP_model=gcamp,\
     spike_rate=rate,cell_params=Cparams,tag=tag,use_noise=True, noise_dir="gt_noise_dir")
   synth.generate(output_folder=f"results")

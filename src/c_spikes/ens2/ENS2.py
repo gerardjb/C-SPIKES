@@ -97,14 +97,21 @@ def load_all_ground_truth(sampling_rate):
         dataset_prop[j+1] = dict()
         dataset_prop[j+1]['name'] = os.path.basename(dataset)
         dataset_prop[j+1]['dset'] = j+1
-        dataset_prop[j+1]['frame_rate'] = np.mean(recording_raw_fs)
-        dataset_prop[j+1]['noise_level'] = np.mean(recording_noise_level)
-        dataset_prop[j+1]['firing_rate'] = np.mean(recording_firing_rate)
+        def _safe_mean(values):
+            return float(np.mean(values)) if len(values) else float("nan")
+
+        frame_rate_mean = _safe_mean(recording_raw_fs)
+        noise_mean = _safe_mean(recording_noise_level)
+        firing_rate_mean = _safe_mean(recording_firing_rate)
+
+        dataset_prop[j+1]['frame_rate'] = frame_rate_mean
+        dataset_prop[j+1]['noise_level'] = noise_mean
+        dataset_prop[j+1]['firing_rate'] = firing_rate_mean
         dataset_prop[j+1]['neuron_number'] = len(recording_neuron_list)
         dataset_prop[j+1]['trial_number'] = len(recording_trial_list)
         dataset_prop[j+1]['duration'] = int(recording_sample_count/sampling_rate/60)
 
-        print(f'[D{j+1:2d}]  Raw Fs: {np.mean(recording_raw_fs):>5.1f}  Noise: {np.mean(recording_noise_level):>4.1f}  FR: {np.mean(recording_firing_rate):>4.1f}  #Neuron: {len(recording_neuron_list):3d}  #Trial: {len(recording_trial_list):3d}  #Sample: {recording_sample_count:7d}  Duration: {int(recording_sample_count/sampling_rate/60):4d}  Name: {os.path.basename(dataset)[:20]}')
+        print(f'[D{j+1:2d}]  Raw Fs: {frame_rate_mean:>5.1f}  Noise: {noise_mean:>4.1f}  FR: {firing_rate_mean:>4.1f}  #Neuron: {len(recording_neuron_list):3d}  #Trial: {len(recording_trial_list):3d}  #Sample: {recording_sample_count:7d}  Duration: {int(recording_sample_count/sampling_rate/60):4d}  Name: {os.path.basename(dataset)[:20]}')
     return dataset_neuron, dataset_trial, dataset_prop
 
 def build_causal_kernel(sampling_rate):
