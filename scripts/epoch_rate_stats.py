@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
 Compute epoch-wise firing-rate statistics for Janelia-format .mat files.
+This approach is broadly useful for any dataset that contains even a small
+amount of ground truth data as it allows more accurate bootstrapping of 
+cell-type specific spiking statistics.
 
 Each input .mat is expected to contain:
   - time_stamps: array shaped (n_epochs, n_samples) in seconds
