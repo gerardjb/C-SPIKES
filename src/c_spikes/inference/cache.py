@@ -69,7 +69,7 @@ def load_method_cache(
     cache_root: Path = CACHE_ROOT,
     allow_mismatched_trace: bool = False,
 ) -> Optional[MethodResult]:
-    config_hash, _ = compute_config_signature(dict(config))
+    config_hash, config_ser = compute_config_signature(dict(config))
     mat_path, meta_path = get_cache_paths(method, dataset_tag, config_hash, cache_root=cache_root)
     candidates: list[Tuple[Path, Path]] = []
     if mat_path.exists() and meta_path.exists():
@@ -88,6 +88,15 @@ def load_method_cache(
                 meta = json.load(fh)
         except (OSError, json.JSONDecodeError):
             continue
+        # Never cross-load caches across different configs (e.g., different pretrained_dir).
+        # This is critical for sweeps where the trace_hash/dataset_tag match but the model changes.
+        cache_key = meta.get("cache_key")
+        if cache_key is not None:
+            if cache_key != config_hash:
+                continue
+        else:
+            if meta.get("config") != config_ser:
+                continue
         if not allow_mismatched_trace and meta.get("trace_hash") != trace_hash:
             continue
         if meta.get("dataset") not in {dataset_tag, meta.get("metadata", {}).get("cache_tag")}:
@@ -109,5 +118,4 @@ def load_method_cache(
             discrete_spikes=discrete,
         )
     return None
-
 

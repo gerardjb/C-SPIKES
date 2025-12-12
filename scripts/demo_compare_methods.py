@@ -27,10 +27,43 @@ from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
 from c_spikes.utils import load_Janelia_data
 
 
+def _parse_optional_float(value: str | None) -> float | None:
+    if value is None:
+        return None
+    token = str(value).strip().lower()
+    if token in {"none", "null", "auto", "estimate", "estimated"}:
+        return None
+    return float(value)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", required=True, type=Path, help="Path to .mat file with time_stamps and dff.")
     parser.add_argument("--smoothing", type=float, default=None, help="Target Hz for pre-inference smoothing (None=raw).")
+    parser.add_argument(
+        "--pgas-constants",
+        type=Path,
+        default=Path("parameter_files/constants_GCaMP8_soma.json"),
+        help="PGAS base constants JSON (sensor-specific).",
+    )
+    parser.add_argument(
+        "--pgas-gparam",
+        type=Path,
+        default=Path("src/c_spikes/pgas/20230525_gold.dat"),
+        help="PGAS GCaMP parameter file (sensor-specific).",
+    )
+    parser.add_argument(
+        "--pgas-output-root",
+        type=Path,
+        default=Path("results/pgas_output/demo"),
+        help="Where PGAS writes its output files (traj/param_samples).",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma",
+        type=str,
+        default=str(PGAS_BM_SIGMA_DEFAULT),
+        help="Fixed PGAS bm_sigma value, or 'auto' to estimate from data (default: fixed).",
+    )
     parser.add_argument("--pgas-resample", type=float, default=None, help="PGAS resample Hz (None=use native).")
     parser.add_argument("--cascade-resample", type=float, default=None, help="CASCADE resample Hz (default model: 30).")
     parser.add_argument("--edges-file", type=Path, help="Optional edges npy (dict dataset->edges) for trimming.")
@@ -190,15 +223,14 @@ def main() -> None:
         corr_sigma_ms=float(args.corr_sigma_ms),
         pgas_resample_fs=args.pgas_resample,
         cascade_resample_fs=args.cascade_resample,
-        # Force PGAS bm_sigma to a fixed default to avoid data-driven tuning
-        pgas_fixed_bm_sigma=PGAS_BM_SIGMA_DEFAULT,
+        pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
     )
 
     outputs = run_inference_for_dataset(
         cfg,
-        pgas_constants=Path("parameter_files/constants_GCaMP8_soma.json"),
-        pgas_gparam=Path("src/c_spikes/pgas/20230525_gold.dat"),
-        pgas_output_root=Path("results/pgas_output/demo"),
+        pgas_constants=args.pgas_constants,
+        pgas_gparam=args.pgas_gparam,
+        pgas_output_root=args.pgas_output_root,
         ens2_pretrained_root=args.ens2_pretrained_root,
         cascade_model_root=Path("results/Pretrained_models"),
         dataset_data=(time_stamps, dff, spike_times),
@@ -220,13 +252,13 @@ def main() -> None:
             corr_sigma_ms=float(args.corr_sigma_ms),
             pgas_resample_fs=args.pgas_resample,
             cascade_resample_fs=args.cascade_resample,
-            pgas_fixed_bm_sigma=PGAS_BM_SIGMA_DEFAULT,
+            pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
         )
         custom_outputs = run_inference_for_dataset(
             custom_cfg,
-            pgas_constants=Path("parameter_files/constants_GCaMP8_soma.json"),
-            pgas_gparam=Path("src/c_spikes/pgas/20230525_gold.dat"),
-            pgas_output_root=Path("results/pgas_output/demo"),
+            pgas_constants=args.pgas_constants,
+            pgas_gparam=args.pgas_gparam,
+            pgas_output_root=args.pgas_output_root,
             ens2_pretrained_root=args.ens2_custom_root,
             cascade_model_root=Path("results/Pretrained_models"),
             dataset_data=(time_stamps, dff, spike_times),

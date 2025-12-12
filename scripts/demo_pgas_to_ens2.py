@@ -50,6 +50,12 @@ def parse_args() -> argparse.Namespace:
         help="Noise directory for syn_gen (default: syn_gen/gt_noise_dir).",
     )
     p.add_argument(
+        "--gparam-path",
+        type=Path,
+        default=Path("src/c_spikes/pgas/20230525_gold.dat"),
+        help="GCaMP parameter file used by syn_gen (sensor-specific).",
+    )
+    p.add_argument(
         "--noise-fraction",
         type=float,
         default=1.0,
@@ -61,6 +67,21 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=None,
         help="Optional seed(s) for noise file subsampling (repeat to concatenate subsets).",
+    )
+    p.add_argument(
+        "--noise-seed-base",
+        type=int,
+        default=None,
+        help=(
+            "Optional base seed for multi-param_samples runs. If set, each param_samples file "
+            "uses a unique noise seed (base + index). Mutually exclusive with --noise-seed."
+        ),
+    )
+    p.add_argument(
+        "--synth-tag-suffix",
+        type=str,
+        default=None,
+        help="Optional suffix appended to each synthetic dataset tag to avoid reusing synth_* dirs across sweeps.",
     )
     p.add_argument("--model-name", type=str, required=True, help="Name for the custom ENS2 model folder.")
     p.add_argument(
@@ -131,6 +152,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
+    if args.noise_seed_base is not None and args.noise_seed is not None:
+        raise ValueError("Provide only one of --noise-seed or --noise-seed-base.")
+
     manifest_path = (
         args.manifest
         if args.manifest is not None
@@ -139,26 +163,32 @@ def main() -> None:
 
     # Build param specs for batch generation
     param_specs: List[dict] = []
-    for ps_path in args.param_samples:
-        tag = Path(ps_path).stem.replace("param_samples_", "")
+    for idx, ps_path in enumerate(args.param_samples):
+        base_tag = Path(ps_path).stem.replace("param_samples_", "")
+        tag = base_tag if args.synth_tag_suffix is None else f"{base_tag}__{args.synth_tag_suffix}"
+        noise_seed = (
+            int(args.noise_seed_base) + idx
+            if args.noise_seed_base is not None
+            else args.noise_seed
+        )
         param_specs.append(
             {
                 "param_samples_path": ps_path,
                 "burnin": args.burnin,
-        "spike_rate": args.spike_rate,
-        "spike_params": args.spike_params,
-        "noise_dir": args.noise_dir,
-        "noise_fraction": args.noise_fraction,
-        "noise_seed": args.noise_seed,
-        "tag": tag,
-        "run_tag": args.run_tag,
-    }
+                "spike_rate": args.spike_rate,
+                "spike_params": args.spike_params,
+                "noise_dir": args.noise_dir,
+                "noise_fraction": args.noise_fraction,
+                "noise_seed": noise_seed,
+                "tag": tag,
+                "run_tag": args.run_tag,
+            }
         )
 
     # 1-2) Generate synthetic datasets and log to manifest
     cparams_map = build_synthetic_ground_truth_batch(
         param_specs,
-        gparam_path=Path("src/c_spikes/pgas/20230525_gold.dat"),
+        gparam_path=args.gparam_path,
         output_root=Path("results"),
         manifest_path=manifest_path,
         manifest_model_name=args.model_name,
@@ -199,8 +229,9 @@ def main() -> None:
             str(args.stock_ens2_root),
             "--ens2-custom-root",
             str(ens2_root),
-            "--no-cache" if not args.compare_use_cache else "",
         ]
+        if not args.compare_use_cache:
+            cmd.append("--no-cache")
         if not args.compare_all:
             cmd.extend(["--skip-pgas", "--skip-cascade"])
         if args.smoothing is not None:

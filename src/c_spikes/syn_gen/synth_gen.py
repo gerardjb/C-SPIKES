@@ -78,6 +78,15 @@ class synth_gen():
     self.plot_on = plot_on
     self.log_nonfinite = bool(log_nonfinite)
 
+  def _seed_to_int(self, seed: Optional[int]) -> int:
+    """Convert an optional seed to a stable uint32 value."""
+    if seed is None:
+      key = f"{self.noise_dir}|{float(self.noise_fraction):.6f}".encode("utf-8")
+      seed_val = int(hashlib.sha256(key).hexdigest()[:8], 16)
+    else:
+      seed_val = int(seed) & 0xFFFFFFFF
+    return seed_val
+
   def calculate_standardized_noise(self,dff,frame_rate):
     noise_levels = np.nanmedian(np.abs(np.diff(dff, axis=-1)), axis=-1) / np.sqrt(frame_rate)
     return noise_levels * 100     # scale noise levels to percent
@@ -199,11 +208,7 @@ class synth_gen():
       return self._all_noise_files
     n_total = len(self._all_noise_files)
     n_keep = max(1, int(np.ceil(self.noise_fraction * n_total)))
-    if seed is None:
-      key = f"{self.noise_dir}|{float(self.noise_fraction):.6f}".encode("utf-8")
-      seed_val = int(hashlib.sha256(key).hexdigest()[:8], 16)
-    else:
-      seed_val = int(seed)
+    seed_val = self._seed_to_int(seed)
     rng = np.random.RandomState(seed_val)
     idx = rng.choice(n_total, size=n_keep, replace=False)
     return [self._all_noise_files[i] for i in sorted(idx)]
@@ -232,6 +237,9 @@ class synth_gen():
     
     # Loop over seeds and add synthetic simulations to each selected noise file
     for seed in self.noise_seeds:
+      # Make spike generation reproducible for a given (noise_seed, noise_fraction).
+      # This keeps sweep runs stable when using deterministic seed lists.
+      np.random.seed(self._seed_to_int(seed))
       noise_files = self._select_noise_subset(seed)
       seed_suffix = f"_seed{seed}" if seed is not None else "_seedauto"
       for file in noise_files:
