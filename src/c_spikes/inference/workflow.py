@@ -124,8 +124,6 @@ def run_inference_for_dataset(
             traces_arr[idx] = values
         return times_arr, traces_arr, lengths
 
-    ens2_time_array, ens2_trace_array, ens2_lengths = _pad_trials_to_arrays(trials_native)
-
     if cfg.smoothing.target_fs is None:
         trials_for_methods = trials_native
         down_time_flat, down_trace_flat = raw_time_flat, raw_trace_flat
@@ -137,6 +135,8 @@ def run_inference_for_dataset(
         ]
         down_time_flat, down_trace_flat = flatten_trials(trials_for_methods)
         downsample_label = cfg.smoothing.label or f"{cfg.smoothing.target_fs:.2f}"
+
+    ens2_time_array, ens2_trace_array, ens2_lengths = _pad_trials_to_arrays(trials_for_methods)
 
     methods: Dict[str, MethodResult] = {}
 

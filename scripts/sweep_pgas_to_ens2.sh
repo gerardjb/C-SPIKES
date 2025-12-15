@@ -10,6 +10,7 @@ per-iteration).
 Usage:
   scripts/sweep_pgas_to_ens2.sh --run <pgas_run> --cell <cell_tag> [--cell <cell_tag> ...] \
                                [--dataset-dir <dir>] [--edges-file <npy>] [--model-root <dir>] [--eval-root <dir>] \
+                               [--downsample <hz_or_raw>] [--downsample <hz_or_raw> ...] [--eval-existing] \
                                [--seed-start <int>] [--seed-stride <int>] [--corr-sigma-ms <float>] \
                                [--force-train] [--force-eval] [--force] \
                                [--dry-run] [-- <extra demo_pgas_to_ens2.py args>]
@@ -28,6 +29,9 @@ Notes:
   - For each K, sets noise_fraction = 1/K.
   - Uses deterministic per-cell noise seeds via --noise-seed-base (base advances each model).
   - Resume behavior: if checkpoint + eval outputs exist, skip the iteration.
+  - Downsample eval: results are written under <eval-root>/<downsample_tag>/<model_name>, where
+    downsample_tag is 'raw' or e.g. '30Hz'. Use --downsample to add additional inference rates.
+  - --eval-existing skips training and evaluates any existing sweep models found in --model-root.
   - Any args after `--` are passed through to demo_pgas_to_ens2.py.
 EOF
 }
@@ -49,7 +53,9 @@ SEED_STRIDE=1000
 CORR_SIGMA_MS=50.0
 FORCE_TRAIN=0
 FORCE_EVAL=0
+EVAL_EXISTING=0
 DRY_RUN=0
+DOWNSAMPLES=("raw")
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -66,6 +72,10 @@ while [[ $# -gt 0 ]]; do
       MODEL_ROOT="$2"; shift 2 ;;
     --eval-root)
       EVAL_ROOT="$2"; shift 2 ;;
+    --downsample)
+      DOWNSAMPLES+=("$2"); shift 2 ;;
+    --eval-existing|--eval-only)
+      EVAL_EXISTING=1; shift 1 ;;
     --seed-start)
       SEED_START="$2"; shift 2 ;;
     --seed-stride)
@@ -92,8 +102,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$RUN" || ${#CELLS[@]} -lt 1 ]]; then
-  echo "ERROR: --run and at least one --cell are required." >&2
+if [[ -z "$RUN" ]]; then
+  echo "ERROR: --run is required." >&2
+  usage
+  exit 1
+fi
+
+if [[ "$EVAL_EXISTING" -eq 0 && ${#CELLS[@]} -lt 1 ]]; then
+  echo "ERROR: at least one --cell is required unless --eval-existing is set." >&2
   usage
   exit 1
 fi
@@ -112,13 +128,15 @@ if [[ -n "$EDGES_FILE" && ! -f "$EDGES_FILE" ]]; then
   exit 1
 fi
 
-for cell in "${CELLS[@]}"; do
-  ps="results/pgas_output/${RUN}/param_samples_${cell}.dat"
-  if [[ ! -f "$ps" ]]; then
-    echo "ERROR: param_samples not found: $ps" >&2
-    exit 1
-  fi
-done
+if [[ "$EVAL_EXISTING" -eq 0 ]]; then
+  for cell in "${CELLS[@]}"; do
+    ps="results/pgas_output/${RUN}/param_samples_${cell}.dat"
+    if [[ ! -f "$ps" ]]; then
+      echo "ERROR: param_samples not found: $ps" >&2
+      exit 1
+    fi
+  done
+fi
 
 rates=(6 9 12)
 smooths=(1.3 2.0)
@@ -132,118 +150,174 @@ if [[ -n "$EDGES_FILE" ]]; then
   EDGES_ARGS=(--edges-file "$EDGES_FILE")
 fi
 
-for ((k=1; k<=ncells; k++)); do
-  noise_fraction="$(awk -v kk="$k" 'BEGIN { printf "%.8f", 1.0/kk }')"
-  echo "==> K=${k}/${ncells} cells: noise_fraction=${noise_fraction}"
+format_downsample_dir() {
+  local ds="$1"
+  if [[ "$ds" == "raw" || "$ds" == "RAW" ]]; then
+    echo "raw"
+    return 0
+  fi
+  python - <<PY
+ds=float("${ds}")
+if abs(ds-round(ds)) < 1e-9:
+    print(f"{int(round(ds))}Hz")
+else:
+    s=f"{ds:.1f}".rstrip('0').rstrip('.')
+    print(s.replace('.', 'p') + "Hz")
+PY
+}
 
-  PARAM_ARGS=()
-  for ((i=0; i<k; i++)); do
-    cell="${CELLS[$i]}"
-    PARAM_ARGS+=(--param-samples "results/pgas_output/${RUN}/param_samples_${cell}.dat")
+eval_model() {
+  local model_name="$1"
+  local model_dir="$2"
+  local ds="$3"
+  local force_eval="${4:-0}"
+  local ds_dir
+  ds_dir="$(format_downsample_dir "$ds")"
+
+  local eval_out="${EVAL_ROOT}/${ds_dir}/${model_name}"
+  local eval_summary_json="${eval_out}/summary.json"
+  local eval_summary_csv="${eval_out}/summary.csv"
+
+  if [[ -f "$eval_summary_json" && -f "$eval_summary_csv" && "$FORCE_EVAL" -eq 0 && "$force_eval" -eq 0 ]]; then
+    echo "[skip] eval outputs exist: ${eval_summary_json}"
+    return 0
+  fi
+
+  local eval_cmd=(
+    python scripts/eval_ens2_dir.py
+    --ens2-root "${model_dir}"
+    --dataset-dir "${DATASET_DIR}"
+    --corr-sigma-ms "${CORR_SIGMA_MS}"
+    --no-cache
+    "${EDGES_ARGS[@]}"
+    --out-dir "${eval_out}"
+  )
+  if [[ "$ds_dir" != "raw" ]]; then
+    eval_cmd+=(--smoothing "${ds}")
+  fi
+
+  echo "[eval]  ${eval_cmd[*]}"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    "${eval_cmd[@]}"
+  fi
+}
+
+if [[ "$EVAL_EXISTING" -eq 1 ]]; then
+  mapfile -t MODEL_DIRS < <(
+    find "${MODEL_ROOT}" -maxdepth 1 -type d -name "ens2_synth_${RUN}_k*_r*_s*_d*_sb*" | sort
+  )
+  if [[ ${#MODEL_DIRS[@]} -eq 0 ]]; then
+    echo "ERROR: no matching models found under ${MODEL_ROOT} for run '${RUN}'." >&2
+    exit 1
+  fi
+
+  echo "==> Found ${#MODEL_DIRS[@]} existing sweep models under ${MODEL_ROOT}"
+  for ds in "${DOWNSAMPLES[@]}"; do
+    ds_dir="$(format_downsample_dir "$ds")"
+    echo "==> Downsample eval: ${ds_dir}"
+    for model_dir in "${MODEL_DIRS[@]}"; do
+      model_name="$(basename "${model_dir}")"
+      checkpoint_path="${model_dir}/exc_ens2_pub.pt"
+      if [[ ! -f "$checkpoint_path" ]]; then
+        echo "[skip] missing checkpoint: ${checkpoint_path}"
+        continue
+      fi
+      eval_model "${model_name}" "${model_dir}" "${ds}" 0
+    done
   done
+else
+  for ((k=1; k<=ncells; k++)); do
+    noise_fraction="$(awk -v kk="$k" 'BEGIN { printf "%.8f", 1.0/kk }')"
+    echo "==> K=${k}/${ncells} cells: noise_fraction=${noise_fraction}"
 
-  for rate in "${rates[@]}"; do
-    for smooth in "${smooths[@]}"; do
-      for duty in "${duties[@]}"; do
-        smooth_tag="${smooth/./p}"
-        duty_tag="${duty/./p}"
-        model_tag="k${k}_r${rate}_s${smooth_tag}_d${duty_tag}"
+    PARAM_ARGS=()
+    for ((i=0; i<k; i++)); do
+      cell="${CELLS[$i]}"
+      PARAM_ARGS+=(--param-samples "results/pgas_output/${RUN}/param_samples_${cell}.dat")
+    done
 
-        # Deterministic seed schedule:
-        #   - Each model uses a unique base seed (seed_start + iter*seed_stride)
-        #   - demo_pgas_to_ens2.py expands this per cell: base + cell_index
-        seed_base=$((SEED_START + iter*SEED_STRIDE))
-        iter=$((iter+1))
+    for rate in "${rates[@]}"; do
+      for smooth in "${smooths[@]}"; do
+        for duty in "${duties[@]}"; do
+          smooth_tag="${smooth/./p}"
+          duty_tag="${duty/./p}"
+          model_tag="k${k}_r${rate}_s${smooth_tag}_d${duty_tag}"
 
-        run_tag="${model_tag}_sb${seed_base}"
-        model_name="ens2_synth_${RUN}_${run_tag}"
+          # Deterministic seed schedule:
+          #   - Each model uses a unique base seed (seed_start + iter*seed_stride)
+          #   - demo_pgas_to_ens2.py expands this per cell: base + cell_index
+          seed_base=$((SEED_START + iter*SEED_STRIDE))
+          iter=$((iter+1))
 
-        echo "==> model=${model_name} spike_rate=${rate} spike_params=(${smooth},${duty}) seed_base=${seed_base}"
+          run_tag="${model_tag}_sb${seed_base}"
+          model_name="ens2_synth_${RUN}_${run_tag}"
 
-        model_dir="${MODEL_ROOT}/${model_name}"
-        checkpoint_path="${model_dir}/exc_ens2_pub.pt"
-        eval_out="${EVAL_ROOT}/${model_name}"
-        eval_summary_json="${eval_out}/summary.json"
-        eval_summary_csv="${eval_out}/summary.csv"
+          echo "==> model=${model_name} spike_rate=${rate} spike_params=(${smooth},${duty}) seed_base=${seed_base}"
 
-        need_train=0
-        if [[ "$FORCE_TRAIN" -eq 1 || ! -f "$checkpoint_path" ]]; then
-          need_train=1
-        fi
+          model_dir="${MODEL_ROOT}/${model_name}"
+          checkpoint_path="${model_dir}/exc_ens2_pub.pt"
 
-        need_eval=0
-        if [[ "$FORCE_EVAL" -eq 1 || "$need_train" -eq 1 || ! -f "$eval_summary_json" || ! -f "$eval_summary_csv" ]]; then
-          need_eval=1
-        fi
-
-        if [[ "$need_train" -eq 0 && "$need_eval" -eq 0 ]]; then
-          echo "[skip] already trained+evaluated: ${model_name}"
-          continue
-        fi
-
-        train_cmd=(
-          python scripts/demo_pgas_to_ens2.py
-          "${PARAM_ARGS[@]}"
-          --spike-rate "${rate}"
-          --spike-params "${smooth}" "${duty}"
-          --noise-fraction "${noise_fraction}"
-          --noise-seed-base "${seed_base}"
-          --synth-tag-suffix "${run_tag}"
-          --model-name "${model_name}"
-          --model-root "${MODEL_ROOT}"
-          --run-tag "${run_tag}"
-          --train-ens2
-          "${EXTRA_ARGS[@]}"
-        )
-        if [[ "$need_train" -eq 1 ]]; then
-          echo "[train] ${train_cmd[*]}"
-          if [[ "$DRY_RUN" -eq 0 ]]; then
-            "${train_cmd[@]}"
+          need_train=0
+          if [[ "$FORCE_TRAIN" -eq 1 || ! -f "$checkpoint_path" ]]; then
+            need_train=1
           fi
-        else
-          echo "[skip] checkpoint exists: ${checkpoint_path}"
-        fi
 
-        eval_cmd=(
-          python scripts/eval_ens2_dir.py
-          --ens2-root "${MODEL_ROOT}/${model_name}"
-          --dataset-dir "${DATASET_DIR}"
-          --corr-sigma-ms "${CORR_SIGMA_MS}"
-          --no-cache
-          "${EDGES_ARGS[@]}"
-          --out-dir "${eval_out}"
-        )
-        if [[ "$need_eval" -eq 1 ]]; then
-          echo "[eval]  ${eval_cmd[*]}"
-          if [[ "$DRY_RUN" -eq 0 ]]; then
-            "${eval_cmd[@]}"
+          train_cmd=(
+            python scripts/demo_pgas_to_ens2.py
+            "${PARAM_ARGS[@]}"
+            --spike-rate "${rate}"
+            --spike-params "${smooth}" "${duty}"
+            --noise-fraction "${noise_fraction}"
+            --noise-seed-base "${seed_base}"
+            --synth-tag-suffix "${run_tag}"
+            --model-name "${model_name}"
+            --model-root "${MODEL_ROOT}"
+            --run-tag "${run_tag}"
+            --train-ens2
+            "${EXTRA_ARGS[@]}"
+          )
+          if [[ "$need_train" -eq 1 ]]; then
+            echo "[train] ${train_cmd[*]}"
+            if [[ "$DRY_RUN" -eq 0 ]]; then
+              "${train_cmd[@]}"
+            fi
+          else
+            echo "[skip] checkpoint exists: ${checkpoint_path}"
           fi
-        else
-          echo "[skip] eval outputs exist: ${eval_summary_json}"
-        fi
+
+          for ds in "${DOWNSAMPLES[@]}"; do
+            eval_model "${model_name}" "${model_dir}" "${ds}" "${need_train}"
+          done
+        done
       done
     done
   done
-done
-
-# Baseline: evaluate the stock/published model once at the end (ENS2-only).
-baseline_out="${EVAL_ROOT}/baseline_ens2_published"
-baseline_summary_json="${baseline_out}/summary.json"
-baseline_summary_csv="${baseline_out}/summary.csv"
-baseline_cmd=(
-  python scripts/eval_ens2_dir.py
-  --ens2-root "results/Pretrained_models/ens2_published"
-  --dataset-dir "${DATASET_DIR}"
-  --corr-sigma-ms "${CORR_SIGMA_MS}"
-  --no-cache
-  "${EDGES_ARGS[@]}"
-  --out-dir "${baseline_out}"
-)
-echo "[baseline] ${baseline_cmd[*]}"
-if [[ -f "$baseline_summary_json" && -f "$baseline_summary_csv" && "$FORCE_EVAL" -eq 0 ]]; then
-  echo "[skip] baseline eval outputs exist: ${baseline_summary_json}"
-else
-  if [[ "$DRY_RUN" -eq 0 ]]; then
-    "${baseline_cmd[@]}"
-  fi
 fi
+
+# Baseline: evaluate the stock/published model once per downsample setting (ENS2-only).
+for ds in "${DOWNSAMPLES[@]}"; do
+  ds_dir="$(format_downsample_dir "$ds")"
+  baseline_out="${EVAL_ROOT}/${ds_dir}/baseline_ens2_published"
+  baseline_summary_json="${baseline_out}/summary.json"
+  baseline_summary_csv="${baseline_out}/summary.csv"
+  baseline_cmd=(
+    python scripts/eval_ens2_dir.py
+    --ens2-root "results/Pretrained_models/ens2_published"
+    --dataset-dir "${DATASET_DIR}"
+    --corr-sigma-ms "${CORR_SIGMA_MS}"
+    --no-cache
+    "${EDGES_ARGS[@]}"
+    --out-dir "${baseline_out}"
+  )
+  if [[ "$ds_dir" != "raw" ]]; then
+    baseline_cmd+=(--smoothing "${ds}")
+  fi
+  echo "[baseline] ${baseline_cmd[*]}"
+  if [[ -f "$baseline_summary_json" && -f "$baseline_summary_csv" && "$FORCE_EVAL" -eq 0 ]]; then
+    echo "[skip] baseline eval outputs exist: ${baseline_summary_json}"
+  else
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      "${baseline_cmd[@]}"
+    fi
+  fi
+done

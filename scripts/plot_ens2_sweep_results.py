@@ -20,15 +20,24 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# In some sandboxed/HPC environments Intel OpenMP shared-memory init can fail (e.g. "Can't open SHM2"),
+# which can crash matplotlib during rendering. Using MKL's sequential threading avoids that.
+os.environ.setdefault("MKL_THREADING_LAYER", "SEQ")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 import numpy as np
 
 
 MODEL_RE = re.compile(
-    r"k(?P<k>\\d+)_r(?P<rate>\\d+)_s(?P<smooth>[0-9]+p[0-9]+)_d(?P<duty>[0-9]+p[0-9]+)_sb(?P<seed>\\d+)"
+    r"k(?P<k>\d+)_r(?P<rate>\d+)_s(?P<smooth>[0-9]+p[0-9]+)_d(?P<duty>[0-9]+p[0-9]+)_sb(?P<seed>\d+)"
 )
 
 
@@ -162,7 +171,15 @@ def main() -> None:
         print(f"[viz] Baseline {baseline[0]}: {args.metric}={baseline[1]:.4f}")
 
     # Optional plotting
+    # In many HPC/shared environments, ~/.cache is not writable and matplotlib may fail when
+    # building its font cache. Point MPLCONFIGDIR at a writable location under out_dir.
+    mpl_config_dir = out_dir / ".mplconfig"
+    mpl_config_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("MPLCONFIGDIR", str(mpl_config_dir))
     try:
+        import matplotlib
+
+        matplotlib.use("Agg", force=True)
         import matplotlib.pyplot as plt
     except Exception as exc:
         print(f"[viz] Matplotlib unavailable ({exc}); wrote CSV only.")

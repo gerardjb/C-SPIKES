@@ -698,7 +698,8 @@ class ENS2(object):
                     is_earlystop = 1
                     
                 # gather status
-                t.set_description(inputs+' '+nets+' ['+losses+': %.2g]' % loss.item())
+                # Avoid forcing a refresh every iteration; let tqdm's mininterval/miniters control output.
+                t.set_description(inputs+' '+nets+' ['+losses+': %.2g]' % loss.item(), refresh=is_tty)
 
                 self.DATA[dsets-1]['loss'].append(loss.item())
                 
