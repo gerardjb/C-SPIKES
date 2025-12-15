@@ -1,10 +1,108 @@
 # C-SPIKES usage guide
 
-This repository bundles multiple spike-inference backends (PGAS, ENS2, CASCADE) and a lightweight Python API for running and comparing them on your own calcium imaging data.
+This repository bundles multiple spike-inference backends (PGAS, ENS2, CASCADE) and a Python API for running and comparing them on your own calcium imaging data.
+
+## Installation (build PGAS + deps)
+PGAS is a compiled C++/pybind extension. The quickest path on Linux/HPC is:
+
+1. Install C++ deps via vcpkg (see `kokkos_install.md` for the exact commands/pins used in this repo).
+2. Install the Python package in editable mode (builds the extension):
+   ```bash
+   pip install -e .
+   ```
+
+Check that the extension imports:
+```bash
+python -c "import c_spikes.pgas.pgas_bound as p; print('pgas_bound OK')"
+```
 
 ## Data expectations
-- Input files: MATLAB `.mat` containing at least `time_stamps` (trials × samples) and `dff` (trials × samples). Optional `spike_times` (1D, seconds) enables correlation against ground truth.
+- Input files: MATLAB `.mat` containing at least `time_stamps` (trials × samples, seconds) and `dff` (trials × samples). NaN padding is OK (it’s dropped per trial).
+- Optional ground truth spikes: `ap_times` (1D, seconds). If you don’t have GT, store an empty array; correlations-to-GT will be unavailable/NaN.
 - Optional per-trial windows: an `edges` array (shape n_trials × 2, seconds) to trim data before inference. See `extract_time_stamp_edges.py` for generating these from existing recordings.
+
+### Bring your own `.mat`
+Most scripts use `c_spikes.utils.load_Janelia_data`, which expects keys `time_stamps`, `dff`, and `ap_times`. If your data uses different names, the easiest path is to export a normalized `.mat` with these keys.
+
+Example exporter (Python):
+```python
+import scipy.io as sio
+
+sio.savemat("data/my_data/my_recording.mat", {
+  "time_stamps": time_stamps,  # (n_trials, n_samples), seconds
+  "dff": dff,                  # (n_trials, n_samples)
+  "ap_times": ap_times,         # (n_spikes,), seconds (or empty)
+})
+```
+
+## PGAS on your data (produce `param_samples_*.dat`)
+To run PGAS and write its output files (including `param_samples_*.dat` used for distillation), the easiest entrypoint is `scripts/demo_compare_methods.py` with ENS2/CASCADE disabled:
+
+```bash
+python scripts/demo_compare_methods.py \
+  --dataset data/my_data/my_recording.mat \
+  --skip-ens2 --skip-cascade \
+  --pgas-output-root results/pgas_output/my_run \
+  --pgas-bm-sigma auto \
+  --pgas-resample 120
+```
+
+Notes:
+- Windowing: restrict PGAS (and correlations) to a time window using either `--start-time/--end-time` or an `--edges-file`.
+- Sensor parameters: for new sensors (e.g. jGCaMP8m), point PGAS at your sensor-specific files via `--pgas-constants` and `--pgas-gparam`.
+
+Where outputs go:
+- `results/pgas_output/<run>/traj_samples_<tag>.dat` + `logp_<tag>.dat` (PGAS trajectories)
+- `results/pgas_output/<run>/param_samples_<tag>.dat` (parameter samples; pass these into `demo_pgas_to_ens2.py`)
+
+`<tag>` is the per-trial PGAS tag and typically ends in `_trial0`, `_trial1`, … (and also includes smoothing/resample/bm_sigma tokens).
+
+## Distill PGAS → custom ENS2 (synthetic training)
+Once you have one or more `param_samples_*.dat` files, you can generate synthetic ground-truth datasets and train a custom ENS2 checkpoint:
+
+```bash
+python scripts/demo_pgas_to_ens2.py \
+  --param-samples results/pgas_output/my_run/param_samples_<tag>.dat \
+  --model-name ens2_custom_my_run \
+  --train-ens2
+```
+
+Repeat `--param-samples ...` to train on multiple cell parameter sets (each will generate its own `results/Ground_truth/synth_*` directory).
+Add `--run-compare --dataset <path.mat>` to automatically run a quick stock-vs-custom ENS2 comparison after training.
+
+Useful parameters when matching your dataset’s spike statistics:
+- `--burnin` (discard early PGAS samples, we find ~100 is typically enough to get a stable posterior, but plotting parameter values against iterations can reveal if you need more/less on your own data)
+- `--spike-rate` and `--spike-params <smooth_sec> <duty_fraction>`
+- `--noise-dir`, `--noise-fraction`, `--noise-seed` / `--noise-seed-base`
+- `--gparam-path` (sensor-specific fluorescence model used by `syn_gen`)
+- `--synth-tag-suffix` (avoid reusing `results/Ground_truth/synth_*` directories across sweeps)
+
+Outputs:
+- Synthetic datasets: `results/Ground_truth/synth_<tag>/...`
+- Custom ENS2 checkpoint: `results/Pretrained_models/<model-name>/exc_ens2_pub.pt` (or `inh_...`)
+- Provenance: `results/Pretrained_models/<model-name>/ens2_manifest.json`
+
+## Evaluate a custom ENS2 (single file or whole directory)
+Single dataset quick check (runs stock + custom ENS2 and prints correlations):
+```bash
+python scripts/demo_compare_methods.py \
+  --dataset data/my_data/my_recording.mat \
+  --ens2-pretrained-root results/Pretrained_models/ens2_published \
+  --ens2-custom-root results/Pretrained_models/<model-name> \
+  --skip-pgas --skip-cascade
+```
+
+Directory evaluation (ENS2-only, writes `summary.json` + `summary.csv`):
+```bash
+python scripts/eval_ens2_dir.py \
+  --ens2-root results/Pretrained_models/<model-name> \
+  --dataset-dir data/my_data \
+  --out-dir results/ens2_eval/<model-name>__my_data \
+  --corr-sigma-ms 50 \
+  --no-cache
+```
+
+Add `--smoothing <Hz>` (e.g. `--smoothing 30`) to evaluate on downsampled inputs.
 
 ## Core Python API
 All reusable pieces live under `c_spikes/inference`:
@@ -57,6 +155,19 @@ python scripts/demo_compare_methods.py \
   --pgas-resample 120 \
   --cascade-resample 30 \
   --edges-file results/excitatory_time_stamp_edges.npy
+```
+
+## Batch runs across a directory
+The batch pipeline (`python run_pipeline.py` or `python -m c_spikes.cli.run`) can run PGAS/ENS2/CASCADE across many `.mat` files and multiple smoothing/downsample settings:
+
+```bash
+python run_pipeline.py \
+  --data-root data/my_data \
+  --dataset-glob '*.mat' \
+  --smoothing-level raw --smoothing-level 30Hz \
+  --method pgas --method ens2 --method cascade \
+  --pgas-output-root results/pgas_output/my_run \
+  --output-root results/full_evaluation/my_run
 ```
 
 ## Notes on defaults
