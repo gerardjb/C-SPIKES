@@ -16,6 +16,19 @@ Check that the extension imports:
 python -c "import c_spikes.pgas.pgas_bound as p; print('pgas_bound OK')"
 ```
 
+## Pretrained models
+This repo ships pretrained model bundles under `Pretrained_models/` at the repo root:
+- ENS2 published checkpoints: `Pretrained_models/ens2_published/`
+- CASCADE Universal (30 Hz): `Pretrained_models/Cascade_Universal_30Hz/`
+
+Some entrypoints (notably `run_pipeline.py` and CASCADE in `scripts/demo_compare_methods.py`) still
+default to looking under `results/Pretrained_models/`. If you keep models in `Pretrained_models/`
+and don’t want to edit code, the simplest fix is a symlink:
+```bash
+mkdir -p results
+ln -s ../Pretrained_models results/Pretrained_models
+```
+
 ## Data expectations
 - Input files: MATLAB `.mat` containing at least `time_stamps` (trials × samples, seconds) and `dff` (trials × samples). NaN padding is OK (it’s dropped per trial).
 - Optional ground truth spikes: `ap_times` (1D, seconds). If you don’t have GT, store an empty array; correlations-to-GT will be unavailable/NaN.
@@ -63,12 +76,14 @@ Once you have one or more `param_samples_*.dat` files, you can generate syntheti
 ```bash
 python scripts/demo_pgas_to_ens2.py \
   --param-samples results/pgas_output/my_run/param_samples_<tag>.dat \
+  --model-root Pretrained_models \
   --model-name ens2_custom_my_run \
   --train-ens2
 ```
 
 Repeat `--param-samples ...` to train on multiple cell parameter sets (each will generate its own `results/Ground_truth/synth_*` directory).
 Add `--run-compare --dataset <path.mat>` to automatically run a quick stock-vs-custom ENS2 comparison after training.
+If you didn’t create the symlink above, also pass `--stock-ens2-root Pretrained_models/ens2_published`.
 
 Useful parameters when matching your dataset’s spike statistics:
 - `--burnin` (discard early PGAS samples, we find ~100 is typically enough to get a stable posterior, but plotting parameter values against iterations can reveal if you need more/less on your own data)
@@ -79,23 +94,23 @@ Useful parameters when matching your dataset’s spike statistics:
 
 Outputs:
 - Synthetic datasets: `results/Ground_truth/synth_<tag>/...`
-- Custom ENS2 checkpoint: `results/Pretrained_models/<model-name>/exc_ens2_pub.pt` (or `inh_...`)
-- Provenance: `results/Pretrained_models/<model-name>/ens2_manifest.json`
+- Custom ENS2 checkpoint: `<model-root>/<model-name>/exc_ens2_pub.pt` (or `inh_...`)
+- Provenance: `<model-root>/<model-name>/ens2_manifest.json`
 
 ## Evaluate a custom ENS2 (single file or whole directory)
 Single dataset quick check (runs stock + custom ENS2 and prints correlations):
 ```bash
 python scripts/demo_compare_methods.py \
   --dataset data/my_data/my_recording.mat \
-  --ens2-pretrained-root results/Pretrained_models/ens2_published \
-  --ens2-custom-root results/Pretrained_models/<model-name> \
+  --ens2-pretrained-root Pretrained_models/ens2_published \
+  --ens2-custom-root Pretrained_models/<model-name> \
   --skip-pgas --skip-cascade
 ```
 
 Directory evaluation (ENS2-only, writes `summary.json` + `summary.csv`):
 ```bash
 python scripts/eval_ens2_dir.py \
-  --ens2-root results/Pretrained_models/<model-name> \
+  --ens2-root Pretrained_models/<model-name> \
   --dataset-dir data/my_data \
   --out-dir results/ens2_eval/<model-name>__my_data \
   --corr-sigma-ms 50 \
@@ -131,8 +146,8 @@ outputs = run_inference_for_dataset(
     pgas_constants=Path("parameter_files/constants_GCaMP8_soma.json"),
     pgas_gparam=Path("src/c_spikes/pgas/20230525_gold.dat"),
     pgas_output_root=Path("results/pgas_output/my_runs"),
-    ens2_pretrained_root=Path("results/Pretrained_models/ens2_published"),
-    cascade_model_root=Path("results/Pretrained_models"),
+    ens2_pretrained_root=Path("Pretrained_models/ens2_published"),
+    cascade_model_root=Path("Pretrained_models"),
 )
 print(outputs["correlations"])
 ```
