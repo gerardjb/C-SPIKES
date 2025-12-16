@@ -44,7 +44,6 @@ kokkos-tools/
 slurm-*.out
 
 # Outputs for syn_gen and cascade
-Pretrained_models/*
 Ground_truth/*
 
 # Outputs for pgas test, when run outside of pytest.
