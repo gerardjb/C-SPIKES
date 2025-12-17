@@ -19,23 +19,16 @@ __pycache__
 Ground_truth/*
 data/
 
+# Misc in codebase
 vcpkg/
-
 .vscode/
-
-sample_data/output/
-
 src/c_spikes/_version.py
-
 profiles/
-
 results/
-
 gt_noise_dir/
-
 gt_data/
-
 logs/
+tmp/
 
 # kokkos tools
 kokkos-tools/
