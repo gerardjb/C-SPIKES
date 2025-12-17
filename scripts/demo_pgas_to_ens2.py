@@ -22,6 +22,7 @@ from typing import List, Sequence
 
 from c_spikes.syn_gen import build_synthetic_ground_truth_batch
 from c_spikes.ens2 import train_model
+from c_spikes.syn_gen.noise_preprocess import prepare_noise_dir
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,6 +49,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Noise directory for syn_gen (default: syn_gen/gt_noise_dir).",
+    )
+    p.add_argument(
+        "--noise-target-fs",
+        type=float,
+        default=None,
+        help=(
+            "If set, preprocess the syn_gen noise directory to this sampling rate (Hz) before synthesis. "
+            "Writes a cached copy under results/inference_cache/noise_downsample/ and uses it for syn_gen."
+        ),
     )
     p.add_argument(
         "--gparam-path",
@@ -155,6 +165,19 @@ def main() -> None:
     if args.noise_seed_base is not None and args.noise_seed is not None:
         raise ValueError("Provide only one of --noise-seed or --noise-seed-base.")
 
+    resolved_noise_dir: Path | None = None
+    if args.noise_target_fs is not None:
+        import c_spikes.syn_gen as syn_gen_pkg
+
+        syn_gen_dir = Path(syn_gen_pkg.__file__).resolve().parent
+        if args.noise_dir is None:
+            resolved_noise_dir = syn_gen_dir / "gt_noise_dir"
+        else:
+            resolved_noise_dir = args.noise_dir
+            if not resolved_noise_dir.is_absolute():
+                resolved_noise_dir = syn_gen_dir / resolved_noise_dir
+        resolved_noise_dir = prepare_noise_dir(resolved_noise_dir, target_fs=float(args.noise_target_fs))
+
     manifest_path = (
         args.manifest
         if args.manifest is not None
@@ -177,7 +200,7 @@ def main() -> None:
                 "burnin": args.burnin,
                 "spike_rate": args.spike_rate,
                 "spike_params": args.spike_params,
-                "noise_dir": args.noise_dir,
+                "noise_dir": resolved_noise_dir if resolved_noise_dir is not None else args.noise_dir,
                 "noise_fraction": args.noise_fraction,
                 "noise_seed": noise_seed,
                 "tag": tag,

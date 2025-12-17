@@ -46,8 +46,8 @@ CELLS=(
 )
 DATASET_DIR="data/janelia_8f/excitatory"
 EDGES_FILE=""
-MODEL_ROOT="results/Pretrained_models"
-EVAL_ROOT=""
+MODEL_ROOT="results/Pretrained_models/ens2_sweep_noise_resample"
+EVAL_ROOT="results/ens2_sweep_eval/noise_resamp__excitatory"
 SEED_START=0
 SEED_STRIDE=1000
 CORR_SIGMA_MS=50.0
@@ -55,7 +55,7 @@ FORCE_TRAIN=0
 FORCE_EVAL=0
 EVAL_EXISTING=0
 DRY_RUN=0
-DOWNSAMPLES=("raw")
+DOWNSAMPLES=()
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
