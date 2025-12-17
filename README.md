@@ -70,6 +70,23 @@ Where outputs go:
 
 `<tag>` is the per-trial PGAS tag and typically ends in `_trial0`, `_trial1`, … (and also includes smoothing/resample/bm_sigma tokens).
 
+### Example: batch PGAS on jGCaMP8m
+If you have jGCaMP8m-formatted datasets under `data/janelia_8m/excitatory/`, you can run PGAS across the whole directory via the batch CLI:
+```bash
+python -m c_spikes.cli.run \
+  --data-root data/janelia_8m/excitatory \
+  --edges-path results/excitatory_jG8m_edges_2000pts.npy \
+  --pgas-constants parameter_files/constants_GCaMP8m_soma.json \
+  --pgas-gparam src/c_spikes/pgas/20251207_jG8m_params.dat \
+  --pgas-output-root results/pgas_output/j8m_base \
+  --pgas-bm-sigma auto \
+  --method pgas \
+  --smoothing-level raw
+```
+Notes:
+- `--smoothing-level raw` means “native sampling rate”; omit `--smoothing-level` to run `raw`, `30Hz`, and `10Hz`.
+- Remove `--method pgas` to run ENS2/CASCADE too (requires the `results/Pretrained_models` symlink above if you keep models in repo-root `Pretrained_models/`).
+
 ## Distill PGAS → custom ENS2 (synthetic training)
 Once you have one or more `param_samples_*.dat` files, you can generate synthetic ground-truth datasets and train a custom ENS2 checkpoint:
 
