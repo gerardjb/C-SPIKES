@@ -104,6 +104,24 @@ def _normalize_methods(methods: Iterable[str]) -> List[str]:
     return normalized
 
 
+def _count_samples(discrete_spikes: object) -> int:
+    """
+    Convert a per-sample spike series into an integer "sample count" for summaries.
+
+    Some backends may yield arrays containing NaNs (e.g. padding/misalignment artifacts);
+    treat those as missing and avoid crashing the batch run.
+    """
+    if discrete_spikes is None:
+        return 0
+    arr = np.asarray(discrete_spikes)
+    if arr.size == 0:
+        return 0
+    total = float(np.nansum(arr.astype(np.float64, copy=False)))
+    if not np.isfinite(total):
+        return 0
+    return int(total)
+
+
 def run_batch(cfg: RunConfig) -> List[Path]:
     """
     Run the selected methods across datasets/smoothing levels and emit summaries.
@@ -185,9 +203,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                         "pgas_maxspikes": pgas_result.metadata.get("maxspikes"),
                         "pgas_maxspikes_per_bin": pgas_result.metadata.get("maxspikes_per_bin"),
                         "pgas_input_resample_fs": pgas_result.metadata.get("input_resample_fs"),
-                        "pgas_samples": int(np.sum(pgas_result.discrete_spikes))
-                        if pgas_result.discrete_spikes is not None
-                        else 0,
+                        "pgas_samples": _count_samples(pgas_result.discrete_spikes),
                     }
                 )
             if "ens2" in methods:
@@ -195,9 +211,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 summary.update(
                     {
                         "ens2_cache": ens2_result.metadata.get("config", {}),
-                        "ens2_samples": int(np.sum(ens2_result.discrete_spikes))
-                        if ens2_result.discrete_spikes is not None
-                        else 0,
+                        "ens2_samples": _count_samples(ens2_result.discrete_spikes),
                     }
                 )
             if "cascade" in methods:
@@ -208,9 +222,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                         "cascade_input_resample_fs": cascade_result.metadata.get(
                             "input_resample_fs", CASCADE_RESAMPLE_FS
                         ),
-                        "cascade_samples": int(np.sum(cascade_result.discrete_spikes))
-                        if cascade_result.discrete_spikes is not None
-                        else 0,
+                        "cascade_samples": _count_samples(cascade_result.discrete_spikes),
                     }
                 )
             summary["gt_count"] = int(outputs.get("summary", {}).get("gt_count", 0))
