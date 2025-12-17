@@ -1,6 +1,6 @@
-# C-SPIKES (**C**alcium **S**pike **P**rocessing using **I**ntegrated **K**inetic **E**stimation and **S**imulation) usage guide
+# C-SPIKES usage guide
 
-This repository bundles multiple spike-inference backends (PGAS, ENS2, CASCADE) and a Python API for running and comparing them on your own calcium imaging data.
+The C-SPIKES (**C**alcium **S**pike **P**rocessing using **I**ntegrated **K**inetic **E**stimation and **S**imulation) repository bundles multiple spike-inference backends (PGAS, ENS2, CASCADE) and a Python API for running and comparing them on your own calcium imaging data.
 
 ## Installation (build PGAS + deps)
 PGAS is a compiled C++/pybind extension. The quickest path on Linux/HPC is:
