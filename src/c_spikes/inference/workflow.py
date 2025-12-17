@@ -21,7 +21,7 @@ from .pgas import (
     trim_trials_by_edges,
 )
 from .smoothing import mean_downsample_trace, resample_trials_to_fs
-from .types import MethodResult, TrialSeries, ensure_serializable, extract_spike_times, flatten_trials
+from .types import MethodResult, TrialSeries, compute_sampling_rate, ensure_serializable, extract_spike_times, flatten_trials
 
 
 @dataclass
@@ -56,7 +56,7 @@ class DatasetRunConfig:
     bm_sigma_gap_s: float = 0.15
     corr_sigma_ms: float = 50.0
     pgas_resample_fs: Optional[float] = None  # None => use raw/native
-    cascade_resample_fs: Optional[float] = None  # None => default CASCADE_RESAMPLE_FS
+    cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
     pgas_fixed_bm_sigma: Optional[float] = None  # Optional fixed bm_sigma (skip tuning)
 
 
@@ -136,6 +136,8 @@ def run_inference_for_dataset(
         down_time_flat, down_trace_flat = flatten_trials(trials_for_methods)
         downsample_label = cfg.smoothing.label or f"{cfg.smoothing.target_fs:.2f}"
 
+    down_fs = compute_sampling_rate(down_time_flat)
+
     ens2_time_array, ens2_trace_array, ens2_lengths = _pad_trials_to_arrays(trials_for_methods)
 
     methods: Dict[str, MethodResult] = {}
@@ -185,7 +187,7 @@ def run_inference_for_dataset(
         ens2_result = None
 
     if cfg.selection.run_cascade:
-        cascade_fs = cfg.cascade_resample_fs or CASCADE_RESAMPLE_FS
+        cascade_fs = down_fs if cfg.cascade_resample_fs is None else float(cfg.cascade_resample_fs)
         cascade_trials = resample_trials_to_fs(trials_for_methods, cascade_fs)
         cascade_cfg = CascadeConfig(
             dataset_tag=dataset_tag,
@@ -282,7 +284,9 @@ def run_inference_for_dataset(
         "downsample_target": downsample_label,
         "correlations": {k: float(v) for k, v in correlations.items()},
         "pgas_input_resample_fs": PGAS_RESAMPLE_FS if pgas_result is not None else None,
-        "cascade_input_resample_fs": CASCADE_RESAMPLE_FS if cascade_result is not None else None,
+        "cascade_input_resample_fs": (
+            cascade_result.metadata.get("input_resample_fs") if cascade_result is not None else None
+        ),
         "gt_count": int(spike_times.size),
     }
     if pgas_result is not None:

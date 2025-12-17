@@ -65,7 +65,12 @@ def parse_args() -> argparse.Namespace:
         help="Fixed PGAS bm_sigma value, or 'auto' to estimate from data (default: fixed).",
     )
     parser.add_argument("--pgas-resample", type=float, default=None, help="PGAS resample Hz (None=use native).")
-    parser.add_argument("--cascade-resample", type=float, default=None, help="CASCADE resample Hz (default model: 30).")
+    parser.add_argument(
+        "--cascade-resample",
+        type=float,
+        default=None,
+        help="CASCADE input resample Hz (default: None => use input sampling rate).",
+    )
     parser.add_argument("--edges-file", type=Path, help="Optional edges npy (dict dataset->edges) for trimming.")
     parser.add_argument("--start-time", type=float, help="Manual trim start (sec).")
     parser.add_argument("--end-time", type=float, help="Manual trim end (sec).")

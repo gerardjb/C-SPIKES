@@ -205,7 +205,7 @@ python run_pipeline.py \
 ## Notes on defaults
 - Smoothing: `SmoothingLevel(target_fs=None)` keeps native rate; a number (e.g., 30) down-samples before inference and defines the reference grid.
 - PGAS resample: `None` uses native sampling; set explicitly (e.g., 120) to force resampling.
-- CASCADE resample: defaults to 30 Hz to match the shipped model; override only if using a compatible model.
+- CASCADE resample: defaults to the input sampling rate (no forced resampling); use `--cascade-resample` (demo) or `--cascade-resample-fs` (batch CLI) to force a specific Hz.
 - ENS2 uses your provided traces as-is; choose `neuron_type` (`Exc`/`Inh`) to select the checkpoint.
 
 ## Where to look next

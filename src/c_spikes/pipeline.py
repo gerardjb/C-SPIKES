@@ -48,6 +48,7 @@ class RunConfig:
     pgas_gparam: Path = Path("src/c_spikes/pgas/20230525_gold.dat")
     pgas_output_root: Path = Path("results/pgas_output/comparison")
     pgas_resample_fs: Optional[float] = None
+    cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
     pgas_maxspikes: Optional[int] = None
     pgas_fixed_bm_sigma: Optional[float] = PGAS_BM_SIGMA_DEFAULT
     run_tag: Optional[str] = None  # optional override
@@ -83,7 +84,10 @@ def _build_run_tag(cfg: RunConfig) -> str:
             pgas_token = f"{pgas_token}_c0y"
         tokens.append(pgas_token)
     if "cascade" in methods:
-        tokens.append(f"cascade{_format_token(CASCADE_RESAMPLE_FS)}")
+        if cfg.cascade_resample_fs is None:
+            tokens.append("cascadein")
+        else:
+            tokens.append(f"cascade{_format_token(cfg.cascade_resample_fs)}")
     if "ens2" in methods:
         tokens.append("ens2")
     return "_".join(tokens) if tokens else "no_methods"
@@ -161,6 +165,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 use_cache=cfg.use_cache,
                 bm_sigma_gap_s=cfg.bm_sigma_spike_gap,
                 pgas_resample_fs=cfg.pgas_resample_fs,
+                cascade_resample_fs=cfg.cascade_resample_fs,
                 pgas_fixed_bm_sigma=cfg.pgas_fixed_bm_sigma,
             )
             outputs = run_inference_for_dataset(

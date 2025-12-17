@@ -78,6 +78,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Fixed PGAS bm_sigma value, or 'auto' to estimate from data (default: fixed).",
     )
     parser.add_argument("--pgas-resample-fs", type=float, help="PGAS resample frequency (Hz). (deprecated, kept for compatibility)")
+    parser.add_argument(
+        "--cascade-resample-fs",
+        type=float,
+        default=None,
+        help="CASCADE input resample frequency (Hz). Default: None (use input sampling rate).",
+    )
     parser.add_argument("--pgas-maxspikes", type=int, help="PGAS maxspikes override.")
     parser.add_argument("--pgas-c0-first-y", action="store_true", help="Initialize PGAS C0 to first observation.")
     parser.add_argument("--run-tag", type=str, help="Optional run-tag override for output directory naming.")
@@ -113,6 +119,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         pgas_gparam=args.pgas_gparam,
         pgas_output_root=args.pgas_output_root,
         pgas_resample_fs=args.pgas_resample_fs,
+        cascade_resample_fs=args.cascade_resample_fs,
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),
