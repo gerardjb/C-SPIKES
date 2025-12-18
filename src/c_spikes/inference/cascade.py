@@ -22,6 +22,7 @@ class CascadeConfig:
     resample_fs: float = CASCADE_RESAMPLE_FS
     downsample_label: str = "raw"
     use_cache: bool = True
+    discretize: bool = True
 
 
 def run_cascade_inference(
@@ -62,6 +63,7 @@ def run_cascade_inference(
         "model_name": config.model_name,
         "downsample_target": config.downsample_label,
         "input_resample_fs": config.resample_fs,
+        "discretize": bool(config.discretize),
     }
 
     if config.use_cache:
@@ -85,31 +87,39 @@ def run_cascade_inference(
         reuse_models=True,
     )
 
-    approximations, spike_lists = infer_discrete_spikes(
-        pred_rate, config.model_name, model_folder=str(config.model_folder)
-    )
-    discrete_matrix = np.zeros_like(pred_rate, dtype=float)
-    for neuron_idx, spike_list in enumerate(spike_lists):
-        if spike_list is None:
-            continue
-        indices = np.asarray(spike_list, dtype=int)
-        indices = indices[(indices >= 0) & (indices < discrete_matrix.shape[1])]
-        discrete_matrix[neuron_idx, indices] += 1
+    discrete_matrix = None
+    if config.discretize:
+        approximations, spike_lists = infer_discrete_spikes(
+            pred_rate, config.model_name, model_folder=str(config.model_folder)
+        )
+        discrete_matrix = np.zeros_like(pred_rate, dtype=float)
+        for neuron_idx, spike_list in enumerate(spike_lists):
+            if spike_list is None:
+                continue
+            indices = np.asarray(spike_list, dtype=int)
+            indices = indices[(indices >= 0) & (indices < discrete_matrix.shape[1])]
+            discrete_matrix[neuron_idx, indices] += 1
 
     # Mask padded regions (if any) with NaN so downstream metrics ignore them.
     for idx, valid_len in enumerate(lengths):
         if valid_len < pred_rate.shape[1]:
             pred_rate[idx, valid_len:] = np.nan
-            discrete_matrix[idx, valid_len:] = np.nan
+            if discrete_matrix is not None:
+                discrete_matrix[idx, valid_len:] = np.nan
 
     from .types import flatten_trials, compute_sampling_rate
 
     time_flat_arr, rate_flat_arr = flatten_trials(
         [TrialSeries(times=time_matrix[idx], values=pred_rate[idx]) for idx in range(pred_rate.shape[0])]
     )
-    _, discrete_flat_arr = flatten_trials(
-        [TrialSeries(times=time_matrix[idx], values=discrete_matrix[idx]) for idx in range(discrete_matrix.shape[0])]
-    )
+    discrete_flat_arr = None
+    if discrete_matrix is not None:
+        _, discrete_flat_arr = flatten_trials(
+            [
+                TrialSeries(times=time_matrix[idx], values=discrete_matrix[idx])
+                for idx in range(discrete_matrix.shape[0])
+            ]
+        )
     fs_est = compute_sampling_rate(time_flat_arr)
     result = MethodResult(
         name="cascade",
@@ -118,6 +128,7 @@ def run_cascade_inference(
         sampling_rate=fs_est,
         metadata={
             "input_resample_fs": config.resample_fs,
+            "discretize": bool(config.discretize),
             "cache_tag": cache_tag,
             "config": ensure_serializable(cfg_dict),
         },

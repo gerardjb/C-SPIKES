@@ -86,29 +86,66 @@ def unroll_mean_pgas_traj(dat_file, logprob_file, burnin=100):
         spikes_mean (np.ndarray): Discretized spike number per time bin.
         C_mean (np.ndarray): "Calcium" value, akin to DFF.
     """
-    #Loading data
-    data = np.genfromtxt(dat_file, delimiter=',', skip_header=1)
-    logprob = np.genfromtxt(logprob_file)
+    # Loading data
+    data = np.genfromtxt(dat_file, delimiter=",", skip_header=1)
+    if data.ndim == 1:
+        data = np.asarray([data], dtype=float)
+    logprob = np.atleast_1d(np.genfromtxt(logprob_file))
+    logprob = np.asarray(logprob, dtype=float).ravel()
+    if logprob.size == 0:
+        raise ValueError(f"Empty logprob file: {logprob_file}")
 
-    #Dealing out data
-    index = data[:,0]
-    burst = data[:,1]
-    B = data[:,2]
-    S = data[:,3]
-    C = data[:,4]
+    # Dealing out data
+    index = data[:, 0]
+    burst = data[:, 1]
+    B = data[:, 2]
+    S = data[:, 3]
+    C = data[:, 4]
 
-    # Reshape on trajectory indices and average across
-    S_mat = S.reshape((-1,np.sum(index==0))).T
-    spikes_mean = np.mean(S_mat[:,burnin:-1],axis=1)
-    burst_mat = burst.reshape((-1,np.sum(index==0))).T
-    burst_mean = np.mean(burst_mat[:,burnin:-1],axis=1)
-    B_mat = B.reshape((-1,np.sum(index==0))).T
-    baseline_mean = np.mean(B_mat[:,burnin:-1],axis=1)
-    C_mat = C.reshape((-1,np.sum(index==0))).T
-    C_mean = np.mean(C_mat[:,burnin:-1],axis=1)
+    # The PGAS trajectory dump is organized as:
+    #   for each time index, values for all trajectory samples are listed.
+    # Therefore the natural reshape is (n_time, n_samples) = (-1, count(index==0)).
+    n_total_samples = int(np.sum(index == 0))
+    n_samples = n_total_samples
+    if n_samples <= 1:
+        raise ValueError(
+            f"PGAS traj file has too few samples (n_samples={n_samples}) to compute mean/MAP: {dat_file}"
+        )
+    n_time = int(data.shape[0] // n_samples)
+    if n_time * n_samples != data.shape[0]:
+        raise ValueError(
+            f"PGAS traj file size {data.shape[0]} is not divisible by n_samples={n_samples}: {dat_file}"
+        )
+
+    # If the logprob length doesn't match, truncate to the shortest so we can still compute a MAP.
+    if logprob.size != n_samples:
+        n_common = min(n_samples, int(logprob.size))
+        if n_common <= 1:
+            raise ValueError(
+                f"PGAS logprob length {logprob.size} does not match n_samples={n_samples}: {logprob_file}"
+            )
+        n_samples = n_common
+        logprob = logprob[:n_samples]
+
+    S_mat = S.reshape((-1, n_total_samples))[:, :n_samples]
+    burst_mat = burst.reshape((-1, n_total_samples))[:, :n_samples]
+    B_mat = B.reshape((-1, n_total_samples))[:, :n_samples]
+    C_mat = C.reshape((-1, n_total_samples))[:, :n_samples]
+
+    burnin_eff = int(max(0, min(int(burnin), n_samples - 1)))
+    sample_slice = slice(burnin_eff, None)
+
+    spikes_mean = np.mean(S_mat[:, sample_slice], axis=1)
+    burst_mean = np.mean(burst_mat[:, sample_slice], axis=1)
+    baseline_mean = np.mean(B_mat[:, sample_slice], axis=1)
+    C_mean = np.mean(C_mat[:, sample_slice], axis=1)
     
     # MAP spike train
-    max_logprob_ind = np.argmax(logprob[burnin:-1]) + burnin
-    spikes_MAP = S_mat[:,max_logprob_ind]
+    post = logprob[sample_slice]
+    if post.size == 0:
+        max_logprob_ind = 0
+    else:
+        max_logprob_ind = int(np.argmax(post)) + burnin_eff
+    spikes_MAP = S_mat[:, max_logprob_ind]
 
     return burst_mean,baseline_mean,spikes_mean,C_mean,spikes_MAP

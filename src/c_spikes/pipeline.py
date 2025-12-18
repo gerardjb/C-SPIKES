@@ -49,6 +49,7 @@ class RunConfig:
     pgas_output_root: Path = Path("results/pgas_output/comparison")
     pgas_resample_fs: Optional[float] = None
     cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
+    cascade_discretize: bool = True
     pgas_maxspikes: Optional[int] = None
     pgas_fixed_bm_sigma: Optional[float] = PGAS_BM_SIGMA_DEFAULT
     run_tag: Optional[str] = None  # optional override
@@ -85,9 +86,12 @@ def _build_run_tag(cfg: RunConfig) -> str:
         tokens.append(pgas_token)
     if "cascade" in methods:
         if cfg.cascade_resample_fs is None:
-            tokens.append("cascadein")
+            cascade_token = "cascadein"
         else:
-            tokens.append(f"cascade{_format_token(cfg.cascade_resample_fs)}")
+            cascade_token = f"cascade{_format_token(cfg.cascade_resample_fs)}"
+        if not cfg.cascade_discretize:
+            cascade_token = f"{cascade_token}_nodisc"
+        tokens.append(cascade_token)
     if "ens2" in methods:
         tokens.append("ens2")
     return "_".join(tokens) if tokens else "no_methods"
@@ -167,6 +171,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 pgas_resample_fs=cfg.pgas_resample_fs,
                 cascade_resample_fs=cfg.cascade_resample_fs,
                 pgas_fixed_bm_sigma=cfg.pgas_fixed_bm_sigma,
+                cascade_discretize=bool(cfg.cascade_discretize),
             )
             outputs = run_inference_for_dataset(
                 ds_cfg,

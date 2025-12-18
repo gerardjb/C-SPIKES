@@ -58,6 +58,7 @@ class DatasetRunConfig:
     pgas_resample_fs: Optional[float] = None  # None => use raw/native
     cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
     pgas_fixed_bm_sigma: Optional[float] = None  # Optional fixed bm_sigma (skip tuning)
+    cascade_discretize: bool = True
 
 
 def run_inference_for_dataset(
@@ -196,6 +197,7 @@ def run_inference_for_dataset(
             resample_fs=cascade_fs,
             downsample_label=downsample_label,
             use_cache=cfg.use_cache,
+            discretize=bool(cfg.cascade_discretize),
         )
         cascade_result = run_cascade_inference(
             trials=cascade_trials,

@@ -84,6 +84,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=None,
         help="CASCADE input resample frequency (Hz). Default: None (use input sampling rate).",
     )
+    parser.add_argument(
+        "--cascade-no-discrete",
+        action="store_true",
+        help="Skip CASCADE discrete-spike inference (avoids slow/hanging discretization; correlations still computed from spike_prob).",
+    )
     parser.add_argument("--pgas-maxspikes", type=int, help="PGAS maxspikes override.")
     parser.add_argument("--pgas-c0-first-y", action="store_true", help="Initialize PGAS C0 to first observation.")
     parser.add_argument("--run-tag", type=str, help="Optional run-tag override for output directory naming.")
@@ -120,6 +125,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         pgas_output_root=args.pgas_output_root,
         pgas_resample_fs=args.pgas_resample_fs,
         cascade_resample_fs=args.cascade_resample_fs,
+        cascade_discretize=bool(not args.cascade_no_discrete),
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),

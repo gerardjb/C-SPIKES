@@ -71,6 +71,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="CASCADE input resample Hz (default: None => use input sampling rate).",
     )
+    parser.add_argument(
+        "--cascade-no-discrete",
+        action="store_true",
+        help="Skip CASCADE discrete-spike inference (avoids slow/hanging discretization; correlations still computed from spike_prob).",
+    )
     parser.add_argument("--edges-file", type=Path, help="Optional edges npy (dict dataset->edges) for trimming.")
     parser.add_argument("--start-time", type=float, help="Manual trim start (sec).")
     parser.add_argument("--end-time", type=float, help="Manual trim end (sec).")
@@ -229,6 +234,7 @@ def main() -> None:
         pgas_resample_fs=args.pgas_resample,
         cascade_resample_fs=args.cascade_resample,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+        cascade_discretize=bool(not args.cascade_no_discrete),
     )
 
     outputs = run_inference_for_dataset(
@@ -258,6 +264,7 @@ def main() -> None:
             pgas_resample_fs=args.pgas_resample,
             cascade_resample_fs=args.cascade_resample,
             pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+            cascade_discretize=bool(not args.cascade_no_discrete),
         )
         custom_outputs = run_inference_for_dataset(
             custom_cfg,
