@@ -76,6 +76,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip CASCADE discrete-spike inference (avoids slow/hanging discretization; correlations still computed from spike_prob).",
     )
+    parser.add_argument(
+        "--trialwise-correlations",
+        action="store_true",
+        help="Also compute per-trial correlations (printed in JSON summary output object).",
+    )
     parser.add_argument("--edges-file", type=Path, help="Optional edges npy (dict dataset->edges) for trimming.")
     parser.add_argument("--start-time", type=float, help="Manual trim start (sec).")
     parser.add_argument("--end-time", type=float, help="Manual trim end (sec).")
@@ -235,6 +240,7 @@ def main() -> None:
         cascade_resample_fs=args.cascade_resample,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
         cascade_discretize=bool(not args.cascade_no_discrete),
+        trialwise_correlations=bool(args.trialwise_correlations),
     )
 
     outputs = run_inference_for_dataset(

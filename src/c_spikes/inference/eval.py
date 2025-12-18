@@ -131,3 +131,58 @@ def compute_correlations(
         denom = np.linalg.norm(x) * np.linalg.norm(y)
         correlations[method.name] = float(np.nan if denom == 0 else np.dot(x, y) / denom)
     return correlations
+
+
+def compute_trialwise_correlations(
+    methods: Sequence[MethodResult],
+    reference_time: np.ndarray,
+    reference_trace: np.ndarray,
+    *,
+    trial_windows: Sequence[Tuple[float, float]],
+    sigma_ms: float = 50.0,
+) -> Dict[str, List[float]]:
+    """
+    Compute a correlation per method per trial window.
+
+    This mirrors compute_correlations(), but returns a list of correlations (one per window)
+    for each method. The prediction smoothing and resampling-to-reference are computed once
+    per method and reused across windows.
+    """
+    reference_time = np.asarray(reference_time, dtype=float).ravel()
+    reference_trace = np.asarray(reference_trace, dtype=float).ravel()
+    if reference_time.shape != reference_trace.shape:
+        raise ValueError(
+            f"reference_time shape {reference_time.shape} does not match reference_trace {reference_trace.shape}"
+        )
+
+    window_masks: List[np.ndarray] = []
+    for start, end in trial_windows:
+        if not np.isfinite(start) or not np.isfinite(end) or end < start:
+            window_masks.append(np.zeros(reference_time.shape, dtype=bool))
+            continue
+        window_masks.append((reference_time >= start) & (reference_time <= end))
+
+    correlations: Dict[str, List[float]] = {}
+    for method in methods:
+        pred_smoothed = smooth_prediction(method.spike_prob, method.sampling_rate, sigma_ms=sigma_ms)
+        aligned = resample_prediction_to_reference(
+            method.time_stamps,
+            pred_smoothed,
+            reference_time,
+            fs_est=method.sampling_rate,
+        )
+        valid_base = np.isfinite(aligned) & np.isfinite(reference_trace)
+        values: List[float] = []
+        for mask in window_masks:
+            valid = valid_base & mask
+            if valid.sum() < 2:
+                values.append(float("nan"))
+                continue
+            x = reference_trace[valid]
+            y = aligned[valid]
+            x = x - np.mean(x)
+            y = y - np.mean(y)
+            denom = np.linalg.norm(x) * np.linalg.norm(y)
+            values.append(float(np.nan if denom == 0 else np.dot(x, y) / denom))
+        correlations[method.name] = values
+    return correlations

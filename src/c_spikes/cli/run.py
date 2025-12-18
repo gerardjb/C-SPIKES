@@ -89,6 +89,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Skip CASCADE discrete-spike inference (avoids slow/hanging discretization; correlations still computed from spike_prob).",
     )
+    parser.add_argument(
+        "--trialwise-correlations",
+        action="store_true",
+        help="Also compute and store per-trial correlations in each summary.json.",
+    )
     parser.add_argument("--pgas-maxspikes", type=int, help="PGAS maxspikes override.")
     parser.add_argument("--pgas-c0-first-y", action="store_true", help="Initialize PGAS C0 to first observation.")
     parser.add_argument("--run-tag", type=str, help="Optional run-tag override for output directory naming.")
@@ -130,6 +135,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),
         run_tag=args.run_tag,
+        trialwise_correlations=bool(args.trialwise_correlations),
     )
 
     summaries = run_batch(cfg)

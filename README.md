@@ -136,6 +136,16 @@ python scripts/eval_ens2_dir.py \
 
 Add `--smoothing <Hz>` (e.g. `--smoothing 30`) to evaluate on downsampled inputs.
 
+### Trial-wise correlations
+Batch runs can also store per-trial correlations (one correlation per epoch/window):
+```bash
+python -m c_spikes.cli.run --trialwise-correlations ...
+```
+For existing results, you can compute these retroactively from cached outputs:
+```bash
+python scripts/trialwise_correlations.py --data-root data/my_data --eval-root results/full_evaluation --edges-path <edges.npy>
+```
+
 ## Core Python API
 All reusable pieces live under `c_spikes/inference`:
 - `workflow.run_inference_for_dataset(cfg, …)` orchestrates loading a dataset, optional downsampling, running PGAS/ENS2/CASCADE, computing correlations, and returning `MethodResult` objects plus summary metadata.

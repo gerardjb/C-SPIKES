@@ -10,7 +10,7 @@ from c_spikes.utils import load_Janelia_data
 
 from .cascade import CASCADE_RESAMPLE_FS, CascadeConfig, run_cascade_inference
 from .ens2 import Ens2Config, run_ens2_inference
-from .eval import build_ground_truth_series, compute_correlations
+from .eval import build_ground_truth_series, compute_correlations, compute_trialwise_correlations
 from .pgas import (
     PGAS_RESAMPLE_FS,
     PGAS_BURNIN,
@@ -59,6 +59,7 @@ class DatasetRunConfig:
     cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
     pgas_fixed_bm_sigma: Optional[float] = None  # Optional fixed bm_sigma (skip tuning)
     cascade_discretize: bool = True
+    trialwise_correlations: bool = False
 
 
 def run_inference_for_dataset(
@@ -239,6 +240,13 @@ def run_inference_for_dataset(
     elif pgas_result is not None:
         windows = pgas_windows_from_result(pgas_result)
 
+    trial_windows: Optional[List[Tuple[float, float]]] = None
+    if cfg.trialwise_correlations:
+        if cfg.edges is not None:
+            trial_windows = [(float(s), float(e)) for s, e in cfg.edges]
+        else:
+            trial_windows = [(float(tr.times[0]), float(tr.times[-1])) for tr in trials_trimmed]
+
     def _mask_method_to_windows(result: MethodResult, win: Optional[List[Tuple[float, float]]]) -> MethodResult:
         if not win:
             return result
@@ -275,6 +283,16 @@ def run_inference_for_dataset(
         windows=windows,
     )
 
+    trialwise: Optional[Dict[str, List[float]]] = None
+    if trial_windows is not None:
+        trialwise = compute_trialwise_correlations(
+            masked_methods_seq,
+            ref_time,
+            ref_trace,
+            trial_windows=trial_windows,
+            sigma_ms=cfg.corr_sigma_ms,
+        )
+
     spike_times_dict: Dict[str, np.ndarray] = {}
     for label, result in methods.items():
         spikes = extract_spike_times(result)
@@ -285,6 +303,8 @@ def run_inference_for_dataset(
         "smoothing": cfg.smoothing.label,
         "downsample_target": downsample_label,
         "correlations": {k: float(v) for k, v in correlations.items()},
+        "trial_windows_s": trial_windows,
+        "trialwise_correlations": trialwise,
         "pgas_input_resample_fs": PGAS_RESAMPLE_FS if pgas_result is not None else None,
         "cascade_input_resample_fs": (
             cascade_result.metadata.get("input_resample_fs") if cascade_result is not None else None

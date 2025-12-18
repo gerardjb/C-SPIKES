@@ -54,6 +54,7 @@ class RunConfig:
     pgas_fixed_bm_sigma: Optional[float] = PGAS_BM_SIGMA_DEFAULT
     run_tag: Optional[str] = None  # optional override
     pgas_c0_first_y: bool = False
+    trialwise_correlations: bool = False
 
 
 def _select_dataset_paths(cfg: RunConfig) -> List[Path]:
@@ -172,6 +173,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 cascade_resample_fs=cfg.cascade_resample_fs,
                 pgas_fixed_bm_sigma=cfg.pgas_fixed_bm_sigma,
                 cascade_discretize=bool(cfg.cascade_discretize),
+                trialwise_correlations=bool(cfg.trialwise_correlations),
             )
             outputs = run_inference_for_dataset(
                 ds_cfg,
@@ -205,6 +207,12 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 "correlations": ensure_serializable(correlations),
                 "methods_run": sorted(methods.keys()),
             }
+            extra_summary = outputs.get("summary", {}) if isinstance(outputs, dict) else {}
+            if isinstance(extra_summary, dict):
+                if extra_summary.get("trialwise_correlations") is not None:
+                    summary["trialwise_correlations"] = ensure_serializable(extra_summary.get("trialwise_correlations"))
+                if extra_summary.get("trial_windows_s") is not None:
+                    summary["trial_windows_s"] = ensure_serializable(extra_summary.get("trial_windows_s"))
             if "pgas" in methods:
                 pgas_result = methods["pgas"]
                 summary.update(
