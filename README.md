@@ -146,6 +146,26 @@ For existing results, you can compute these retroactively from cached outputs:
 python scripts/trialwise_correlations.py --data-root data/my_data --eval-root results/full_evaluation --edges-path <edges.npy>
 ```
 
+### Visualization (trialwise `viz` module)
+This repo now includes a small, notebook-friendly visualization module under `src/c_spikes/viz/` that builds figures from:
+- `results/trialwise_correlations.csv` (from `scripts/trialwise_correlations.py` or `--trialwise-correlations` runs), and
+- cached method outputs in `results/inference_cache/<method>/...`.
+
+Two primary entrypoints live in `src/c_spikes/viz/trialwise_plots.py`:
+- `plot_corr_vs_sigma(...)`: Matlab-like “shaded error bar” (mean ± SEM) of correlation vs `corr_sigma_ms`.
+- `plot_trace_panel(...)`: stacked fluorescence + GT + normalized/offset method traces for a representative trial, with per-trace `r`.
+
+CLI wrappers:
+```bash
+python scripts/plot_trialwise_corr_vs_sigma.py --csv results/trialwise_correlations.csv --out results/trialwise_corr_vs_sigma.png
+python scripts/plot_trialwise_trace_panel.py --csv results/trialwise_correlations.csv --data-root data/janelia_8m/excitatory --dataset <dataset_stem> --out results/trialwise_trace_panel.png
+```
+
+Notebook template:
+- `notebooks/trialwise_visualizations.ipynb` shows how to import the functions (without installing the package) and tweak parameters interactively.
+
+Note: this section will need to be updated as new methods are brought online (e.g. `PGBAR`, `MLspike`) so labels/colors and method-to-run-tag conventions stay consistent.
+
 ## Core Python API
 All reusable pieces live under `c_spikes/inference`:
 - `workflow.run_inference_for_dataset(cfg, …)` orchestrates loading a dataset, optional downsampling, running PGAS/ENS2/CASCADE, computing correlations, and returning `MethodResult` objects plus summary metadata.
