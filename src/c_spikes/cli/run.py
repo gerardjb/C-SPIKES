@@ -50,6 +50,28 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--output-root", type=Path, default=Path("results/full_evaluation"), help="Where to write summaries/manifests.")
     parser.add_argument("--edges-path", type=Path, default=Path("results/excitatory_time_stamp_edges.npy"))
     parser.add_argument("--neuron-type", type=str, default="Exc", help="ENS2 neuron type (Exc or Inh).")
+    parser.add_argument(
+        "--ens2-pretrained-root",
+        type=Path,
+        default=Path("results/Pretrained_models/ens2_published"),
+        help="ENS2 checkpoint directory (published or custom).",
+    )
+    parser.add_argument(
+        "--ens2-model-tag",
+        type=str,
+        default=None,
+        help=(
+            "Resolve a custom ENS2 model directory by run_tag in ens2_manifest.json "
+            "(matches training.run_tag or any synthetic_entries.run_tag)."
+        ),
+    )
+    parser.add_argument(
+        "--ens2-model-root",
+        action="append",
+        type=Path,
+        default=None,
+        help="Root(s) to search for custom ENS2 models when using --ens2-model-tag (default: results/Pretrained_models).",
+    )
     parser.add_argument("--use-cache", action="store_true", help="Reuse cached method outputs when available.")
     parser.add_argument("--first-trial-only", action="store_true", help="Restrict processing to the first trial/window.")
     parser.add_argument("--bm-sigma-spike-gap", type=float, default=0.15, help="Gap around spikes when estimating PGAS bm_sigma.")
@@ -90,6 +112,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Skip CASCADE discrete-spike inference (avoids slow/hanging discretization; correlations still computed from spike_prob).",
     )
     parser.add_argument(
+        "--cascade-model-root",
+        type=Path,
+        default=Path("results/Pretrained_models"),
+        help="Root directory containing CASCADE pretrained models.",
+    )
+    parser.add_argument(
         "--trialwise-correlations",
         action="store_true",
         help="Also compute and store per-trial correlations in each summary.json.",
@@ -112,6 +140,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             dataset_stems.extend(_parse_dataset_list(args.dataset_list))
     methods = args.method if args.method else ("pgas", "ens2", "cascade")
 
+    ens2_pretrained_root = args.ens2_pretrained_root
+    if args.ens2_model_tag:
+        from c_spikes.ens2.manifest import resolve_model_dir_by_run_tag
+
+        search_roots = args.ens2_model_root or [Path("results/Pretrained_models")]
+        ens2_pretrained_root = resolve_model_dir_by_run_tag(args.ens2_model_tag, search_roots)
+
     cfg = RunConfig(
         data_root=args.data_root,
         dataset_glob=args.dataset_glob,
@@ -131,6 +166,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         pgas_resample_fs=args.pgas_resample_fs,
         cascade_resample_fs=args.cascade_resample_fs,
         cascade_discretize=bool(not args.cascade_no_discrete),
+        ens2_pretrained_root=ens2_pretrained_root,
+        cascade_model_root=args.cascade_model_root,
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),

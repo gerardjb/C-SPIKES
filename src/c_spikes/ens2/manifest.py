@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import hashlib
 import json
 from datetime import datetime
@@ -132,4 +133,81 @@ def add_training_entry(
     return manifest
 
 
-__all__ = ["add_synthetic_entry", "add_training_entry"]
+def resolve_model_dir_by_run_tag(run_tag: str, model_roots: Sequence[Path]) -> Path:
+    """
+    Resolve an ENS2 model directory by matching `run_tag` in an `ens2_manifest.json`.
+
+    Matches either:
+      - manifest["training"]["run_tag"]
+      - any entry["run_tag"] in manifest["synthetic_entries"]
+
+    Notes:
+      - We intentionally skip descending into nested "results/" directories to avoid
+        picking up mirrored training artifacts under model folders.
+      - If multiple matches are found, we raise an error and ask the caller to disambiguate
+        by passing an explicit `--ens2-pretrained-root` (or narrower model_roots).
+    """
+    tag = str(run_tag).strip()
+    if not tag:
+        raise ValueError("run_tag must be a non-empty string")
+
+    roots = [Path(p).expanduser() for p in model_roots]
+    matches: list[Path] = []
+
+    def _has_checkpoint(model_dir: Path) -> bool:
+        return (model_dir / "exc_ens2_pub.pt").exists() or (model_dir / "inh_ens2_pub.pt").exists()
+
+    for root in roots:
+        if not root.exists():
+            continue
+        # Convenience: allow the run_tag to be a direct model directory name.
+        direct = root / tag
+        if direct.is_dir() and _has_checkpoint(direct):
+            return direct.resolve()
+
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Avoid traversing nested model outputs (common in training artifacts).
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in {"results", "__pycache__", ".git", ".mypy_cache", ".pytest_cache"}
+            ]
+            if "ens2_manifest.json" not in filenames:
+                continue
+            manifest_path = Path(dirpath) / "ens2_manifest.json"
+            model_dir = manifest_path.parent
+            if not _has_checkpoint(model_dir):
+                continue
+            try:
+                with manifest_path.open("r", encoding="utf-8") as fh:
+                    manifest = json.load(fh)
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            if manifest.get("training", {}).get("run_tag") == tag:
+                matches.append(model_dir.resolve())
+                continue
+            for entry in manifest.get("synthetic_entries", []) or []:
+                if isinstance(entry, dict) and entry.get("run_tag") == tag:
+                    matches.append(model_dir.resolve())
+                    break
+
+    # De-dupe while preserving order.
+    uniq: list[Path] = []
+    seen: set[str] = set()
+    for m in matches:
+        key = str(m)
+        if key not in seen:
+            uniq.append(m)
+            seen.add(key)
+
+    if not uniq:
+        roots_str = ", ".join(str(r) for r in roots)
+        raise FileNotFoundError(f"No ENS2 model found for run_tag='{tag}' under: {roots_str}")
+    if len(uniq) > 1:
+        lines = "\n".join(f"  - {p}" for p in uniq)
+        raise RuntimeError(f"Multiple ENS2 models matched run_tag='{tag}':\n{lines}")
+    return uniq[0]
+
+
+__all__ = ["add_synthetic_entry", "add_training_entry", "resolve_model_dir_by_run_tag"]

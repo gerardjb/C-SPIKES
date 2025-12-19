@@ -50,6 +50,8 @@ class RunConfig:
     pgas_resample_fs: Optional[float] = None
     cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
     cascade_discretize: bool = True
+    ens2_pretrained_root: Path = Path("results/Pretrained_models/ens2_published")
+    cascade_model_root: Path = Path("results/Pretrained_models")
     pgas_maxspikes: Optional[int] = None
     pgas_fixed_bm_sigma: Optional[float] = PGAS_BM_SIGMA_DEFAULT
     run_tag: Optional[str] = None  # optional override
@@ -180,8 +182,8 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 pgas_constants=cfg.pgas_constants,
                 pgas_gparam=cfg.pgas_gparam,
                 pgas_output_root=cfg.pgas_output_root,
-                ens2_pretrained_root=Path("results/Pretrained_models/ens2_published"),
-                cascade_model_root=Path("results/Pretrained_models"),
+                ens2_pretrained_root=cfg.ens2_pretrained_root,
+                cascade_model_root=cfg.cascade_model_root,
             )
             methods: Dict[str, MethodResult] = outputs["methods"]
             correlations: Dict[str, float] = outputs["correlations"]
