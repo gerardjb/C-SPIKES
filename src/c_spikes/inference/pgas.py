@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
+import re
 
 from .cache import load_method_cache, save_method_cache
 from .eval import segment_indices
@@ -58,7 +59,10 @@ def maxspikes_for_rate(target_fs: Optional[float], native_fs: float) -> int:
     if np.isclose(target_fs, 30.0, atol=1e-1):
         return max(4, int(np.ceil(ratio * 0.5)) + 1)
     if np.isclose(target_fs, 10.0, atol=1e-1):
-        return max(9, dynamic_limit)
+        # Historically we used a much smaller cap at 10Hz (100ms bins) to keep the
+        # PGAS state space tractable; this also matches existing cached runs under
+        # `results/full_evaluation_by_run/base` (ms7).
+        return max(7, int(np.ceil(ratio * 0.5)))
     return dynamic_limit
 
 
@@ -211,13 +215,16 @@ def run_pgas_inference(
 
     time_flat, trace_flat = flatten_trials(trials_resampled)
     trace_hash = hash_series(time_flat, trace_flat)
-    maxspikes = config.maxspikes if config.maxspikes is not None else maxspikes_for_rate(
-        resample_fs_val, raw_fs
+    input_fs = compute_sampling_rate(time_flat)
+    maxspikes = (
+        config.maxspikes
+        if config.maxspikes is not None
+        else maxspikes_for_rate(input_fs, raw_fs)
     )
     bm_sigma = (
         config.bm_sigma
         if config.bm_sigma is not None
-        else estimate_bm_sigma_for_trials(trials_for_pgas, spike_times, resample_fs_val, config.bm_sigma_gap_s)
+        else estimate_bm_sigma_for_trials(trials_for_pgas, spike_times, input_fs, config.bm_sigma_gap_s)
     )
     constants_path = prepare_constants_with_params(
         config.constants_file,
@@ -235,7 +242,7 @@ def run_pgas_inference(
         "constants_file": str(constants_path),
         "gparam_file": str(config.gparam_file),
         "maxspikes": maxspikes,
-        "input_resample_fs": config.resample_fs if config.resample_fs is not None else raw_fs,
+        "input_resample_fs": float(input_fs),
         "bm_sigma": bm_sigma,
     }
     if config.edges is not None:
@@ -250,6 +257,42 @@ def run_pgas_inference(
             cached.metadata.setdefault("maxspikes", maxspikes)
             cached.metadata.setdefault("bm_sigma", bm_sigma)
             return cached
+
+        # Backwards-compatible cache lookup for older runs (e.g. `results/full_evaluation_by_run/base`)
+        # whose PGAS caches were stored under `<dataset>_ms{maxspikes}` with numeric downsample targets.
+        #
+        # This keeps `--use-cache` effective even if the tagging/config signature evolved.
+        if config.resample_fs is None:
+            legacy_tag = f"{config.dataset_tag}_ms{maxspikes}"
+            if str(config.downsample_label).strip().lower() == "raw":
+                legacy_downsample = "raw"
+            else:
+                match = re.search(r"(\d+(?:\.\d+)?)", str(config.downsample_label))
+                legacy_downsample = (
+                    f"{float(match.group(1)):.2f}" if match else str(config.downsample_label)
+                )
+            legacy_constants = prepare_constants_with_params(
+                config.constants_file,
+                maxspikes=maxspikes,
+                bm_sigma=None,
+            )
+            legacy_cfg = {
+                "niter": config.niter,
+                "burnin": config.burnin,
+                "downsample_target": legacy_downsample,
+                "constants_file": str(legacy_constants),
+                "gparam_file": str(config.gparam_file),
+                "maxspikes": maxspikes,
+            }
+            if config.edges is not None:
+                legacy_cfg["edge_hash"] = hash_array(config.edges)
+            legacy_cached = load_method_cache("pgas", legacy_tag, legacy_cfg, trace_hash)
+            if legacy_cached:
+                legacy_cached.metadata.setdefault("maxspikes_per_bin", config.maxspikes_per_bin)
+                legacy_cached.metadata.setdefault("cache_tag", legacy_tag)
+                legacy_cached.metadata.setdefault("maxspikes", maxspikes)
+                legacy_cached.metadata.setdefault("cache_style", "legacy")
+                return legacy_cached
 
     try:
         pgas_mod = __import__("c_spikes.pgas.pgas_bound", fromlist=["Analyzer"])
