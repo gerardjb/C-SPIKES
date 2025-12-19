@@ -136,6 +136,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=5.0,
         help="Time scalebar length (s). Default matches the 5s window.",
     )
+    p.add_argument(
+        "--method-label-x-offset-frac",
+        type=float,
+        default=0.0,
+        help="Horizontal offset for left labels as a fraction of the snippet duration (default: 0.0).",
+    )
     p.add_argument("--scalebar-dff", type=float, default=0.5, help="ΔF/F scalebar size (used for display scaling).")
     p.add_argument("--title", type=str, default="Excitatory cell sample", help="Figure title.")
     p.add_argument("--out", type=Path, default=Path("results/trialwise_trace_panel.png"), help="Output PNG path.")
@@ -364,6 +370,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         duration_s=float(args.duration_s),
         start_s=args.start_s,
         center=str(args.center),
+        method_label_x_offset_frac=float(args.method_label_x_offset_frac),
         scalebar_time_s=float(args.scalebar_time_s),
         scalebar_dff=float(args.scalebar_dff),
         title=str(args.title),

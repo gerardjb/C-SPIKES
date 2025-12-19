@@ -90,6 +90,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--figsize", type=float, nargs=2, default=(7.2, 2.8), help="Figure size in inches.")
     p.add_argument("--dpi", type=int, default=200, help="Output DPI.")
     p.add_argument("--legend", action="store_true", help="Use a legend instead of right-side labels.")
+    p.add_argument(
+        "--right-label-x-offset-frac",
+        type=float,
+        default=0.08,
+        help="Right label x-offset as fraction of x-span (default: 0.08).",
+    )
+    p.add_argument(
+        "--right-label-xlim-frac",
+        type=float,
+        default=0.22,
+        help="Extra xlim to the right as fraction of x-span (default: 0.22).",
+    )
     return p.parse_args(argv)
 
 
@@ -247,6 +259,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         figsize=(float(args.figsize[0]), float(args.figsize[1])),
         dpi=int(args.dpi),
         legend=bool(args.legend),
+        right_label_x_offset_frac=float(args.right_label_x_offset_frac),
+        right_label_xlim_frac=float(args.right_label_xlim_frac),
     )
     print(f"[plot] Wrote {out_path}")
 
