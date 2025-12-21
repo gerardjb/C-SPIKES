@@ -20,8 +20,9 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 import scipy.io as sio
 
-from c_spikes.inference.eval import build_ground_truth_series, compute_trialwise_correlations
+from c_spikes.inference.eval import build_ground_truth_series, resample_prediction_to_reference, segment_indices
 from c_spikes.inference.types import MethodResult, TrialSeries, compute_config_signature, compute_sampling_rate
+from c_spikes.model_eval.model_eval import smooth_prediction
 from c_spikes.utils import load_Janelia_data
 
 
@@ -118,6 +119,67 @@ def _reference_fs_from_label(label: str, raw_fs: float) -> float:
         except Exception:
             pass
     return float(raw_fs)
+
+
+def _pearson(x: np.ndarray, y: np.ndarray) -> float:
+    x = np.asarray(x, dtype=np.float64).ravel()
+    y = np.asarray(y, dtype=np.float64).ravel()
+    m = np.isfinite(x) & np.isfinite(y)
+    if int(m.sum()) < 2:
+        return float("nan")
+    x = x[m] - float(np.mean(x[m]))
+    y = y[m] - float(np.mean(y[m]))
+    denom = float(np.linalg.norm(x) * np.linalg.norm(y))
+    if denom == 0.0 or not np.isfinite(denom):
+        return float("nan")
+    return float(np.dot(x, y) / denom)
+
+
+def _preprocess_prediction_for_correlation(method_name: str, values: np.ndarray) -> np.ndarray:
+    """
+    Method-specific fixes needed for fair GT correlation comparisons.
+
+    PGAS `spike_prob` is effectively a per-bin spike *count* reported on the right edge of each
+    interval. For correlation against the GT convention used here (start-of-bin), shifting the
+    trace left by 1 sample aligns peaks correctly (especially at low Fs / small sigma).
+    """
+    y = np.asarray(values, dtype=np.float64).ravel()
+    if method_name == "pgas" and y.size >= 2:
+        return np.concatenate([y[1:], np.array([0.0], dtype=y.dtype)])
+    return y
+
+
+def _select_segment_for_trial(
+    segments: Sequence[slice],
+    times: np.ndarray,
+    trial_idx: int,
+    start: float,
+    end: float,
+    *,
+    n_trials: Optional[int] = None,
+) -> Optional[slice]:
+    if not segments:
+        return None
+    # If the segment count matches trial count, trust index mapping (fast + stable).
+    if n_trials is not None and len(segments) == int(n_trials) and 0 <= trial_idx < len(segments):
+        return segments[trial_idx]
+    # Otherwise fall back to max temporal overlap with the trial window.
+    best = None
+    best_overlap = -1.0
+    times = np.asarray(times, dtype=np.float64).ravel()
+    for seg in segments:
+        seg_times = times[seg]
+        if seg_times.size == 0:
+            continue
+        seg_start = float(seg_times[0])
+        seg_end = float(seg_times[-1])
+        overlap = max(0.0, min(seg_end, float(end)) - max(seg_start, float(start)))
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best = seg
+    if best_overlap <= 0:
+        return None
+    return best
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
@@ -250,36 +312,65 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     continue
 
                 for sigma_ms in sigma_values:
-                    ref_time, ref_trace = build_ground_truth_series(
-                        spike_times,
-                        global_start,
-                        global_end,
-                        reference_fs=ref_fs,
-                        sigma_ms=float(sigma_ms),
-                    )
-                    trialwise = compute_trialwise_correlations(
-                        method_results,
-                        ref_time,
-                        ref_trace,
-                        trial_windows=trial_windows,
-                        sigma_ms=float(sigma_ms),
-                    )
+                    # Compute correlations per-trial using a reference grid anchored to each window
+                    # start/end. Using a single global linspace and then masking can introduce a
+                    # per-window time offset (tens of ms) that materially changes correlations.
+                    # This approach matches the plot_trace_panel correlation computation.
+                    segments_by_method: Dict[str, List[slice]] = {}
+                    for method in method_results:
+                        segments_by_method[method.name] = segment_indices(
+                            np.asarray(method.time_stamps, dtype=np.float64).ravel(),
+                            fs_est=float(method.sampling_rate),
+                        )
 
-                    for method_name, corr_list in trialwise.items():
-                        label = label_by_name.get(method_name, method_name)
-                        for trial_idx, ((start, end), corr) in enumerate(zip(trial_windows, corr_list)):
+                    for trial_idx, (start, end) in enumerate(trial_windows):
+                        ref_time, ref_trace = build_ground_truth_series(
+                            spike_times,
+                            float(start),
+                            float(end),
+                            reference_fs=ref_fs,
+                            sigma_ms=float(sigma_ms),
+                        )
+                        for method in method_results:
+                            segs = segments_by_method.get(method.name, [])
+                            seg = _select_segment_for_trial(
+                                segs,
+                                method.time_stamps,
+                                trial_idx,
+                                float(start),
+                                float(end),
+                                n_trials=len(trial_windows),
+                            )
+                            if seg is None:
+                                corr_val = float("nan")
+                            else:
+                                t_seg = np.asarray(method.time_stamps, dtype=np.float64).ravel()[seg]
+                                y_seg = np.asarray(method.spike_prob, dtype=np.float64).ravel()[seg]
+                                mm = np.isfinite(t_seg) & np.isfinite(y_seg)
+                                t_seg = t_seg[mm]
+                                y_seg = _preprocess_prediction_for_correlation(method.name, y_seg[mm])
+                                if t_seg.size < 2:
+                                    corr_val = float("nan")
+                                else:
+                                    pred_smoothed = smooth_prediction(y_seg, float(method.sampling_rate), sigma_ms=float(sigma_ms))
+                                    pred_aligned = resample_prediction_to_reference(
+                                        t_seg, pred_smoothed, ref_time, fs_est=float(method.sampling_rate)
+                                    )
+                                    corr_val = _pearson(ref_trace, pred_aligned)
+
+                            label = label_by_name.get(method.name, method.name)
                             rows.append(
                                 {
                                     "run": run_tag,
                                     "dataset": dataset_stem,
                                     "smoothing": smoothing_label,
-                                    "method": method_name,
+                                    "method": method.name,
                                     "label": label,
                                     "corr_sigma_ms": float(sigma_ms),
                                     "trial": int(trial_idx),
                                     "start_s": float(start),
                                     "end_s": float(end),
-                                    "correlation": float(corr) if np.isfinite(corr) else float("nan"),
+                                    "correlation": float(corr_val) if np.isfinite(corr_val) else float("nan"),
                                 }
                             )
 

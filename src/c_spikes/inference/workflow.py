@@ -10,7 +10,13 @@ from c_spikes.utils import load_Janelia_data
 
 from .cascade import CASCADE_RESAMPLE_FS, CascadeConfig, run_cascade_inference
 from .ens2 import Ens2Config, run_ens2_inference
-from .eval import build_ground_truth_series, compute_correlations, compute_trialwise_correlations
+from .eval import (
+    build_ground_truth_series,
+    compute_correlations,
+    compute_correlations_windowed,
+    compute_trialwise_correlations,
+    compute_trialwise_correlations_windowed,
+)
 from .pgas import (
     PGAS_RESAMPLE_FS,
     PGAS_BURNIN,
@@ -275,21 +281,30 @@ def run_inference_for_dataset(
 
     masked_methods_seq = [_mask_method_to_windows(m, windows) for m in methods.values()]
     methods = {m.name: m for m in masked_methods_seq}
-    correlations = compute_correlations(
-        masked_methods_seq,
-        ref_time,
-        ref_trace,
-        sigma_ms=cfg.corr_sigma_ms,
-        windows=windows,
-    )
-
-    trialwise: Optional[Dict[str, List[float]]] = None
-    if trial_windows is not None:
-        trialwise = compute_trialwise_correlations(
+    if windows:
+        correlations = compute_correlations_windowed(
+            masked_methods_seq,
+            spike_times,
+            windows,
+            reference_fs=ref_fs,
+            sigma_ms=cfg.corr_sigma_ms,
+        )
+    else:
+        correlations = compute_correlations(
             masked_methods_seq,
             ref_time,
             ref_trace,
+            sigma_ms=cfg.corr_sigma_ms,
+            windows=windows,
+        )
+
+    trialwise: Optional[Dict[str, List[float]]] = None
+    if trial_windows is not None:
+        trialwise = compute_trialwise_correlations_windowed(
+            masked_methods_seq,
+            spike_times,
             trial_windows=trial_windows,
+            reference_fs=ref_fs,
             sigma_ms=cfg.corr_sigma_ms,
         )
 

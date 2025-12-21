@@ -73,8 +73,22 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Root(s) to search for custom ENS2 models when using --ens2-model-tag (default: results/Pretrained_models).",
     )
     parser.add_argument("--use-cache", action="store_true", help="Reuse cached method outputs when available.")
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        help=(
+            "Only recompute correlations/summary.json for an existing output directory, using the "
+            "cached method outputs referenced by each comparison.json (no inference runs)."
+        ),
+    )
     parser.add_argument("--first-trial-only", action="store_true", help="Restrict processing to the first trial/window.")
     parser.add_argument("--bm-sigma-spike-gap", type=float, default=0.15, help="Gap around spikes when estimating PGAS bm_sigma.")
+    parser.add_argument(
+        "--corr-sigma-ms",
+        type=float,
+        default=50.0,
+        help="Gaussian filter width (sigma, ms) used when computing correlations against ground truth.",
+    )
     parser.add_argument(
         "--pgas-constants",
         type=Path,
@@ -158,8 +172,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         methods=methods,
         neuron_type=args.neuron_type,
         use_cache=bool(args.use_cache),
+        eval_only=bool(args.eval_only),
         first_trial_only=bool(args.first_trial_only),
         bm_sigma_spike_gap=float(args.bm_sigma_spike_gap),
+        corr_sigma_ms=float(args.corr_sigma_ms),
         pgas_constants=args.pgas_constants,
         pgas_gparam=args.pgas_gparam,
         pgas_output_root=args.pgas_output_root,
