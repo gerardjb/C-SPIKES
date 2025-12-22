@@ -273,14 +273,18 @@ class synth_gen():
               
           #Noise, time, get spikes
           noise = inner_array['gt_noise'][0][0]
+          noise = np.asarray(noise, dtype=np.float64).ravel()
 
           # Hack for now - I didn't capture the time stamps in the noise files when I generated them
           try:
             time = inner_array['fluo_time'][0][0]
           except:
             sampling_rate = 121.9  # Hz
-            n_samples = noise.shape[0]
+            n_samples = noise.size
             time = np.arange(n_samples) / sampling_rate
+          time = np.asarray(time, dtype=np.float64).ravel()
+          if time.size == 0:
+            continue
           T = time[-1] - time[0]
           
           # Generate spikes
