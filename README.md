@@ -86,6 +86,8 @@ python -m c_spikes.cli.run \
 Notes:
 - `--smoothing-level raw` means “native sampling rate”; omit `--smoothing-level` to run `raw`, `30Hz`, and `10Hz`.
 - Remove `--method pgas` to run ENS2/CASCADE too (requires the `results/Pretrained_models` symlink above if you keep models in repo-root `Pretrained_models/`).
+- To run a *custom* ENS2 checkpoint, pass either `--ens2-pretrained-root Pretrained_models/<model_name>` or resolve by sweep tag via `--ens2-model-tag <tag> --ens2-model-root Pretrained_models`.
+- If your CASCADE models live outside `results/Pretrained_models`, set `--cascade-model-root Pretrained_models`.
 
 ## Distill PGAS → custom ENS2 (synthetic training)
 Once you have one or more `param_samples_*.dat` files, you can generate synthetic ground-truth datasets and train a custom ENS2 checkpoint:
@@ -144,6 +146,21 @@ python -m c_spikes.cli.run --trialwise-correlations ...
 For existing results, you can compute these retroactively from cached outputs:
 ```bash
 python scripts/trialwise_correlations.py --data-root data/my_data --eval-root results/full_evaluation --edges-path <edges.npy>
+```
+
+You can also recompute the `summary.json` correlations in-place (without rerunning inference) using the cached outputs
+referenced by each `comparison.json`:
+```bash
+python -m c_spikes.cli.run \
+  --data-root data/janelia_8f/excitatory \
+  --edges-path results/excitatory_time_stamp_edges.npy \
+  --output-root results/full_evaluation_by_run \
+  --run-tag base \
+  --dataset jGCaMP8f_ANM471993_cell01 \
+  --smoothing-level 10Hz \
+  --method pgas --method ens2 --method cascade \
+  --corr-sigma-ms 50 \
+  --eval-only
 ```
 
 ### Visualization (trialwise `viz` module)
