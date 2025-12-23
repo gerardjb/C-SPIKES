@@ -760,6 +760,9 @@ def plot_trace_panel(
     dff_height: float = 1.25,
     method_label_x_offset_frac: float = 0.0,
     show_snippet_corr: bool = False,
+    show_panel_labels: bool = True,
+    show_method_labels: bool = True,
+    show_scalebar: bool = True,
     scalebar_time_s: float = 0.6,
     scalebar_dff: float = 0.5,
     ymax: Optional[float] = None,
@@ -783,6 +786,11 @@ def plot_trace_panel(
       - By default, uses the full-trial correlation loaded from `csv_path` (trialwise_correlations.csv).
       - If `show_snippet_corr=True`, also computes a correlation over the displayed snippet window and
         shows both values (CSV value on top, snippet value below).
+
+    Labels/scalebar:
+      - Set `show_panel_labels=False` to hide the "Fluorescence" and "Ground truth" labels.
+      - Set `show_method_labels=False` to hide method names at left of each trace.
+      - Set `show_scalebar=False` to hide the time/ΔF/F scalebar.
 
     Snippet window:
       - The snippet is clamped to the intersection of all selected methods' per-trial time support.
@@ -1126,10 +1134,12 @@ def plot_trace_panel(
         ax.axvline(float(s), color="#888888", linestyle=":", linewidth=0.6, alpha=0.9, zorder=0)
 
     ax.plot(t_f, y_f_base + y_f_scaled, color="black", linewidth=1.0)
-    ax.text(label_x, y_f_base + 0.8, "Fluorescence", ha="left", va="center", fontsize=11, fontweight="bold")
+    if show_panel_labels:
+        ax.text(label_x, y_f_base + 0.8, "Fluorescence", ha="left", va="center", fontsize=11, fontweight="bold")
 
     ax.plot(ref_time, y_gt_base + ref_gt_for_plot, color="black", linewidth=2.0)
-    ax.text(label_x, y_gt_base + 0.8, "Ground truth", ha="left", va="center", fontsize=11, fontweight="bold")
+    if show_panel_labels:
+        ax.text(label_x, y_gt_base + 0.8, "Ground truth", ha="left", va="center", fontsize=11, fontweight="bold")
 
     # Only append "(run_tag)" to series labels when the *rendered* labels would otherwise collide for
     # the same base method. This lets users alias one ENS2 run as e.g. `biophys_ml=ens2@...` without
@@ -1153,7 +1163,8 @@ def plot_trace_panel(
         if label_counts_by_method.get(series_spec.method, {}).get(label, 0) > 1 and run_tag:
             label = f"{label} ({run_tag})"
         ax.plot(t_win, base + y_norm, color=color, linewidth=1.6)
-        ax.text(label_x, base + 0.50, label, color=color, ha="left", va="center", fontsize=12, fontweight="bold")
+        if show_method_labels:
+            ax.text(label_x, base + 0.50, label, color=color, ha="left", va="center", fontsize=12, fontweight="bold")
         r_trial = float(trial_corrs.get(method, float("nan")))
         if show_snippet_corr:
             r_snip = float(snippet_corrs.get(method, float("nan")))
@@ -1180,23 +1191,31 @@ def plot_trace_panel(
     if not np.isfinite(y_top) or y_top <= y_min_plot:
         raise ValueError(f"ymax must be > {y_min_plot}, got {ymax!r}")
 
-    sb_time = float(scalebar_time_s)
-    sb_time = min(sb_time, duration)
-    sb_x1 = win_end - 0.06 * duration
-    sb_x0 = sb_x1 - sb_time
-    sb_height = float(scalebar_dff) / float(dff_unit_scale)
-    sb_text_pad = 0.30
-    sb_margin = 0.05
-    sb_y0_default = y_f_base + 0.9
-    sb_y0 = min(sb_y0_default, y_top - sb_height - sb_text_pad - sb_margin)
-    sb_y0 = max(sb_y0, y_min_plot + sb_margin)
-    # Draw a vertical ΔF/F scalebar corresponding to `scalebar_dff` in raw units.
-    sb_y1 = sb_y0 + sb_height
-    ax.plot([sb_x0, sb_x1], [sb_y1, sb_y1], color="black", linewidth=1.2)
-    ax.plot([sb_x1, sb_x1], [sb_y0, sb_y1], color="black", linewidth=1.2)
-    time_label_y = min(sb_y1 + 0.12, y_top - sb_margin)
-    ax.text(0.5 * (sb_x0 + sb_x1), time_label_y, f"{sb_time:g} s", ha="center", va="bottom", fontsize=10)
-    ax.text(sb_x1 + 0.02 * duration, 0.5 * (sb_y0 + sb_y1), f"{float(scalebar_dff):g} ΔF/F", ha="left", va="center", fontsize=10)
+    if show_scalebar:
+        sb_time = float(scalebar_time_s)
+        sb_time = min(sb_time, duration)
+        sb_x1 = win_end - 0.06 * duration
+        sb_x0 = sb_x1 - sb_time
+        sb_height = float(scalebar_dff) / float(dff_unit_scale)
+        sb_text_pad = 0.30
+        sb_margin = 0.05
+        sb_y0_default = y_f_base + 0.9
+        sb_y0 = min(sb_y0_default, y_top - sb_height - sb_text_pad - sb_margin)
+        sb_y0 = max(sb_y0, y_min_plot + sb_margin)
+        # Draw a vertical ΔF/F scalebar corresponding to `scalebar_dff` in raw units.
+        sb_y1 = sb_y0 + sb_height
+        ax.plot([sb_x0, sb_x1], [sb_y1, sb_y1], color="black", linewidth=1.2)
+        ax.plot([sb_x1, sb_x1], [sb_y0, sb_y1], color="black", linewidth=1.2)
+        time_label_y = min(sb_y1 + 0.12, y_top - sb_margin)
+        ax.text(0.5 * (sb_x0 + sb_x1), time_label_y, f"{sb_time:g} s", ha="center", va="bottom", fontsize=10)
+        ax.text(
+            sb_x1 + 0.02 * duration,
+            0.5 * (sb_y0 + sb_y1),
+            f"{float(scalebar_dff):g} ΔF/F",
+            ha="left",
+            va="center",
+            fontsize=10,
+        )
 
     ax.set_title(str(title), pad=8)
     ax.set_xlim(win_start, win_end + 0.18 * duration)
