@@ -28,6 +28,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--dataset", action="append", default=None, help="Restrict to dataset stem(s). Repeatable.")
     p.add_argument("--run", action="append", default=None, help="Restrict to run tag(s). Repeatable.")
     p.add_argument(
+        "--run-by-method",
+        action="append",
+        default=None,
+        help="Method-to-run mapping, e.g. --run-by-method pgas=base --run-by-method ens2=ens2_custom_... (repeatable).",
+    )
+    p.add_argument(
         "--reduce",
         choices=["trial", "dataset"],
         default="trial",
@@ -38,6 +44,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--figsize", type=float, nargs=2, default=(7.2, 4.2), help="Figure size in inches.")
     p.add_argument("--dpi", type=int, default=200, help="Output DPI.")
     p.add_argument("--seed", type=int, default=0, help="Random seed for jitter.")
+    p.add_argument(
+        "--group-spacing",
+        type=float,
+        default=1.25,
+        help="Spacing between adjacent smoothing groups on the x-axis (default: 1.25).",
+    )
+    p.add_argument(
+        "--method-label-x-offset-frac",
+        type=float,
+        default=0.05,
+        help="Right-hand method label x-offset as a fraction of x-span (default: 0.05).",
+    )
     return p.parse_args(argv)
 
 
@@ -52,6 +70,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         methods=args.method,
         smoothings=args.smoothing,
         runs=args.run,
+        run_by_method=args.run_by_method,
         datasets=args.dataset,
         reduce=str(args.reduce),
         title=args.title,
@@ -59,6 +78,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         figsize=(float(args.figsize[0]), float(args.figsize[1])),
         dpi=int(args.dpi),
         seed=int(args.seed),
+        group_spacing=float(args.group_spacing),
+        method_label_x_offset_frac=float(args.method_label_x_offset_frac),
     )
     fig.savefig(args.out)
     print(f"[plot] Wrote {args.out}")

@@ -24,6 +24,7 @@ DEFAULT_COLORS: Dict[str, str] = {
     "pgas": "#009E73",
     "cascade": "#F3AE14",
     "ens2": "#A6780C",
+    "biophys_ml": "#007755",
 }
 
 DEFAULT_LABELS: Dict[str, str] = {
@@ -246,6 +247,11 @@ def plot_corr_vs_sigma(
     """
     Mean ± SEM correlation vs corr_sigma_ms (ms), with right-side labels.
 
+    To compare the same underlying method across different run tags (e.g. published ENS2 vs a
+    synthetic-trained ENS2 distilled from PGAS), pass `methods` entries using the series syntax:
+      - "ens2@base"
+      - "biophys_ml=ens2@ens2_custom_k1_..."
+
     Returns (fig, ax). If out_path is provided, saves the figure.
     """
     if reduce not in {"dataset", "trial"}:
@@ -271,35 +277,64 @@ def plot_corr_vs_sigma(
     run_filter = set(_uniq(runs) or [])
     dataset_filter = set(_uniq(datasets) or [])
     smoothing_filter = set(_uniq(smoothings) or [])
-    method_filter = set(_uniq(methods) or [])
+
+    # Parse series specs (method/run disambiguation + alias labels/colors).
+    if methods is None:
+        uniq_methods = sorted({str(r.get("method", "")).strip() for r in rows if r.get("method")})
+        series = [SeriesSpec(key=m, method=m, run_tag=None) for m in uniq_methods if m]
+    else:
+        series = _parse_series_specs(methods)
+    if not series:
+        raise ValueError("No methods/series selected.")
+
+    # Resolve rows to series keys. If run_tag is given, pin to that run; otherwise allow wildcard by method.
+    series_lookup: Dict[Tuple[str, str], str] = {}
+    wildcard_by_method: Dict[str, str] = {}
+    for spec in series:
+        expected_run = str(spec.run_tag).strip() if spec.run_tag else ""
+        if expected_run:
+            key = (spec.method, expected_run)
+            if key in series_lookup:
+                raise ValueError(f"Duplicate series method/run pair: {spec.method!r}@{expected_run!r}")
+            series_lookup[key] = spec.key
+        else:
+            if spec.method in wildcard_by_method:
+                raise ValueError(
+                    f"Duplicate unpinned series for method {spec.method!r}; add @run_tag to disambiguate."
+                )
+            wildcard_by_method[spec.method] = spec.key
 
     filtered: List[Dict[str, Any]] = []
     for r in rows:
         run = str(r.get("run", "")).strip()
         dataset = str(r.get("dataset", "")).strip()
         smoothing = str(r.get("smoothing", "")).strip()
-        method = str(r.get("method", "")).strip()
         if run_filter and run not in run_filter:
             continue
         if dataset_filter and dataset not in dataset_filter:
             continue
         if smoothing_filter and smoothing not in smoothing_filter:
             continue
-        if method_filter and method not in method_filter:
-            continue
         filtered.append(r)
     if not filtered:
         raise ValueError("No rows matched filters.")
 
+    spec_by_key: Dict[str, SeriesSpec] = {spec.key: spec for spec in series}
     samples: Dict[Tuple[str, float], List[float]] = {}
     if reduce == "trial":
         for r in filtered:
             method = str(r.get("method", "")).strip()
+            run = str(r.get("run", "")).strip()
+            series_key = series_lookup.get((method, run))
+            if series_key is None:
+                series_key = wildcard_by_method.get(method)
+            if series_key is None:
+                continue
             sigma = _coerce_float(r, "corr_sigma_ms")
             corr = _coerce_float(r, "correlation")
-            if not method or not np.isfinite(sigma):
+            if not np.isfinite(sigma):
                 continue
-            samples.setdefault((method, float(sigma)), []).append(float(corr))
+            samples.setdefault((series_key, float(sigma)), []).append(float(corr))
     else:
         by_bucket: Dict[Tuple[str, float, str, str, str], List[float]] = {}
         for r in filtered:
@@ -309,17 +344,39 @@ def plot_corr_vs_sigma(
             run = str(r.get("run", "")).strip()
             smoothing = str(r.get("smoothing", "")).strip()
             corr = _coerce_float(r, "correlation")
-            if not method or not dataset or not np.isfinite(sigma):
+            series_key = series_lookup.get((method, run))
+            if series_key is None:
+                series_key = wildcard_by_method.get(method)
+            if series_key is None:
                 continue
-            by_bucket.setdefault((method, float(sigma), dataset, run, smoothing), []).append(float(corr))
-        for (method, sigma, _dataset, _run, _smoothing), values in by_bucket.items():
+            if not dataset or not np.isfinite(sigma):
+                continue
+            by_bucket.setdefault((series_key, float(sigma), dataset, run, smoothing), []).append(float(corr))
+        for (series_key, sigma, _dataset, _run, _smoothing), values in by_bucket.items():
             mean_val = float(np.mean(_finite(values))) if _finite(values).size else float("nan")
-            samples.setdefault((method, float(sigma)), []).append(mean_val)
+            samples.setdefault((series_key, float(sigma)), []).append(mean_val)
 
-    method_list = sorted({m for (m, _sigma) in samples.keys()})
+    series_keys_present = {m for (m, _sigma) in samples.keys()}
+    series_list = [spec.key for spec in series if spec.key in series_keys_present]
     sigma_list = sorted({sigma for (_m, sigma) in samples.keys()})
-    if not method_list or not sigma_list:
+    if not series_list or not sigma_list:
         raise ValueError("No usable (method, corr_sigma_ms) samples found.")
+
+    # Derive a display label per series, appending "(run_tag)" only when the rendered labels would collide.
+    label_counts_by_method: Dict[str, Dict[str, int]] = {}
+    raw_label_by_key: Dict[str, str] = {}
+    run_by_key: Dict[str, str] = {}
+    for key in series_list:
+        spec = spec_by_key.get(key)
+        if spec is None:
+            continue
+        base_label = labels_map.get(spec.method, spec.method)
+        label0 = labels_map.get(key, base_label)
+        raw_label_by_key[key] = label0
+        expected_run = str(spec.run_tag).strip() if spec.run_tag else ""
+        run_by_key[key] = expected_run
+        label_counts_by_method.setdefault(spec.method, {})
+        label_counts_by_method[spec.method][label0] = label_counts_by_method[spec.method].get(label0, 0) + 1
 
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize, dpi=int(dpi))
@@ -337,12 +394,13 @@ def plot_corr_vs_sigma(
     method_to_label: Dict[str, str] = {}
     method_to_y100: Dict[str, float] = {}
 
-    for method in method_list:
+    for series_key in series_list:
+        spec = spec_by_key[series_key]
         xs: List[float] = []
         ys: List[float] = []
         sems: List[float] = []
         for sigma in sigma_list:
-            vals = samples.get((method, sigma), [])
+            vals = samples.get((series_key, sigma), [])
             mean, sem, n = _mean_sem(vals)
             xs.append(float(sigma))
             ys.append(float(mean) if n else float("nan"))
@@ -352,16 +410,20 @@ def plot_corr_vs_sigma(
         ys_arr = np.asarray(ys, dtype=np.float64)
         sem_arr = np.asarray(sems, dtype=np.float64)
 
-        color = colors_map.get(method)
+        color = colors_map.get(series_key, colors_map.get(spec.method))
         if color is None:
-            color = plt.cm.tab10(hash(method) % 10)  # type: ignore[arg-type]
+            color = plt.cm.tab10(hash(series_key) % 10)  # type: ignore[arg-type]
 
         ax.plot(xs_arr, ys_arr, color=color, linewidth=2.5)
         ax.fill_between(xs_arr, ys_arr - sem_arr, ys_arr + sem_arr, color=color, alpha=0.18, linewidth=0)
 
-        method_to_color[method] = str(color)
-        method_to_label[method] = labels_map.get(method, method)
-        method_to_y100[method] = _y_at_x(xs_arr, ys_arr, 100.0)
+        method_to_color[series_key] = str(color)
+        label = raw_label_by_key.get(series_key, labels_map.get(spec.method, spec.method))
+        expected_run = run_by_key.get(series_key, "")
+        if label_counts_by_method.get(spec.method, {}).get(label, 0) > 1 and expected_run:
+            label = f"{label} ({expected_run})"
+        method_to_label[series_key] = str(label)
+        method_to_y100[series_key] = _y_at_x(xs_arr, ys_arr, 100.0)
 
     ax.set_xlabel("Filter Width (ms)")
     ax.set_ylabel(str(ylabel))
@@ -383,11 +445,11 @@ def plot_corr_vs_sigma(
 
     if legend:
         handles = list(ax.get_lines())
-        legend_labels = [labels_map.get(m, m) for m in method_list]
+        legend_labels = [method_to_label.get(m, m) for m in series_list]
         ax.legend(handles, legend_labels, frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
     else:
         ranked = sorted(
-            ((m, method_to_y100.get(m, float("nan"))) for m in method_list),
+            ((m, method_to_y100.get(m, float("nan"))) for m in series_list),
             key=lambda kv: (-(kv[1] if np.isfinite(kv[1]) else -1e9), kv[0]),
         )
         right_labels = [method_to_label.get(m, m) for m, _ in ranked]
@@ -521,6 +583,55 @@ def _parse_run_by_method(items: Optional[Sequence[str]]) -> Dict[str, str]:
 
 
 @dataclass(frozen=True)
+class SeriesSpec:
+    key: str
+    method: str
+    run_tag: Optional[str] = None
+
+
+def _parse_series_specs(items: Sequence[str]) -> List[SeriesSpec]:
+    """
+    Parse a list of series specs.
+
+    Accepted forms:
+      - "ens2"                         -> key="ens2", method="ens2", run_tag=None
+      - "ens2@base"                    -> key="ens2@base", method="ens2", run_tag="base"
+      - "Published ENS2=ens2@base"     -> key="Published ENS2", method="ens2", run_tag="base"
+    """
+    specs: List[SeriesSpec] = []
+    seen_keys: set[str] = set()
+    for raw in items:
+        token = str(raw).strip()
+        if not token:
+            continue
+        if "=" in token:
+            key_part, rest = token.split("=", 1)
+            key = key_part.strip()
+            rest = rest.strip()
+        else:
+            key = ""
+            rest = token
+        if "@" in rest:
+            method_part, run_part = rest.split("@", 1)
+            method = method_part.strip()
+            run_tag = run_part.strip()
+            if not run_tag:
+                raise ValueError(f"Invalid series spec (empty run tag): {token!r}")
+        else:
+            method = rest.strip()
+            run_tag = None
+        if not method:
+            raise ValueError(f"Invalid series spec (empty method): {token!r}")
+        if not key:
+            key = f"{method}@{run_tag}" if run_tag else method
+        if key in seen_keys:
+            raise ValueError(f"Duplicate series key: {key!r}")
+        seen_keys.add(key)
+        specs.append(SeriesSpec(key=key, method=method, run_tag=run_tag))
+    return specs
+
+
+@dataclass(frozen=True)
 class CacheSpec:
     method: str
     run_tag: str
@@ -590,6 +701,42 @@ def _segment_slices(times: np.ndarray, fs_est: float, gap_factor: float = 4.0) -
     return segs
 
 
+def _select_segment_for_trial(
+    segments: Sequence[slice],
+    times: np.ndarray,
+    trial_idx: int,
+    start: float,
+    end: float,
+    *,
+    n_trials: Optional[int] = None,
+) -> Optional[slice]:
+    if not segments:
+        return None
+    if n_trials is not None and len(segments) == int(n_trials) and 0 <= trial_idx < len(segments):
+        candidate = segments[trial_idx]
+        cand_times = np.asarray(times, dtype=np.float64).ravel()[candidate]
+        cand_times = cand_times[np.isfinite(cand_times)]
+        if cand_times.size and float(cand_times[-1]) >= float(start) and float(cand_times[0]) <= float(end):
+            return candidate
+    times = np.asarray(times, dtype=np.float64).ravel()
+    best: Optional[slice] = None
+    best_overlap = -1.0
+    for seg in segments:
+        seg_times = times[seg]
+        seg_times = seg_times[np.isfinite(seg_times)]
+        if seg_times.size == 0:
+            continue
+        seg_start = float(seg_times[0])
+        seg_end = float(seg_times[-1])
+        overlap = max(0.0, min(seg_end, float(end)) - max(seg_start, float(start)))
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best = seg
+    if best_overlap <= 0.0:
+        return None
+    return best
+
+
 def plot_trace_panel(
     *,
     csv_path: Path,
@@ -606,13 +753,16 @@ def plot_trace_panel(
     trial: Optional[int] = None,
     duration_s: float = 5.0,
     start_s: Optional[float] = None,
+    end_s: Optional[float] = None,
     center: str = "median_spike",
     row_pad_frac: float = 0.05,
     gt_method_pad_frac: float = 0.05,
     dff_height: float = 1.25,
     method_label_x_offset_frac: float = 0.0,
+    show_snippet_corr: bool = False,
     scalebar_time_s: float = 0.6,
     scalebar_dff: float = 0.5,
+    ymax: Optional[float] = None,
     title: str = "Excitatory cell sample",
     figsize: Tuple[float, float] = (3.4, 5.2),
     dpi: int = 250,
@@ -624,6 +774,24 @@ def plot_trace_panel(
     Stacked trace panel; returns (fig, ax, meta).
 
     `run_by_method` is a list of strings like ["pgas=pgasraw", "ens2=cascadein_nodisc_ens2"].
+
+    To compare multiple run tags for the *same* method (e.g. two ENS2 models), pass distinct entries in
+    `methods` using the `method@run_tag` syntax, e.g.:
+      methods=["pgas", "ens2@ens2_published_rerun", "ens2@ens2_custom_...", "cascade"]
+
+    Correlation text:
+      - By default, uses the full-trial correlation loaded from `csv_path` (trialwise_correlations.csv).
+      - If `show_snippet_corr=True`, also computes a correlation over the displayed snippet window and
+        shows both values (CSV value on top, snippet value below).
+
+    Snippet window:
+      - The snippet is clamped to the intersection of all selected methods' per-trial time support.
+        This avoids cases where a method (notably PGAS) only has outputs for a sub-window of the epoch
+        and would otherwise appear flat (all-NaN after resampling).
+      - You can override the snippet window by providing both `start_s` and `end_s` (seconds).
+
+    Axis limits:
+      - Use `ymax` to override the upper y-limit (the lower limit is fixed for this panel layout).
     """
     if methods is None:
         methods = ["pgas", "cascade", "ens2"]
@@ -640,6 +808,7 @@ def plot_trace_panel(
     import matplotlib.pyplot as plt
 
     from c_spikes.inference.eval import build_ground_truth_series, resample_prediction_to_reference
+    from c_spikes.inference.smoothing import mean_downsample_trace
     from c_spikes.model_eval.model_eval import smooth_prediction
     from c_spikes.utils import load_Janelia_data
 
@@ -654,7 +823,9 @@ def plot_trace_panel(
         display_sigma_ms = float(corr_sigma_ms)
 
     dataset_stem = str(dataset).strip()
-    methods = list(methods)
+    series = _parse_series_specs(methods)
+    if not series:
+        raise ValueError("No methods/series selected.")
     run_map = _parse_run_by_method(run_by_method)
     default_run = str(run).strip() if run else "cascadein_nodisc_ens2"
 
@@ -662,7 +833,20 @@ def plot_trace_panel(
     if not rows:
         raise ValueError(f"No rows in {csv_path}")
 
-    corr_by_method_trial: Dict[str, Dict[int, float]] = {m: {} for m in methods}
+    # Resolve each series to a concrete (method, run_tag) pair.
+    series_lookup: Dict[Tuple[str, str], str] = {}
+    series_run: Dict[str, str] = {}
+    for spec in series:
+        run_tag = str(spec.run_tag).strip() if spec.run_tag else run_map.get(spec.method, default_run)
+        if not run_tag:
+            raise ValueError(f"Series {spec.key!r} has no run_tag (set method@run_tag or run_by_method).")
+        key = (spec.method, run_tag)
+        if key in series_lookup:
+            raise ValueError(f"Duplicate series method/run pair: {spec.method!r}@{run_tag!r}")
+        series_lookup[key] = spec.key
+        series_run[spec.key] = run_tag
+
+    corr_by_method_trial: Dict[str, Dict[int, float]] = {spec.key: {} for spec in series}
     for r in rows:
         if r.get("dataset") != dataset_stem:
             continue
@@ -671,21 +855,19 @@ def plot_trace_panel(
         if not np.isclose(_coerce_float(r, "corr_sigma_ms"), float(corr_sigma_ms), atol=1e-6):
             continue
         method = str(r.get("method", "")).strip()
-        if method not in corr_by_method_trial:
-            continue
         run_tag = str(r.get("run", "")).strip()
-        expected_run = run_map.get(method, default_run)
-        if run_tag != expected_run:
+        series_key = series_lookup.get((method, run_tag))
+        if series_key is None:
             continue
         trial_idx = int(float(r.get("trial", "nan")))
-        corr_by_method_trial[method][trial_idx] = _coerce_float(r, "correlation")
+        corr_by_method_trial[series_key][trial_idx] = _coerce_float(r, "correlation")
 
-    missing = [m for m in methods if not corr_by_method_trial.get(m)]
+    missing = [spec.key for spec in series if not corr_by_method_trial.get(spec.key)]
     if missing:
         raise ValueError(
-            "Missing trialwise correlations for method(s): "
+            "Missing trialwise correlations for series: "
             + ", ".join(missing)
-            + ". Check run/run_by_method and corr_sigma_ms."
+            + ". Check run/run_by_method/method@run_tag and corr_sigma_ms."
         )
 
     medians: Dict[str, float] = {}
@@ -695,7 +877,7 @@ def plot_trace_panel(
 
     common_trials = set.intersection(*(set(m.keys()) for m in corr_by_method_trial.values()))
     if not common_trials:
-        raise ValueError("No trial indices are shared across selected methods/run tags.")
+        raise ValueError("No trial indices are shared across selected series/run tags.")
 
     if trial is not None:
         selected_trial = int(trial)
@@ -707,7 +889,7 @@ def plot_trace_panel(
         for t in sorted(common_trials):
             score = 0.0
             ok = True
-            for method in methods:
+            for method in corr_by_method_trial:
                 corr = corr_by_method_trial[method].get(t, float("nan"))
                 if not np.isfinite(corr) or not np.isfinite(medians[method]):
                     ok = False
@@ -722,6 +904,11 @@ def plot_trace_panel(
             raise ValueError("Failed to select a representative trial (insufficient finite correlations).")
         selected_trial = int(best_trial)
 
+    # Correlations to display come from the provided trialwise CSV (computed over the *full trial window*).
+    trial_corrs: Dict[str, float] = {
+        method: float(corr_by_method_trial[method].get(selected_trial, float("nan"))) for method in corr_by_method_trial
+    }
+
     data_root = data_root.expanduser().resolve()
     dataset_path = data_root / f"{dataset_stem}.mat"
     if not dataset_path.exists():
@@ -731,12 +918,6 @@ def plot_trace_panel(
     trial_windows, raw_fs = _trial_windows_from_mat(dataset_path, edges_lookup=edges_lookup)
     if selected_trial < 0 or selected_trial >= len(trial_windows):
         raise ValueError(f"Trial index {selected_trial} out of range (n_trials={len(trial_windows)}).")
-    trial_start, trial_end = trial_windows[selected_trial]
-
-    duration = float(duration_s)
-    if duration <= 0:
-        raise ValueError("duration_s must be positive.")
-    duration = min(duration, float(trial_end - trial_start))
 
     time_stamps, dff, spike_times = load_Janelia_data(str(dataset_path))
     t_trial = np.asarray(time_stamps[selected_trial], dtype=np.float64).ravel()
@@ -747,72 +928,143 @@ def plot_trace_panel(
     if t_trial.size < 2:
         raise ValueError(f"Trial {selected_trial} has insufficient finite samples.")
 
+    target_fs = _parse_smoothing_fs(smoothing)
+    if target_fs is not None:
+        ds = mean_downsample_trace(t_trial, y_trial, float(target_fs))
+        t_trial = np.asarray(ds.times, dtype=np.float64).ravel()
+        y_trial = np.asarray(ds.values, dtype=np.float64).ravel()
+
     spike_times = np.asarray(spike_times, dtype=np.float64).ravel()
     spike_times = spike_times[np.isfinite(spike_times)]
-    spike_times = spike_times[(spike_times >= trial_start) & (spike_times <= trial_end)]
-
-    if start_s is not None:
-        win_start = float(np.clip(float(start_s), trial_start, trial_end - duration))
-    else:
-        if center == "median_spike" and spike_times.size:
-            center_val = float(np.median(spike_times))
-        else:
-            center_val = float(0.5 * (trial_start + trial_end))
-        win_start = float(np.clip(center_val - 0.5 * duration, trial_start, trial_end - duration))
-    win_end = float(win_start + duration)
-    label_x = float(win_start + float(method_label_x_offset_frac) * duration)
-
-    ref_fs = _reference_fs_from_label(smoothing, raw_fs)
-    ref_time, ref_gt_for_corr = build_ground_truth_series(
-        spike_times, win_start, win_end, reference_fs=ref_fs, sigma_ms=float(corr_sigma_ms)
-    )
-    _, ref_gt_for_plot = build_ground_truth_series(
-        spike_times, win_start, win_end, reference_fs=ref_fs, sigma_ms=float(display_sigma_ms)
-    )
-    ref_gt_for_plot = _normalize_0_1(ref_gt_for_plot)
 
     eval_root = eval_root.expanduser().resolve()
     method_results: Dict[str, Any] = {}
-    for method in methods:
-        run_tag = run_map.get(method, default_run)
-        spec = CacheSpec(method=method, run_tag=run_tag, dataset=dataset_stem, smoothing=smoothing)
-        entry = _load_comparison_method_entry(eval_root, spec)
+    seg_ranges: List[Tuple[float, float]] = []
+    seg_slices: Dict[str, slice] = {}
+    baseline_start, baseline_end = trial_windows[selected_trial]
+    spec_by_key: Dict[str, SeriesSpec] = {spec.key: spec for spec in series}
+    for series_key, spec in spec_by_key.items():
+        run_tag = series_run[series_key]
+        cache_spec = CacheSpec(method=spec.method, run_tag=run_tag, dataset=dataset_stem, smoothing=smoothing)
+        entry = _load_comparison_method_entry(eval_root, cache_spec)
         cache_tag, cache_key = _cache_paths_from_entry(entry, dataset_fallback=dataset_stem)
-        method_results[method] = _load_method_cache_mat(method, cache_tag, cache_key)
-
-    method_snippets: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
-    method_corrs: Dict[str, float] = {}
-    for method, result in method_results.items():
+        method_results[series_key] = _load_method_cache_mat(spec.method, cache_tag, cache_key)
+        result = method_results[series_key]
         segs = _segment_slices(result.time_stamps, result.sampling_rate)
-        if len(segs) <= selected_trial:
-            raise ValueError(f"Method {method} has {len(segs)} segments; cannot select trial {selected_trial}.")
-        seg = segs[selected_trial]
+        seg = _select_segment_for_trial(
+            segs,
+            result.time_stamps,
+            int(selected_trial),
+            float(baseline_start),
+            float(baseline_end),
+            n_trials=len(trial_windows),
+        )
+        if seg is None:
+            raise ValueError(f"Series {series_key} has no segment overlapping trial {selected_trial}.")
+        seg_slices[series_key] = seg
         t_seg = np.asarray(result.time_stamps[seg], dtype=np.float64).ravel()
-        y_seg = np.asarray(result.spike_prob[seg], dtype=np.float64).ravel()
-        mm = np.isfinite(t_seg) & np.isfinite(y_seg)
-        t_seg = t_seg[mm]
-        y_seg = y_seg[mm]
-        mwin = (t_seg >= win_start) & (t_seg <= win_end)
-        t_win = t_seg[mwin]
-        y_win = y_seg[mwin]
-        if t_win.size < 2:
-            method_snippets[method] = (np.array([win_start, win_end]), np.array([np.nan, np.nan]))
-            method_corrs[method] = float("nan")
-            continue
+        t_seg = t_seg[np.isfinite(t_seg)]
+        if t_seg.size == 0:
+            raise ValueError(f"Series {series_key} segment for trial {selected_trial} has no finite time stamps.")
+        seg_ranges.append((float(np.min(t_seg)), float(np.max(t_seg))))
 
-        y_disp_full = smooth_prediction(y_seg, result.sampling_rate, sigma_ms=float(display_sigma_ms))
-        y_disp = np.asarray(y_disp_full, dtype=np.float64).ravel()[mwin]
-        method_snippets[method] = (t_win, _normalize_0_1(y_disp))
+    # Pick an evaluation window that lies inside *all* methods' trial segments. This prevents
+    # cases where a method (notably PGAS) only has outputs for a sub-window of the epoch, and
+    # the chosen snippet lands outside that support (making the trace appear flat after normalization).
+    seg_start = max(s for s, _e in seg_ranges)
+    seg_end = min(e for _s, e in seg_ranges)
+    trial_start = max(float(baseline_start), float(seg_start))
+    trial_end = min(float(baseline_end), float(seg_end))
+    if trial_end <= trial_start:
+        # Fall back to the baseline trial window; downstream resampling may still yield NaNs.
+        trial_start = float(baseline_start)
+        trial_end = float(baseline_end)
 
-        pred_smoothed = smooth_prediction(y_win, result.sampling_rate, sigma_ms=float(corr_sigma_ms))
-        pred_aligned = resample_prediction_to_reference(t_win, pred_smoothed, ref_time, fs_est=result.sampling_rate)
-        method_corrs[method] = _pearson(ref_gt_for_corr, pred_aligned)
+    spike_times_trial = spike_times[(spike_times >= trial_start) & (spike_times <= trial_end)]
 
+    if end_s is not None:
+        if start_s is None:
+            raise ValueError("end_s requires start_s.")
+        win_start_req = float(start_s)
+        win_end_req = float(end_s)
+        if not np.isfinite(win_start_req) or not np.isfinite(win_end_req):
+            raise ValueError("start_s and end_s must be finite.")
+        if win_end_req <= win_start_req:
+            raise ValueError("end_s must be > start_s.")
+        win_start = float(np.clip(win_start_req, trial_start, trial_end))
+        win_end = float(np.clip(win_end_req, trial_start, trial_end))
+        duration = float(win_end - win_start)
+        if duration <= 0:
+            raise ValueError("Selected snippet window is empty after clamping to the trial window.")
+    else:
+        duration = float(duration_s)
+        if duration <= 0:
+            raise ValueError("duration_s must be positive.")
+        duration = min(duration, float(trial_end - trial_start))
+        if duration <= 0:
+            raise ValueError("Selected trial window is empty after intersecting method segments.")
+
+        if start_s is not None:
+            win_start = float(np.clip(float(start_s), trial_start, trial_end - duration))
+        else:
+            if center == "median_spike" and spike_times_trial.size:
+                center_val = float(np.median(spike_times_trial))
+            else:
+                center_val = float(0.5 * (trial_start + trial_end))
+            win_start = float(np.clip(center_val - 0.5 * duration, trial_start, trial_end - duration))
+        win_end = float(win_start + duration)
+    label_x = float(win_start + float(method_label_x_offset_frac) * duration)
+
+    # Fluorescence snippet (plotted at the same sampling as the selected `smoothing`).
     mwin_f = (t_trial >= win_start) & (t_trial <= win_end)
     t_f = t_trial[mwin_f]
     y_f = y_trial[mwin_f]
     if t_f.size < 2:
         raise ValueError("Fluorescence snippet has insufficient samples.")
+
+    # Reference grid for GT + correlations (keep consistent with trialwise_correlations.py).
+    ref_fs = _reference_fs_from_label(smoothing, raw_fs)
+    ref_time, ref_gt_for_plot = build_ground_truth_series(
+        spike_times_trial, win_start, win_end, reference_fs=ref_fs, sigma_ms=float(display_sigma_ms)
+    )
+    ref_gt_for_corr: Optional[np.ndarray] = None
+    if show_snippet_corr:
+        corr_time, corr_trace = build_ground_truth_series(
+            spike_times_trial, win_start, win_end, reference_fs=ref_fs, sigma_ms=float(corr_sigma_ms)
+        )
+        corr_time = np.asarray(corr_time, dtype=np.float64).ravel()
+        corr_trace = np.asarray(corr_trace, dtype=np.float64).ravel()
+        if corr_time.shape != ref_time.shape or not np.allclose(corr_time, ref_time):
+            corr_trace = np.interp(ref_time, corr_time, corr_trace)
+        ref_gt_for_corr = corr_trace
+    ref_gt_for_plot = _normalize_0_1(ref_gt_for_plot)
+    if ref_time.size < 2:
+        raise ValueError("Reference grid has insufficient samples for plotting/correlation.")
+
+    method_snippets: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+    snippet_corrs: Dict[str, float] = {}
+    for series_key, result in method_results.items():
+        method = spec_by_key[series_key].method
+        seg = seg_slices[series_key]
+        t_seg = np.asarray(result.time_stamps[seg], dtype=np.float64).ravel()
+        y_seg = np.asarray(result.spike_prob[seg], dtype=np.float64).ravel()
+        mm = np.isfinite(t_seg) & np.isfinite(y_seg)
+        t_seg = t_seg[mm]
+        y_seg = y_seg[mm]
+        if method == "pgas" and y_seg.size >= 2:
+            # PGAS spike counts are reported on the *right edge* of each interval; shift
+            # left by one sample so peaks line up with the start-of-bin GT convention.
+            y_seg = np.concatenate([y_seg[1:], np.array([0.0], dtype=y_seg.dtype)])
+
+        y_disp_full = smooth_prediction(y_seg, result.sampling_rate, sigma_ms=float(display_sigma_ms))
+        y_disp = resample_prediction_to_reference(t_seg, y_disp_full, ref_time, fs_est=result.sampling_rate)
+        method_snippets[series_key] = (ref_time, _normalize_0_1(y_disp))
+        if show_snippet_corr and ref_gt_for_corr is not None:
+            pred_smoothed_full = smooth_prediction(y_seg, result.sampling_rate, sigma_ms=float(corr_sigma_ms))
+            pred_aligned = resample_prediction_to_reference(
+                t_seg, pred_smoothed_full, ref_time, fs_est=result.sampling_rate
+            )
+            snippet_corrs[series_key] = _pearson(ref_gt_for_corr, pred_aligned)
     y_f0 = float(np.nanmedian(y_f))
     y_f_p1 = float(np.nanpercentile(y_f, 1))
     y_f_p99 = float(np.nanpercentile(y_f, 99))
@@ -845,9 +1097,9 @@ def plot_trace_panel(
     )
 
     ranked_methods = sorted(
-        methods,
+        list(trial_corrs.keys()),
         key=lambda m: (
-            -(method_corrs.get(m, float("nan")) if np.isfinite(method_corrs.get(m, float("nan"))) else -1e9),
+            -(trial_corrs.get(m, float("nan")) if np.isfinite(trial_corrs.get(m, float("nan"))) else -1e9),
             m,
         ),
     )
@@ -868,7 +1120,7 @@ def plot_trace_panel(
     dff_extra_gap = float(row_pad_frac) * max(1.0, dff_span)
     y_f_base = y_gt_base + trace_height + row_pad + dff_bottom_clearance + dff_extra_gap
 
-    for s in spike_times:
+    for s in spike_times_trial:
         if s < win_start or s > win_end:
             continue
         ax.axvline(float(s), color="#888888", linestyle=":", linewidth=0.6, alpha=0.9, zorder=0)
@@ -879,15 +1131,38 @@ def plot_trace_panel(
     ax.plot(ref_time, y_gt_base + ref_gt_for_plot, color="black", linewidth=2.0)
     ax.text(label_x, y_gt_base + 0.8, "Ground truth", ha="left", va="center", fontsize=11, fontweight="bold")
 
+    # Only append "(run_tag)" to series labels when the *rendered* labels would otherwise collide for
+    # the same base method. This lets users alias one ENS2 run as e.g. `biophys_ml=ens2@...` without
+    # forcing the remaining ENS2 series to show "(base)".
+    label_counts_by_method: Dict[str, Dict[str, int]] = {}
+    raw_label_by_key: Dict[str, str] = {}
+    for spec in series:
+        base_label = labels_map.get(spec.method, spec.method)
+        label0 = labels_map.get(spec.key, base_label)
+        raw_label_by_key[spec.key] = label0
+        label_counts_by_method.setdefault(spec.method, {})
+        label_counts_by_method[spec.method][label0] = label_counts_by_method[spec.method].get(label0, 0) + 1
+
     for method in ranked_methods:
         t_win, y_norm = method_snippets[method]
         base = y_method_base[method]
-        color = colors_map.get(method, "#333333")
-        label = labels_map.get(method, method)
+        series_spec = spec_by_key[method]
+        run_tag = series_run.get(method, "")
+        color = colors_map.get(method, colors_map.get(series_spec.method, "#333333"))
+        label = raw_label_by_key.get(method, labels_map.get(series_spec.method, series_spec.method))
+        if label_counts_by_method.get(series_spec.method, {}).get(label, 0) > 1 and run_tag:
+            label = f"{label} ({run_tag})"
         ax.plot(t_win, base + y_norm, color=color, linewidth=1.6)
         ax.text(label_x, base + 0.50, label, color=color, ha="left", va="center", fontsize=12, fontweight="bold")
-        r = method_corrs.get(method, float("nan"))
-        r_txt = "r = nan" if not np.isfinite(r) else f"r = {r:.2f}"
+        r_trial = float(trial_corrs.get(method, float("nan")))
+        if show_snippet_corr:
+            r_snip = float(snippet_corrs.get(method, float("nan")))
+            r_txt = (
+                f"r = {'nan' if not np.isfinite(r_trial) else f'{r_trial:.2f}'}\n"
+                f"r = {'nan' if not np.isfinite(r_snip) else f'{r_snip:.2f}'}"
+            )
+        else:
+            r_txt = f"r = {'nan' if not np.isfinite(r_trial) else f'{r_trial:.2f}'}"
         ax.text(
             win_end + 0.16 * duration,
             base + 0.50,
@@ -899,22 +1174,33 @@ def plot_trace_panel(
             fontweight="bold",
         )
 
+    y_min_plot = -0.4
+    y_top_auto = y_f_base + max(1.0, dff_max) + 1.1
+    y_top = float(y_top_auto) if ymax is None else float(ymax)
+    if not np.isfinite(y_top) or y_top <= y_min_plot:
+        raise ValueError(f"ymax must be > {y_min_plot}, got {ymax!r}")
+
     sb_time = float(scalebar_time_s)
     sb_time = min(sb_time, duration)
     sb_x1 = win_end - 0.06 * duration
     sb_x0 = sb_x1 - sb_time
-    sb_y0 = y_f_base + 0.9
+    sb_height = float(scalebar_dff) / float(dff_unit_scale)
+    sb_text_pad = 0.30
+    sb_margin = 0.05
+    sb_y0_default = y_f_base + 0.9
+    sb_y0 = min(sb_y0_default, y_top - sb_height - sb_text_pad - sb_margin)
+    sb_y0 = max(sb_y0, y_min_plot + sb_margin)
     # Draw a vertical ΔF/F scalebar corresponding to `scalebar_dff` in raw units.
-    sb_y1 = sb_y0 + float(scalebar_dff) / float(dff_unit_scale)
+    sb_y1 = sb_y0 + sb_height
     ax.plot([sb_x0, sb_x1], [sb_y1, sb_y1], color="black", linewidth=1.2)
     ax.plot([sb_x1, sb_x1], [sb_y0, sb_y1], color="black", linewidth=1.2)
-    ax.text(0.5 * (sb_x0 + sb_x1), sb_y1 + 0.12, f"{sb_time:g} s", ha="center", va="bottom", fontsize=10)
+    time_label_y = min(sb_y1 + 0.12, y_top - sb_margin)
+    ax.text(0.5 * (sb_x0 + sb_x1), time_label_y, f"{sb_time:g} s", ha="center", va="bottom", fontsize=10)
     ax.text(sb_x1 + 0.02 * duration, 0.5 * (sb_y0 + sb_y1), f"{float(scalebar_dff):g} ΔF/F", ha="left", va="center", fontsize=10)
 
     ax.set_title(str(title), pad=8)
     ax.set_xlim(win_start, win_end + 0.18 * duration)
-    y_top = y_f_base + max(1.0, dff_max) + 1.1
-    ax.set_ylim(-0.4, y_top)
+    ax.set_ylim(y_min_plot, y_top)
     ax.set_axis_off()
 
     fig.tight_layout()
@@ -922,8 +1208,11 @@ def plot_trace_panel(
         "trial": int(selected_trial),
         "window_start_s": float(win_start),
         "window_end_s": float(win_end),
-        "method_corrs": dict(method_corrs),
-        "run_by_method": {m: run_map.get(m, default_run) for m in methods},
+        "method_corrs": dict(trial_corrs),
+        "snippet_corrs": dict(snippet_corrs) if show_snippet_corr else None,
+        # Backwards-compatible-ish: previously this was method->run_tag; now it is series_key->run_tag.
+        "run_by_method": {spec.key: series_run.get(spec.key) for spec in series},
+        "series": [{"key": spec.key, "method": spec.method, "run_tag": series_run.get(spec.key)} for spec in series],
     }
     return fig, ax, meta
 
@@ -960,6 +1249,7 @@ def plot_raincloud_by_downsample(
     methods: Optional[Sequence[str]] = None,
     smoothings: Optional[Sequence[str]] = None,
     runs: Optional[Sequence[str]] = None,
+    run_by_method: Optional[Sequence[str]] = None,
     datasets: Optional[Sequence[str]] = None,
     reduce: str = "trial",
     title: Optional[str] = None,
@@ -968,6 +1258,8 @@ def plot_raincloud_by_downsample(
     dpi: int = 200,
     seed: int = 0,
     group_width: float = 0.80,
+    group_spacing: float = 1.25,
+    method_label_x_offset_frac: float = 0.05,
     colors: Optional[Mapping[str, str]] = None,
     labels: Optional[Mapping[str, str]] = None,
     ax: Any = None,
@@ -984,6 +1276,22 @@ def plot_raincloud_by_downsample(
     `reduce`:
       - "trial": each trial correlation is a sample (default)
       - "dataset": average across trials within each dataset/run/smoothing first
+
+    `run_by_method`:
+      - Optional list of strings like ["pgas=base", "ens2=ens2_custom_k1_..."].
+      - When provided, this selects the run tag to use for each method (instead of a global `runs` filter),
+        which is useful for mixing e.g. PGAS/CASCADE from `base` with ENS2 from a custom model run tag.
+      - Note: if you want to plot the *same method* from multiple runs (e.g. ENS2 published vs ENS2 custom),
+        pass distinct entries in `methods` using the `method@run_tag` syntax, e.g.
+        methods=["ens2@base", "ens2@ens2_custom_..."].
+
+    `group_spacing`:
+      - Multiplies the spacing between adjacent downsample groups on the x-axis (default: 1.25).
+        Use values >1.0 to create more whitespace between smoothing categories.
+
+    `method_label_x_offset_frac`:
+      - Horizontal offset for the right-hand method labels, expressed as a fraction of the x-span
+        of the plotted categories.
     """
     if reduce not in {"trial", "dataset"}:
         raise ValueError("reduce must be 'trial' or 'dataset'")
@@ -1003,9 +1311,11 @@ def plot_raincloud_by_downsample(
         raise ValueError(f"No rows found in {csv_path}")
 
     if methods is None:
-        methods = sorted({str(r.get("method", "")).strip() for r in rows if r.get("method")})
-    methods = [str(m).strip() for m in methods if str(m).strip()]
-    if not methods:
+        uniq_methods = sorted({str(r.get("method", "")).strip() for r in rows if r.get("method")})
+        series = [SeriesSpec(key=m, method=m, run_tag=None) for m in uniq_methods if m]
+    else:
+        series = _parse_series_specs(methods)
+    if not series:
         raise ValueError("No methods selected.")
 
     # Determine smoothing categories (x-axis) either from user or data.
@@ -1019,9 +1329,25 @@ def plot_raincloud_by_downsample(
 
     run_filter = set(_uniq(runs) or [])
     dataset_filter = set(_uniq(datasets) or [])
+    run_map = _parse_run_by_method(run_by_method)
 
     # Build distribution samples per (method, smoothing).
-    values_by_ms: Dict[Tuple[str, str], List[float]] = {(m, s): [] for m in methods for s in smoothings}
+    series_lookup: Dict[Tuple[str, str], str] = {}
+    wildcard_by_method: Dict[str, str] = {}
+    spec_by_key: Dict[str, SeriesSpec] = {spec.key: spec for spec in series}
+    for spec in series:
+        expected_run = str(spec.run_tag).strip() if spec.run_tag else run_map.get(spec.method)
+        if expected_run:
+            key = (spec.method, expected_run)
+            if key in series_lookup:
+                raise ValueError(f"Duplicate series method/run pair: {spec.method!r}@{expected_run!r}")
+            series_lookup[key] = spec.key
+        else:
+            if spec.method in wildcard_by_method:
+                raise ValueError(f"Duplicate unpinned series for method {spec.method!r}; add @run_tag to disambiguate.")
+            wildcard_by_method[spec.method] = spec.key
+
+    values_by_ms: Dict[Tuple[str, str], List[float]] = {(spec.key, s): [] for spec in series for s in smoothings}
     if reduce == "trial":
         for r in rows:
             if not np.isclose(_coerce_float(r, "corr_sigma_ms"), float(corr_sigma_ms), atol=1e-6):
@@ -1034,12 +1360,17 @@ def plot_raincloud_by_downsample(
                 continue
             method = str(r.get("method", "")).strip()
             smoothing = str(r.get("smoothing", "")).strip()
-            if method not in methods or smoothing not in smoothings:
+            series_key = series_lookup.get((method, run))
+            if series_key is None:
+                series_key = wildcard_by_method.get(method)
+            if series_key is None:
                 continue
-            values_by_ms[(method, smoothing)].append(_coerce_float(r, "correlation"))
+            if smoothing not in smoothings:
+                continue
+            values_by_ms[(series_key, smoothing)].append(_coerce_float(r, "correlation"))
     else:
         by_bucket: Dict[Tuple[str, str, str, str], List[float]] = {}
-        # (method, smoothing, dataset, run) -> trial correlations
+        # (series_key, smoothing, dataset, run) -> trial correlations
         for r in rows:
             if not np.isclose(_coerce_float(r, "corr_sigma_ms"), float(corr_sigma_ms), atol=1e-6):
                 continue
@@ -1051,20 +1382,27 @@ def plot_raincloud_by_downsample(
             dataset = str(r.get("dataset", "")).strip()
             if dataset_filter and dataset not in dataset_filter:
                 continue
-            if method not in methods or smoothing not in smoothings:
+            series_key = series_lookup.get((method, run))
+            if series_key is None:
+                series_key = wildcard_by_method.get(method)
+            if series_key is None:
+                continue
+            if smoothing not in smoothings:
                 continue
             if not dataset:
                 continue
-            by_bucket.setdefault((method, smoothing, dataset, run), []).append(_coerce_float(r, "correlation"))
-        for (method, smoothing, _dataset, _run), vals in by_bucket.items():
+            by_bucket.setdefault((series_key, smoothing, dataset, run), []).append(_coerce_float(r, "correlation"))
+        for (series_key, smoothing, _dataset, _run), vals in by_bucket.items():
             mean_val = float(np.mean(_finite(vals))) if _finite(vals).size else float("nan")
-            values_by_ms[(method, smoothing)].append(mean_val)
+            values_by_ms[(series_key, smoothing)].append(mean_val)
 
     rng = np.random.default_rng(int(seed))
 
     if float(group_width) <= 0:
         raise ValueError("group_width must be positive.")
     group_width = float(min(0.95, group_width))
+    if float(group_spacing) <= 0:
+        raise ValueError("group_spacing must be positive.")
 
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize, dpi=int(dpi))
@@ -1072,29 +1410,29 @@ def plot_raincloud_by_downsample(
         fig = ax.figure
     axes_list = [ax]
 
-    x_centers = np.arange(len(smoothings), dtype=np.float64)
-    n_methods = len(methods)
-    if n_methods == 0:
+    x_centers = np.arange(len(smoothings), dtype=np.float64) * float(group_spacing)
+    n_series = len(series)
+    if n_series == 0:
         raise ValueError("No methods selected.")
 
     # Method positions within each downsample group.
-    if n_methods == 1:
+    if n_series == 1:
         offsets = np.array([0.0], dtype=np.float64)
     else:
-        step = group_width / float(n_methods)
-        offsets = (np.arange(n_methods, dtype=np.float64) - (n_methods - 1) / 2.0) * step
-    violin_width = min(0.70 * group_width / float(n_methods), 0.35)
+        step = group_width / float(n_series)
+        offsets = (np.arange(n_series, dtype=np.float64) - (n_series - 1) / 2.0) * step
+    violin_width = min(0.70 * group_width / float(n_series), 0.35)
     box_width = 0.35 * violin_width
 
     # Plot each (smoothing, method) distribution at its grouped x position.
     for s_idx, smoothing in enumerate(smoothings):
         x0 = float(x_centers[s_idx])
-        for m_idx, method in enumerate(methods):
-            vals = _finite(values_by_ms.get((method, smoothing), []))
+        for m_idx, spec in enumerate(series):
+            vals = _finite(values_by_ms.get((spec.key, smoothing), []))
             if vals.size == 0:
                 continue
             pos = x0 + float(offsets[m_idx])
-            color = colors_map.get(method, "#333333")
+            color = colors_map.get(spec.key, colors_map.get(spec.method, "#333333"))
 
             vio = ax.violinplot([vals], positions=[pos], widths=float(violin_width), showextrema=False)
             for body in vio.get("bodies", []):
@@ -1144,20 +1482,58 @@ def plot_raincloud_by_downsample(
     ax.set_ylim(float(ylim[0]), float(ylim[1]))
     ax.grid(True, axis="y", color="#808080", alpha=0.20, linewidth=1.0)
 
-    # Legend by method (colored).
-    from matplotlib.lines import Line2D
-
-    handles = [
-        Line2D([0], [0], color=colors_map.get(m, "#333333"), lw=4, label=labels_map.get(m, m))
-        for m in methods
-    ]
-    ax.legend(handles=handles, frameon=False, loc="upper right")
-
     if title:
         ax.set_title(str(title))
 
     # Tight x-limits just around the group extents.
-    ax.set_xlim(float(x_centers[0]) - 0.75, float(x_centers[-1]) + 0.75)
+    x_left = float(x_centers[0]) - 0.75
+    x_right = float(x_centers[-1]) + 0.75
+    x_pad = max(0.8, 0.35 * float(len(series)))
+    x_span = max(1e-9, x_right - x_left)
+    right_x = x_right + float(method_label_x_offset_frac) * x_span
+    ax.set_xlim(x_left, max(x_right, right_x) + x_pad)
+
+    # Color-coded labels at the right-hand side (legend replacement).
+    label_counts_by_method: Dict[str, Dict[str, int]] = {}
+    raw_label_by_key: Dict[str, str] = {}
+    expected_run_by_key: Dict[str, str] = {}
+    for spec in series:
+        base_label = labels_map.get(spec.method, spec.method)
+        label0 = labels_map.get(spec.key, base_label)
+        raw_label_by_key[spec.key] = label0
+        expected_run = str(spec.run_tag).strip() if spec.run_tag else run_map.get(spec.method, "")
+        expected_run_by_key[spec.key] = str(expected_run).strip()
+        label_counts_by_method.setdefault(spec.method, {})
+        label_counts_by_method[spec.method][label0] = label_counts_by_method[spec.method].get(label0, 0) + 1
+
+    label_rows: List[Tuple[str, str, str, float]] = []
+    for spec in series:
+        label = raw_label_by_key.get(spec.key, labels_map.get(spec.method, spec.method))
+        expected_run = expected_run_by_key.get(spec.key, "")
+        if label_counts_by_method.get(spec.method, {}).get(label, 0) > 1 and expected_run:
+            label = f"{label} ({expected_run})"
+        vals_all: List[float] = []
+        for s in smoothings:
+            vals_all.extend(values_by_ms.get((spec.key, s), []))
+        vals = _finite(vals_all)
+        y_pos = float(np.median(vals)) if vals.size else float("nan")
+        color = colors_map.get(spec.key, colors_map.get(spec.method, "#333333"))
+        label_rows.append((spec.key, str(label), str(color), y_pos))
+
+    # Rank by overall median (ties broken by label), and avoid overlaps with a placement helper.
+    label_rows.sort(key=lambda t: (-(t[3] if np.isfinite(t[3]) else -1e9), t[1]))
+    y_min, y_max = ax.get_ylim()
+    min_sep = 0.09 * (y_max - y_min)
+    _place_right_labels(
+        ax,
+        fig,
+        x=right_x,
+        y_positions=[t[3] for t in label_rows],
+        labels=[t[1] for t in label_rows],
+        colors=[t[2] for t in label_rows],
+        min_sep=float(min_sep),
+        fontsize=14,
+    )
 
     fig.tight_layout()
     if out_path is not None:

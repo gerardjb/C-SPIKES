@@ -113,6 +113,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Optional snippet start time (seconds); overrides centering behavior.",
     )
     p.add_argument(
+        "--end-s",
+        type=float,
+        default=None,
+        help="Optional snippet end time (seconds); requires --start-s and overrides --duration-s.",
+    )
+    p.add_argument(
         "--center",
         choices=["median_spike", "trial_mid"],
         default="median_spike",
@@ -369,6 +375,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         trial=args.trial,
         duration_s=float(args.duration_s),
         start_s=args.start_s,
+        end_s=args.end_s,
         center=str(args.center),
         method_label_x_offset_frac=float(args.method_label_x_offset_frac),
         scalebar_time_s=float(args.scalebar_time_s),
