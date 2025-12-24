@@ -32,7 +32,7 @@ class synth_gen():
   def __init__(self, spike_rate=2, spike_params=[5, 0.5],cell_params=[30e-6, 10e2, 1e-5, 5, 30, 10],
     noise_dir="gt_noise_dir", GCaMP_model=None, tag="default", plot_on=False,use_noise=False,noise_val=2,
     noise_fraction: float = 1.0, noise_seed: Optional[Union[int, Sequence[int]]] = None,
-    log_nonfinite: bool = False):
+    seed_spikes: bool = True, log_nonfinite: bool = False):
     
     # Get current directory of this file, prepend to noise_dir
     base_dir = Path(__file__).resolve().parent
@@ -62,6 +62,7 @@ class synth_gen():
     #Handling noise cases
     self.use_noise = use_noise
     self.noise_val = noise_val
+    self.seed_spikes = bool(seed_spikes)
     
     # Load the GCaMP_model
     if GCaMP_model is None:
@@ -165,9 +166,8 @@ class synth_gen():
       return np.array([], dtype=float)
     t = np.linspace(0, T, nt1)
     vrate_interp = np.interp(t, np.arange(nt) * dt, vrate)
-    # make spikes
-    nspike = (np.random.rand(nt1).reshape(-1,1) < vrate_interp * dt1)
-    
+    # make spikes (1D; avoid accidental broadcasting to an nt1×nt1 matrix)
+    nspike = (np.random.rand(nt1) < vrate_interp * dt1)
     spikes = np.nonzero(nspike)[0] * dt1
     spikes = self.strip_sub_refrac(spikes)
     
@@ -239,7 +239,8 @@ class synth_gen():
     for seed in self.noise_seeds:
       # Make spike generation reproducible for a given (noise_seed, noise_fraction).
       # This keeps sweep runs stable when using deterministic seed lists.
-      np.random.seed(self._seed_to_int(seed))
+      if self.seed_spikes:
+        np.random.seed(self._seed_to_int(seed))
       noise_files = self._select_noise_subset(seed)
       seed_suffix = f"_seed{seed}" if seed is not None else "_seedauto"
       for file in noise_files:
