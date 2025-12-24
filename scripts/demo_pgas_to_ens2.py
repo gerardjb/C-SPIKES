@@ -35,7 +35,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to a PGAS param_samples_*.dat file (repeatable).",
     )
     p.add_argument("--burnin", type=int, default=100, help="Burn-in rows to discard from each param_samples file.")
-    p.add_argument("--spike-rate", type=float, default=2.0, help="Nominal spike rate for syn_gen.")
+    p.add_argument(
+        "--spike-rate",
+        type=float,
+        default=2.0,
+        help="Nominal spike rate for syn_gen (verify realized rate via scripts/inspect_synth_dir.py).",
+    )
     p.add_argument(
         "--spike-params",
         type=float,
@@ -57,6 +62,22 @@ def parse_args() -> argparse.Namespace:
         help=(
             "If set, preprocess the syn_gen noise directory to this sampling rate (Hz) before synthesis. "
             "Writes a cached copy under results/inference_cache/noise_downsample/ and uses it for syn_gen."
+        ),
+    )
+    p.add_argument(
+        "--force-synth",
+        action="store_true",
+        help=(
+            "Allow overwriting an existing results/Ground_truth/synth_<tag> directory. "
+            "Without this flag, demo_pgas_to_ens2 refuses to overwrite existing synth_* outputs."
+        ),
+    )
+    p.add_argument(
+        "--no-seed-spikes",
+        action="store_true",
+        help=(
+            "Disable deterministic spike-train seeding inside syn_gen (legacy behavior; pre-2025-12-12). "
+            "This makes syn_gen outputs non-reproducible even if --noise-seed is provided."
         ),
     )
     p.add_argument(
@@ -215,6 +236,8 @@ def main() -> None:
         output_root=Path("results"),
         manifest_path=manifest_path,
         manifest_model_name=args.model_name,
+        force_synth=bool(args.force_synth),
+        seed_spikes=not bool(args.no_seed_spikes),
     )
 
     synth_dirs = [

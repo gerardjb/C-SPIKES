@@ -18,6 +18,8 @@ def build_synthetic_ground_truth_from_pgas(
     noise_dir: Optional[Path | str] = None,
     noise_fraction: float = 1.0,
     noise_seed: Optional[Union[int, Sequence[int]]] = None,
+    seed_spikes: bool = True,
+    force_synth: bool = False,
     tag: Optional[str] = None,
     output_root: Path | str = Path("results"),
     manifest_path: Optional[Path | str] = None,
@@ -71,6 +73,21 @@ def build_synthetic_ground_truth_from_pgas(
         stem = param_samples_path.stem
         tag = stem.replace("param_samples_", "")
 
+    synth_dir = output_root / "Ground_truth" / f"synth_{tag}"
+    existing = list(synth_dir.glob("*.mat")) if synth_dir.exists() else []
+    if existing and not force_synth:
+        raise FileExistsError(
+            "Refusing to overwrite existing synthetic output directory: "
+            f"{synth_dir} (found {len(existing)} .mat files). "
+            "Pass force_synth=True (or --force-synth in demo_pgas_to_ens2.py) or change the tag."
+        )
+    if existing and force_synth:
+        for mat in existing:
+            try:
+                mat.unlink()
+            except OSError:
+                pass
+
     # normalize seeds to list for synth_gen
     seeds = None
     if noise_seed is None:
@@ -91,6 +108,7 @@ def build_synthetic_ground_truth_from_pgas(
         use_noise=True,
         noise_fraction=float(noise_fraction),
         noise_seed=seeds,
+        seed_spikes=bool(seed_spikes),
     )
     synth.generate(output_folder=str(output_root))
 
@@ -98,7 +116,6 @@ def build_synthetic_ground_truth_from_pgas(
         from c_spikes.ens2.manifest import add_synthetic_entry
 
         manifest_path = Path(manifest_path)
-        synth_dir = output_root / "Ground_truth" / f"synth_{tag}"
         if isinstance(noise_seed, (list, tuple)):
             noise_seed_serializable = list(noise_seed)
         else:
@@ -110,6 +127,7 @@ def build_synthetic_ground_truth_from_pgas(
             "noise_dir": str(noise_dir),
             "noise_fraction": float(noise_fraction),
             "noise_seed": noise_seed_serializable,
+            "seed_spikes": bool(seed_spikes),
             "output_dir": str(synth_dir),
         }
         add_synthetic_entry(
@@ -137,6 +155,8 @@ def build_synthetic_ground_truth_batch(
     output_root: Path | str = Path("results"),
     manifest_path: Optional[Path | str] = None,
     manifest_model_name: Optional[str] = None,
+    force_synth: bool = False,
+    seed_spikes: bool = True,
 ) -> Dict[str, np.ndarray]:
     """
     Batch helper to generate multiple synthetic datasets from multiple PGAS param_samples inputs.
@@ -176,6 +196,8 @@ def build_synthetic_ground_truth_batch(
             noise_dir=noise_dir,  # type: ignore[arg-type]
             noise_fraction=noise_fraction,
             noise_seed=noise_seed,  # type: ignore[arg-type]
+            seed_spikes=bool(seed_spikes),
+            force_synth=bool(force_synth),
             tag=tag,
             output_root=output_root,
             manifest_path=manifest_path,
