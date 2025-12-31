@@ -65,6 +65,7 @@ class DatasetRunConfig:
     cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
     pgas_fixed_bm_sigma: Optional[float] = None  # Optional fixed bm_sigma (skip tuning)
     cascade_discretize: bool = True
+    cascade_model_name: str = "universal_p_cascade_exc_30"
     trialwise_correlations: bool = False
 
 
@@ -200,7 +201,7 @@ def run_inference_for_dataset(
         cascade_cfg = CascadeConfig(
             dataset_tag=dataset_tag,
             model_folder=cascade_model_root,
-            model_name="Cascade_Universal_30Hz",
+            model_name=str(cfg.cascade_model_name),
             resample_fs=cascade_fs,
             downsample_label=downsample_label,
             use_cache=cfg.use_cache,

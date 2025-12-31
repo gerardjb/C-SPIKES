@@ -54,6 +54,7 @@ class RunConfig:
     cascade_discretize: bool = True
     ens2_pretrained_root: Path = Path("results/Pretrained_models/ens2_published")
     cascade_model_root: Path = Path("results/Pretrained_models")
+    cascade_model_name: str = "universal_p_cascade_exc_30"
     pgas_maxspikes: Optional[int] = None
     pgas_fixed_bm_sigma: Optional[float] = PGAS_BM_SIGMA_DEFAULT
     run_tag: Optional[str] = None  # optional override
@@ -321,6 +322,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 cascade_resample_fs=cfg.cascade_resample_fs,
                 pgas_fixed_bm_sigma=cfg.pgas_fixed_bm_sigma,
                 cascade_discretize=bool(cfg.cascade_discretize),
+                cascade_model_name=str(cfg.cascade_model_name),
                 trialwise_correlations=bool(cfg.trialwise_correlations),
             )
             outputs = run_inference_for_dataset(

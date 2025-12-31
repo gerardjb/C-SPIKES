@@ -25,6 +25,7 @@ DEFAULT_COLORS: Dict[str, str] = {
     "cascade": "#F3AE14",
     "ens2": "#A6780C",
     "biophys_ml": "#007755",
+    "mlspike": "#0072B2",
 }
 
 DEFAULT_LABELS: Dict[str, str] = {

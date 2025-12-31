@@ -126,6 +126,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Skip CASCADE discrete-spike inference (avoids slow/hanging discretization; correlations still computed from spike_prob).",
     )
     parser.add_argument(
+        "--cascade-model-name",
+        type=str,
+        default="Cascade_Universal_30Hz",
+        help="CASCADE model folder name under --cascade-model-root (default: Cascade_Universal_30Hz).",
+    )
+    parser.add_argument(
         "--cascade-model-root",
         type=Path,
         default=Path("results/Pretrained_models"),
@@ -184,6 +190,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         cascade_discretize=bool(not args.cascade_no_discrete),
         ens2_pretrained_root=ens2_pretrained_root,
         cascade_model_root=args.cascade_model_root,
+        cascade_model_name=str(args.cascade_model_name),
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),

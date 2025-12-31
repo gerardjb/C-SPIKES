@@ -106,10 +106,17 @@ If you didn’t create the symlink above, also pass `--stock-ens2-root Pretraine
 
 Useful parameters when matching your dataset’s spike statistics:
 - `--burnin` (discard early PGAS samples, we find ~100 is typically enough to get a stable posterior, but plotting parameter values against iterations can reveal if you need more/less on your own data)
-- `--spike-rate` and `--spike-params <smooth_sec> <duty_fraction>`
-- `--noise-dir`, `--noise-fraction`, `--noise-seed` / `--noise-seed-base`
+- `--spike-rate` and `--spike-params <smooth_sec> <duty_fraction>` (note: realized mean firing rate depends on the generator; verify on outputs)
+- `--noise-dir`, `--noise-fraction`, `--noise-seed` / `--noise-seed-base`, `--noise-target-fs`
 - `--gparam-path` (sensor-specific fluorescence model used by `syn_gen`)
 - `--synth-tag-suffix` (avoid reusing `results/Ground_truth/synth_*` directories across sweeps)
+- `--force-synth` (allow overwriting an existing `synth_*` output directory)
+- `--no-seed-spikes` (legacy syn_gen behavior; non-reproducible spike draws even when `--noise-seed` is set)
+
+Quick QC on a generated synthetic directory (timebase + firing-rate stats):
+```bash
+python scripts/inspect_synth_dir.py --synth-dir results/Ground_truth/synth_<tag>
+```
 
 Outputs:
 - Synthetic datasets: `results/Ground_truth/synth_<tag>/...`
@@ -159,6 +166,7 @@ python -m c_spikes.cli.run \
   --dataset jGCaMP8f_ANM471993_cell01 \
   --smoothing-level 10Hz \
   --method pgas --method ens2 --method cascade \
+  --cascade-model-name Cascade_Universal_30Hz \
   --corr-sigma-ms 50 \
   --eval-only
 ```
@@ -182,6 +190,19 @@ Notebook template:
 - `notebooks/trialwise_visualizations.ipynb` shows how to import the functions (without installing the package) and tweak parameters interactively.
 
 Note: this section will need to be updated as new methods are brought online (e.g. `PGBAR`, `MLspike`) so labels/colors and method-to-run-tag conventions stay consistent.
+
+### Import external (MATLAB) method outputs
+If you have spike-probability traces generated outside this repo (e.g. MATLAB), you can import them into the
+existing cache + `full_evaluation` layout so the plotting/eval scripts can pick them up:
+```bash
+PYTHONPATH=src python scripts/import_matlab_cache.py \
+  --pred-path /path/to/method_outputs.mat \
+  --dataset <dataset_stem> \
+  --smoothing raw \
+  --method mlspike \
+  --run-tag matlab_mlspike \
+  --data-root data/janelia_8f/excitatory
+```
 
 ## Core Python API
 All reusable pieces live under `c_spikes/inference`:
