@@ -568,6 +568,22 @@ def get_model_paths(model_path):
     all_models = glob.glob(os.path.join(model_path, "*.keras"))
     all_models = sorted(all_models)  # sort
 
+    # If no .keras models exist but legacy .h5 weights are present, try converting in-place.
+    if len(all_models) == 0:
+        legacy_h5 = sorted(glob.glob(os.path.join(model_path, "*.h5")))
+        if legacy_h5:
+            try:
+                utils.convert_h5_models_to_keras(model_path, overwrite=False, verbose=1)
+            except Exception as exc:
+                m = (
+                    'Found legacy CASCADE model files (*.h5) but failed to convert them to *.keras in "{}".\n'.format(
+                        os.path.abspath(model_path)
+                    )
+                    + f"Conversion error: {exc}"
+                )
+                raise Exception(m) from exc
+            all_models = sorted(glob.glob(os.path.join(model_path, "*.keras")))
+
     # Exception in case no model was found to catch this mistake where it happened
     if len(all_models) == 0:
         m = 'No models (*.keras files) were found in the specified folder "{}".'.format(
