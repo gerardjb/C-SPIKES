@@ -86,7 +86,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     p.add_argument("--title", type=str, default=None, help="Optional figure title.")
     p.add_argument("--ylabel", type=str, default="Pearson correlation", help="Y-axis label.")
-    p.add_argument("--ylim", type=float, nargs=2, default=(0.2, 1.0), help="Y limits, e.g. --ylim 0.2 1.0")
+    p.add_argument("--xlim", type=float, nargs=2, default=None, help="Optional X limits, e.g. --xlim 10 105")
+    p.add_argument("--ylim", type=float, nargs=2, default=(0.6, 1.0), help="Y limits, e.g. --ylim 0.6 1.0")
     p.add_argument("--figsize", type=float, nargs=2, default=(7.2, 2.8), help="Figure size in inches.")
     p.add_argument("--dpi", type=int, default=200, help="Output DPI.")
     p.add_argument("--legend", action="store_true", help="Use a legend instead of right-side labels.")
@@ -101,6 +102,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=float,
         default=0.22,
         help="Extra xlim to the right as fraction of x-span (default: 0.22).",
+    )
+    p.add_argument(
+        "--right-label-pad-px",
+        type=float,
+        default=4.0,
+        help="Extra vertical pixel padding between right-side labels (default: 4).",
+    )
+    p.add_argument(
+        "--right-label-bbox-expand-y",
+        type=float,
+        default=1.10,
+        help="Expand factor applied to label bounding boxes during overlap-avoidance (default: 1.10).",
     )
     return p.parse_args(argv)
 
@@ -255,12 +268,15 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         reduce=str(args.reduce),
         title=args.title,
         ylabel=str(args.ylabel),
+        xlim=(float(args.xlim[0]), float(args.xlim[1])) if args.xlim is not None else None,
         ylim=(float(args.ylim[0]), float(args.ylim[1])),
         figsize=(float(args.figsize[0]), float(args.figsize[1])),
         dpi=int(args.dpi),
         legend=bool(args.legend),
         right_label_x_offset_frac=float(args.right_label_x_offset_frac),
         right_label_xlim_frac=float(args.right_label_xlim_frac),
+        right_label_pad_px=float(args.right_label_pad_px),
+        right_label_bbox_expand_y=float(args.right_label_bbox_expand_y),
     )
     print(f"[plot] Wrote {out_path}")
 

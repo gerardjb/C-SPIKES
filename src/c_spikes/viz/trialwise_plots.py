@@ -158,6 +158,9 @@ def _place_right_labels(
     colors: List[str],
     min_sep: float,
     fontsize: float = 14,
+    transform: Optional[Any] = None,
+    pad_px: float = 2.0,
+    bbox_expand_y: float = 1.08,
 ) -> None:
     # Respect input ordering (caller can rank-order labels); apply offsets to avoid overlap.
     ys = [float(y) for y in y_positions]
@@ -167,6 +170,9 @@ def _place_right_labels(
             continue
         if ys[i - 1] - ys[i] < min_sep:
             ys[i] = ys[i - 1] - min_sep
+
+    if transform is None:
+        transform = ax.transData
 
     texts = []
     for y, lab, col in zip(ys, labels, colors):
@@ -181,23 +187,29 @@ def _place_right_labels(
                 ha="left",
                 va="center",
                 clip_on=False,
+                transform=transform,
             )
         )
 
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
-    pad_px = 2.0
+    pad_px = float(pad_px)
+    bbox_expand_y = float(bbox_expand_y)
+    if not np.isfinite(pad_px) or pad_px < 0:
+        pad_px = 0.0
+    if not np.isfinite(bbox_expand_y) or bbox_expand_y <= 0:
+        bbox_expand_y = 1.0
     prev_bbox = None
     for text in texts:
-        bbox = text.get_window_extent(renderer=renderer).expanded(1.0, 1.08)
+        bbox = text.get_window_extent(renderer=renderer).expanded(1.0, bbox_expand_y)
         while prev_bbox is not None and bbox.overlaps(prev_bbox):
             shift_px = float(bbox.y1 - prev_bbox.y0 + pad_px)
-            x_disp, y_disp = ax.transData.transform(text.get_position())
+            x_disp, y_disp = transform.transform(text.get_position())
             new_y_disp = y_disp - shift_px
-            _, new_y_data = ax.transData.inverted().transform((x_disp, new_y_disp))
-            text.set_position((x, float(new_y_data)))
+            _, new_y = transform.inverted().transform((x_disp, new_y_disp))
+            text.set_position((x, float(new_y)))
             fig.canvas.draw()
-            bbox = text.get_window_extent(renderer=renderer).expanded(1.0, 1.08)
+            bbox = text.get_window_extent(renderer=renderer).expanded(1.0, bbox_expand_y)
         prev_bbox = bbox
 
     ax_bbox = ax.get_window_extent(renderer=renderer)
@@ -212,10 +224,10 @@ def _place_right_labels(
             shift_up = ax_bbox.y0 - bottom
         if shift_up != 0.0:
             for t in texts:
-                x_disp, y_disp = ax.transData.transform(t.get_position())
+                x_disp, y_disp = transform.transform(t.get_position())
                 new_y_disp = y_disp + shift_up
-                _, new_y_data = ax.transData.inverted().transform((x_disp, new_y_disp))
-                t.set_position((x, float(new_y_data)))
+                _, new_y = transform.inverted().transform((x_disp, new_y_disp))
+                t.set_position((x, float(new_y)))
 
 
 def plot_corr_vs_sigma(
@@ -229,14 +241,17 @@ def plot_corr_vs_sigma(
     reduce: str = "dataset",
     title: Optional[str] = None,
     ylabel: str = "Pearson correlation",
-    ylim: Tuple[float, float] = (0.2, 1.0),
+    xlim: Optional[Tuple[float, float]] = None,
+    ylim: Tuple[float, float] = (0.6, 1.0),
     figsize: Tuple[float, float] = (7.2, 2.8),
     dpi: int = 200,
     legend: bool = False,
     right_label_x_offset_frac: float = 0.08,
     right_label_xlim_frac: float = 0.22,
+    right_label_pad_px: float = 4.0,
+    right_label_bbox_expand_y: float = 1.10,
     grid_x_step_ms: float = 20.0,
-    grid_y_step_corr: float = 0.2,
+    grid_y_step_corr: float = 0.1,
     grid_color: str = "#808080",
     grid_alpha: float = 0.3,
     grid_linewidth: float = 1.0,
@@ -363,6 +378,18 @@ def plot_corr_vs_sigma(
     if not series_list or not sigma_list:
         raise ValueError("No usable (method, corr_sigma_ms) samples found.")
 
+    sigma_min = float(min(sigma_list))
+    sigma_max = float(max(sigma_list))
+    if xlim is not None:
+        x_left, x_right = float(xlim[0]), float(xlim[1])
+        if not np.isfinite(x_left) or not np.isfinite(x_right) or x_right <= x_left:
+            raise ValueError(f"Invalid xlim={xlim!r}; expected (lo, hi) with hi > lo.")
+    else:
+        x_span = max(1e-9, sigma_max - sigma_min)
+        x_pad = max(5.0, 0.05 * x_span)
+        x_left, x_right = sigma_min, sigma_max + x_pad
+    x_anchor = float(min(sigma_max, x_right))
+
     # Derive a display label per series, appending "(run_tag)" only when the rendered labels would collide.
     label_counts_by_method: Dict[str, Dict[str, int]] = {}
     raw_label_by_key: Dict[str, str] = {}
@@ -424,7 +451,7 @@ def plot_corr_vs_sigma(
         if label_counts_by_method.get(spec.method, {}).get(label, 0) > 1 and expected_run:
             label = f"{label} ({expected_run})"
         method_to_label[series_key] = str(label)
-        method_to_y100[series_key] = _y_at_x(xs_arr, ys_arr, 100.0)
+        method_to_y100[series_key] = _y_at_x(xs_arr, ys_arr, x_anchor)
 
     ax.set_xlabel("Filter Width (ms)")
     ax.set_ylabel(str(ylabel))
@@ -432,11 +459,8 @@ def plot_corr_vs_sigma(
     if title:
         ax.set_title(str(title))
 
-    x_min, x_max = float(min(sigma_list)), float(max(sigma_list))
-    x_span = max(1e-9, x_max - x_min)
-    x_pad = max(5.0, 0.05 * x_span)
-    ax.set_xlim(x_min, x_max + x_pad)
-    right_x = x_max + float(right_label_x_offset_frac) * x_span
+    ax.set_xlim(x_left, x_right)
+    right_x = 1.0 + float(right_label_x_offset_frac)
 
     # Tick/grid conventions: show lines at fixed increments (with labeled ticks).
     ax.xaxis.set_major_locator(MultipleLocator(float(grid_x_step_ms)))
@@ -467,9 +491,15 @@ def plot_corr_vs_sigma(
             labels=right_labels,
             colors=right_colors,
             min_sep=min_sep,
+            transform=ax.get_yaxis_transform(),
+            pad_px=float(right_label_pad_px),
+            bbox_expand_y=float(right_label_bbox_expand_y),
         )
 
-    fig.tight_layout()
+    rect_right = 1.0 - float(right_label_xlim_frac)
+    if not np.isfinite(rect_right) or rect_right <= 0.2:
+        rect_right = 1.0
+    fig.tight_layout(rect=(0.0, 0.0, rect_right, 1.0))
     if out_path is not None:
         out_path = out_path.expanduser().resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)
