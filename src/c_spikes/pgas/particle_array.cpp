@@ -421,13 +421,14 @@ void ParticleArray::move_and_weight(
 {
     const int maxspikes = this->maxspikes;
     Scalar dt = 1.0/constants->sampling_frequency;
-
+    const bool known_spikes = constants->KNOWN_SPIKES;
+    
     Scalar rate[2] = {par.r0*dt,par.r1*dt};
     Scalar W[2][2] = {{1-par.wbb[0]*dt, par.wbb[0]*dt},
         {par.wbb[1]*dt, 1-par.wbb[1]*dt}};
     Scalar sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));  
-    Scalar z[2] = {par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)),
-                   dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2))};
+    Scalar z0 = par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2));
+    Scalar z1 = dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2));
 
     Scalar bm_sigma = constants->bm_sigma;
 
@@ -438,25 +439,33 @@ void ParticleArray::move_and_weight(
     // StateVectorType state_out("state_out", 12);
     StateVectorType state_out = Kokkos::subview(C, 0, 0, Kokkos::ALL);
 
-    Kokkos::parallel_for("evolve_for_maxspikes",
-		Kokkos::RangePolicy<ExecSpace>(0, N*maxspikes*2),
-            KOKKOS_CLASS_LAMBDA(const int idx) {
-                int particle_idx = idx / (maxspikes*2);
-                int spike_idx = idx % (maxspikes*2);
-                int b = floor(spike_idx/maxspikes);
-                int ns    = spike_idx % maxspikes;
+	Kokkos::parallel_for("evolve_for_maxspikes",
+			Kokkos::RangePolicy<ExecSpace>(0, N*maxspikes*2),
+	            KOKKOS_CLASS_LAMBDA(const int idx) {
+	                int particle_idx = idx / (maxspikes*2);
+	                int spike_idx = idx % (maxspikes*2);
+	                int b = floor(spike_idx/maxspikes);
+	                int ns    = spike_idx % maxspikes;
 
-                // Update the ancestors that we generated on the CPU
-                ancestor(particle_idx, t) = new_ancestors(particle_idx);
-             
-                int a = ancestor(particle_idx, t);
-                int parent_b = burst(a, t-1);
-                Scalar parent_B = B(a, t-1);
-                
-                // Evolve
-                // model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
-                StateVectorType state_in = Kokkos::subview(C, a, t-1, Kokkos::ALL);
-                Scalar ct = fixedStep_LA_kernel(dt, ns, state_in, state_out, params, false);
+	                // Update the ancestors that we generated on the CPU
+	                ancestor(particle_idx, t) = new_ancestors(particle_idx);
+	             
+	                int a = ancestor(particle_idx, t);
+	                int parent_b = burst(a, t-1);
+	                Scalar parent_B = B(a, t-1);
+
+                    if (known_spikes) {
+                        const int ns_fixed = S(0, t);
+                        if (ns != ns_fixed) {
+                            log_probs(particle_idx, spike_idx) = -INFINITY;
+                            return;
+                        }
+                    }
+	                
+	                // Evolve
+	                // model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
+	                StateVectorType state_in = Kokkos::subview(C, a, t-1, Kokkos::ALL);
+	                Scalar ct = fixedStep_LA_kernel(dt, ns, state_in, state_out, params, false);
 
                 Scalar log_prob_tmp = log(W[parent_b][b]);
                 log_prob_tmp += ns*log(rate[b]) - log(tgamma(ns+1)) - rate[b];
@@ -511,36 +520,42 @@ void ParticleArray::move_and_weight(
     // }
     // Kokkos::deep_copy(discrete, discrete_h);
 
-    // Move the particles
-    Kokkos::parallel_for("move_particles",
-        Kokkos::RangePolicy<ExecSpace>(0, N),
-            KOKKOS_CLASS_LAMBDA(const int part_idx) {
+	    // Move the particles
+	    Kokkos::parallel_for("move_particles",
+	        Kokkos::RangePolicy<ExecSpace>(0, N),
+	            KOKKOS_CLASS_LAMBDA(const int part_idx) {
 
-                // move particle if not already set
-                if(part_idx != 0){
-                    auto generator = random_pool.get_state();
+                    const int a = ancestor(part_idx, t);
+                    StateVectorType state_in = Kokkos::subview(C, a, t-1, Kokkos::ALL);
+                    StateVectorType state_out = Kokkos::subview(C, part_idx, t, Kokkos::ALL);
 
-                    Scalar u = Kokkos::rand<RandGenType, Scalar>::draw(generator, 0.0, 1.0);
-                    int idx = discrete_from_uniform(2*maxspikes, u, Kokkos::subview(probs, part_idx, Kokkos::ALL));
-                    // int idx = discrete(part_idx);
+	                // move particle if not already set
+	                if(part_idx != 0){
+	                    auto generator = random_pool.get_state();
 
-                    burst(part_idx, t) = floor(idx/maxspikes);
-                    S(part_idx, t) = idx%maxspikes;
+	                    Scalar u = Kokkos::rand<RandGenType, Scalar>::draw(generator, 0.0, 1.0);
+	                    int idx = discrete_from_uniform(2*maxspikes, u, Kokkos::subview(probs, part_idx, Kokkos::ALL));
+	                    // int idx = discrete(part_idx);
 
-                    // B(part_idx, t) = B(ancestor(part_idx, t), t-1) + g_noise(part_idx);
-                    B(part_idx, t) = B(ancestor(part_idx, t), t-1) + generator.normal(0.0, sigma_B_posterior);
+	                    burst(part_idx, t) = floor(idx/maxspikes);
+	                    S(part_idx, t) = idx%maxspikes;
 
-                    // do not forget to release the state of the engine
-                    random_pool.free_state(generator);
-                }
-                
-                // model->evolve_threadsafe(dt, part.S, parent.C, state_out, ct);
-                // part.C     = state_out;
-                StateVectorType state_in = Kokkos::subview(C, ancestor(part_idx, t), t-1, Kokkos::ALL);
-                StateVectorType state_out = Kokkos::subview(C, part_idx, t, Kokkos::ALL);
-                Scalar ct = fixedStep_LA_kernel(dt, S(part_idx, t), state_in, state_out, params, true);
+                        Scalar ct = fixedStep_LA_kernel(dt, S(part_idx, t), state_in, state_out, params, true);
+                        const Scalar parent_B = B(a, t-1);
+                        if (known_spikes) {
+                            B(part_idx, t) = z0*parent_B + z1*(y(t) - ct) + generator.normal(0.0, sigma_B_posterior);
+                        } else {
+                            // B(part_idx, t) = B(a, t-1) + g_noise(part_idx);
+                            B(part_idx, t) = parent_B + generator.normal(0.0, sigma_B_posterior);
+                        }
 
-            });
-    Kokkos::fence("fence_move_particles");
+	                    // do not forget to release the state of the engine
+	                    random_pool.free_state(generator);
+	                } else {
+                        fixedStep_LA_kernel(dt, S(part_idx, t), state_in, state_out, params, true);
+                    }
+
+	            });
+	    Kokkos::fence("fence_move_particles");
 
 }
