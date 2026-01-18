@@ -8,7 +8,9 @@ ENS2-only on a directory of Janelia datasets (no PGAS/CASCADE, no ens2_published
 per-iteration).
 
 Usage:
-  scripts/sweep_pgas_to_ens2.sh --run <pgas_run> --cell <cell_tag> [--cell <cell_tag> ...] \
+  scripts/sweep_pgas_to_ens2.sh --run <pgas_run> \
+                               [--cell <cell_tag> ...] \
+                               [--cell-set <cell1,cell2,...> ...] \
                                [--dataset-dir <dir>] [--edges-file <npy>] [--model-root <dir>] [--eval-root <dir>] \
                                [--downsample <hz_or_raw>] [--downsample <hz_or_raw> ...] [--eval-existing] \
                                [--seed-start <int>] [--seed-stride <int>] [--corr-sigma-ms <float>] \
@@ -18,15 +20,16 @@ Usage:
 Example:
   scripts/sweep_pgas_to_ens2.sh \
     --run test_refactor \
-    --cell jGCaMP8f_ANM471993_cell01_pgas_new_sraw_ms3_rs120_bm0p05_trial0 \
-    --cell jGCaMP8f_ANM471993_cell02_pgas_new_sraw_ms3_rs120_bm0p05_trial0 \
+    --cell-set jGCaMP8f_ANM471993_cell01_pgas_new_sraw_ms3_rs120_bm0p05_trial0,jGCaMP8f_ANM471993_cell02_pgas_new_sraw_ms3_rs120_bm0p05_trial0 \
     --dataset-dir data/janelia_8f/excitatory \
     -- --burnin 100
 
 Notes:
   - Rates/smooth/duty grids are hardcoded below; edit as needed.
-  - For each K=1..N cells, trains on the first K cells provided.
-  - For each K, sets noise_fraction = 1/K.
+  - Training sweep runs once per cell set:
+    - If any --cell-set is provided: each --cell-set defines one training run (comma-separated list).
+    - Otherwise: all --cell values are treated as a single set.
+  - For each set with K cells, sets noise_fraction = 1/K.
   - Uses deterministic per-cell noise seeds via --noise-seed-base (base advances each model).
   - Resume behavior: if checkpoint + eval outputs exist, skip the iteration.
   - Downsample eval: results are written under <eval-root>/<downsample_tag>/<model_name>, where
@@ -36,18 +39,13 @@ Notes:
 EOF
 }
 
-RUN="comparison"
-CELLS=(
-  "jGCaMP8f_ANM478349_cell04_ms2_trial1"
-  "jGCaMP8f_ANM478349_cell01_ms2_trial3"
-  "jGCaMP8f_ANM478407_cell01_ms2_trial3"
-  "jGCaMP8f_ANM478411_cell02_ms2_trial1"
-  "jGCaMP8f_ANM471994_cell05_ms2_trial1"
-)
-DATASET_DIR="data/janelia_8f/excitatory"
+RUN=""
+CELLS=()
+CELL_SETS=()
+DATASET_DIR=""
 EDGES_FILE=""
-MODEL_ROOT="results/Pretrained_models/ens2_sweep_noise_resample"
-EVAL_ROOT="results/ens2_sweep_eval/noise_resamp__excitatory"
+MODEL_ROOT=""
+EVAL_ROOT=""
 SEED_START=0
 SEED_STRIDE=1000
 CORR_SIGMA_MS=50.0
@@ -58,12 +56,28 @@ DRY_RUN=0
 DOWNSAMPLES=()
 EXTRA_ARGS=()
 
+CELLS_SEEN=0
+CELL_SETS_SEEN=0
+DOWNSAMPLES_SEEN=0
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --run)
       RUN="$2"; shift 2 ;;
     --cell)
+      if [[ "$CELLS_SEEN" -eq 0 ]]; then
+        CELLS=()
+        CELL_SETS=()
+        CELLS_SEEN=1
+      fi
       CELLS+=("$2"); shift 2 ;;
+    --cell-set)
+      if [[ "$CELL_SETS_SEEN" -eq 0 ]]; then
+        CELL_SETS=()
+        CELLS=()
+        CELL_SETS_SEEN=1
+      fi
+      CELL_SETS+=("$2"); shift 2 ;;
     --dataset-dir)
       DATASET_DIR="$2"; shift 2 ;;
     --edges-file)
@@ -73,6 +87,10 @@ while [[ $# -gt 0 ]]; do
     --eval-root)
       EVAL_ROOT="$2"; shift 2 ;;
     --downsample)
+      if [[ "$DOWNSAMPLES_SEEN" -eq 0 ]]; then
+        DOWNSAMPLES=()
+        DOWNSAMPLES_SEEN=1
+      fi
       DOWNSAMPLES+=("$2"); shift 2 ;;
     --eval-existing|--eval-only)
       EVAL_EXISTING=1; shift 1 ;;
@@ -92,7 +110,7 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=1; shift 1 ;;
     --)
       shift
-      EXTRA_ARGS+=("$@")
+      EXTRA_ARGS=("$@")
       break ;;
     -h|--help)
       usage; exit 0 ;;
@@ -108,8 +126,14 @@ if [[ -z "$RUN" ]]; then
   exit 1
 fi
 
-if [[ "$EVAL_EXISTING" -eq 0 && ${#CELLS[@]} -lt 1 ]]; then
-  echo "ERROR: at least one --cell is required unless --eval-existing is set." >&2
+if [[ "$EVAL_EXISTING" -eq 0 && "$CELL_SETS_SEEN" -eq 1 && "$CELLS_SEEN" -eq 1 ]]; then
+  echo "ERROR: use either --cell or --cell-set (not both)." >&2
+  usage
+  exit 1
+fi
+
+if [[ "$EVAL_EXISTING" -eq 0 && ${#CELL_SETS[@]} -lt 1 && ${#CELLS[@]} -lt 1 ]]; then
+  echo "ERROR: at least one --cell or --cell-set is required unless --eval-existing is set." >&2
   usage
   exit 1
 fi
@@ -129,13 +153,26 @@ if [[ -n "$EDGES_FILE" && ! -f "$EDGES_FILE" ]]; then
 fi
 
 if [[ "$EVAL_EXISTING" -eq 0 ]]; then
-  for cell in "${CELLS[@]}"; do
-    ps="results/pgas_output/${RUN}/param_samples_${cell}.dat"
-    if [[ ! -f "$ps" ]]; then
-      echo "ERROR: param_samples not found: $ps" >&2
-      exit 1
-    fi
-  done
+  if [[ ${#CELL_SETS[@]} -gt 0 ]]; then
+    for cell_set in "${CELL_SETS[@]}"; do
+      IFS=',' read -r -a cells_in_set <<< "${cell_set}"
+      for cell in "${cells_in_set[@]}"; do
+        ps="results/pgas_output/${RUN}/param_samples_${cell}.dat"
+        if [[ ! -f "$ps" ]]; then
+          echo "ERROR: param_samples not found: $ps" >&2
+          exit 1
+        fi
+      done
+    done
+  else
+    for cell in "${CELLS[@]}"; do
+      ps="results/pgas_output/${RUN}/param_samples_${cell}.dat"
+      if [[ ! -f "$ps" ]]; then
+        echo "ERROR: param_samples not found: $ps" >&2
+        exit 1
+      fi
+    done
+  fi
 fi
 
 rates=(6 9 12)
@@ -143,7 +180,6 @@ smooths=(1.3 2.0)
 duties=(0.35 0.45)
 
 iter=0
-ncells="${#CELLS[@]}"
 
 EDGES_ARGS=()
 if [[ -n "$EDGES_FILE" ]]; then
@@ -204,7 +240,7 @@ eval_model() {
 
 if [[ "$EVAL_EXISTING" -eq 1 ]]; then
   mapfile -t MODEL_DIRS < <(
-    find "${MODEL_ROOT}" -maxdepth 1 -type d -name "ens2_synth_${RUN}_k*_r*_s*_d*_sb*" | sort
+    find "${MODEL_ROOT}" -maxdepth 1 -type d -name "ens2_synth_${RUN}_*k*_r*_s*_d*_sb*" | sort
   )
   if [[ ${#MODEL_DIRS[@]} -eq 0 ]]; then
     echo "ERROR: no matching models found under ${MODEL_ROOT} for run '${RUN}'." >&2
@@ -226,13 +262,29 @@ if [[ "$EVAL_EXISTING" -eq 1 ]]; then
     done
   done
 else
-  for ((k=1; k<=ncells; k++)); do
+  TRAIN_CELL_SETS=()
+  if [[ ${#CELL_SETS[@]} -gt 0 ]]; then
+    TRAIN_CELL_SETS=("${CELL_SETS[@]}")
+  else
+    TRAIN_CELL_SETS=("$(IFS=','; echo "${CELLS[*]}")")
+  fi
+
+  nsets="${#TRAIN_CELL_SETS[@]}"
+  for ((set_idx=0; set_idx<nsets; set_idx++)); do
+    cell_set="${TRAIN_CELL_SETS[$set_idx]}"
+    IFS=',' read -r -a cells_in_set <<< "${cell_set}"
+    k="${#cells_in_set[@]}"
+    if [[ "$k" -lt 1 ]]; then
+      echo "ERROR: empty cell set at index ${set_idx}." >&2
+      exit 1
+    fi
+
+    cellset_tag="cs${set_idx}"
     noise_fraction="$(awk -v kk="$k" 'BEGIN { printf "%.8f", 1.0/kk }')"
-    echo "==> K=${k}/${ncells} cells: noise_fraction=${noise_fraction}"
+    echo "==> Cell set $((set_idx+1))/${nsets} (${cellset_tag}) K=${k} noise_fraction=${noise_fraction}"
 
     PARAM_ARGS=()
-    for ((i=0; i<k; i++)); do
-      cell="${CELLS[$i]}"
+    for cell in "${cells_in_set[@]}"; do
       PARAM_ARGS+=(--param-samples "results/pgas_output/${RUN}/param_samples_${cell}.dat")
     done
 
@@ -241,7 +293,7 @@ else
         for duty in "${duties[@]}"; do
           smooth_tag="${smooth/./p}"
           duty_tag="${duty/./p}"
-          model_tag="k${k}_r${rate}_s${smooth_tag}_d${duty_tag}"
+          model_tag="${cellset_tag}_k${k}_r${rate}_s${smooth_tag}_d${duty_tag}"
 
           # Deterministic seed schedule:
           #   - Each model uses a unique base seed (seed_start + iter*seed_stride)
