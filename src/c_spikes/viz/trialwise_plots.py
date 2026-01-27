@@ -90,8 +90,15 @@ def ensure_matplotlib_cache_dir(cache_dir: Optional[Path] = None) -> Path:
     return Path.cwd()
 
 
-def read_trialwise_csv(path: Path) -> List[Dict[str, str]]:
-    path = path.expanduser().resolve()
+Pathish = str | Path | os.PathLike[str]
+
+
+def _to_path(path: Pathish) -> Path:
+    return Path(path).expanduser().resolve()
+
+
+def read_trialwise_csv(path: Pathish) -> List[Dict[str, str]]:
+    path = _to_path(path)
     with path.open("r", newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         return [dict(r) for r in reader]
@@ -232,8 +239,8 @@ def _place_right_labels(
 
 def plot_corr_vs_sigma(
     *,
-    csv_path: Path,
-    out_path: Optional[Path] = None,
+    csv_path: Pathish,
+    out_path: Optional[Pathish] = None,
     runs: Optional[Sequence[str]] = None,
     datasets: Optional[Sequence[str]] = None,
     smoothings: Optional[Sequence[str]] = None,
@@ -513,16 +520,16 @@ def plot_corr_vs_sigma(
         rect_right = 1.0
     fig.tight_layout(rect=(0.0, 0.0, rect_right, 1.0))
     if out_path is not None:
-        out_path = out_path.expanduser().resolve()
+        out_path = _to_path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(out_path)
     return fig, ax
 
 
-def _load_edges(path: Optional[Path]) -> Optional[Dict[str, Any]]:
+def _load_edges(path: Optional[Pathish]) -> Optional[Dict[str, Any]]:
     if path is None:
         return None
-    edges_path = path.expanduser().resolve()
+    edges_path = _to_path(path)
     if not edges_path.exists():
         raise FileNotFoundError(edges_path)
     return np.load(edges_path, allow_pickle=True).item()
@@ -782,14 +789,14 @@ def _select_segment_for_trial(
 
 def plot_trace_panel(
     *,
-    csv_path: Path,
-    eval_root: Path,
-    data_root: Path,
+    csv_path: Pathish,
+    eval_root: Pathish,
+    data_root: Pathish,
     dataset: str,
     smoothing: str = "raw",
     corr_sigma_ms: float = 50.0,
     display_sigma_ms: Optional[float] = None,
-    edges_path: Optional[Path] = None,
+    edges_path: Optional[Pathish] = None,
     methods: Optional[Sequence[str]] = None,
     run: Optional[str] = None,
     run_by_method: Optional[Sequence[str]] = None,
@@ -960,7 +967,7 @@ def plot_trace_panel(
         method: float(corr_by_method_trial[method].get(selected_trial, float("nan"))) for method in corr_by_method_trial
     }
 
-    data_root = data_root.expanduser().resolve()
+    data_root = _to_path(data_root)
     dataset_path = data_root / f"{dataset_stem}.mat"
     if not dataset_path.exists():
         raise FileNotFoundError(dataset_path)
@@ -988,7 +995,7 @@ def plot_trace_panel(
     spike_times = np.asarray(spike_times, dtype=np.float64).ravel()
     spike_times = spike_times[np.isfinite(spike_times)]
 
-    eval_root = eval_root.expanduser().resolve()
+    eval_root = _to_path(eval_root)
     method_results: Dict[str, Any] = {}
     seg_ranges: List[Tuple[float, float]] = []
     seg_slices: Dict[str, slice] = {}
@@ -1305,8 +1312,8 @@ def _sort_smoothing_labels(labels: Sequence[str]) -> List[str]:
 
 def plot_raincloud_by_downsample(
     *,
-    csv_path: Path,
-    out_path: Optional[Path] = None,
+    csv_path: Pathish,
+    out_path: Optional[Pathish] = None,
     corr_sigma_ms: float = 50.0,
     methods: Optional[Sequence[str]] = None,
     smoothings: Optional[Sequence[str]] = None,
@@ -1599,7 +1606,7 @@ def plot_raincloud_by_downsample(
 
     fig.tight_layout()
     if out_path is not None:
-        out_path = out_path.expanduser().resolve()
+        out_path = _to_path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(out_path)
     return fig, axes_list
