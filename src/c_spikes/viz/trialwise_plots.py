@@ -279,6 +279,18 @@ def plot_corr_vs_sigma(
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MultipleLocator
 
+    plt.rcParams.update(
+        {
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.spines.left": True,
+            "axes.spines.bottom": True,
+            "xtick.bottom": True,
+            "ytick.left": True,
+            "font.size": 11,
+        }
+    )
+
     colors_map = dict(DEFAULT_COLORS)
     if colors:
         colors_map.update({str(k): str(v) for k, v in colors.items()})
