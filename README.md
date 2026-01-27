@@ -48,6 +48,24 @@ sio.savemat("data/my_data/my_recording.mat", {
 })
 ```
 
+### Export downsampled datasets (for external tools)
+If you want to run external methods (e.g., MLspike) on the same downsampled inputs used by this repo
+(10Hz/30Hz smoothing), export a downsampled copy of a dataset directory:
+```bash
+PYTHONPATH=src python scripts/export_downsampled_mat_dir.py \
+  --data-root data/janelia_8f/excitatory \
+  --out-root results/gt_downsampled/janelia_8f_excitatory \
+  --smoothing-level 30Hz --smoothing-level 10Hz
+```
+Optional: apply per-trial windows from an edges dict (`.npy`) before exporting:
+```bash
+PYTHONPATH=src python scripts/export_downsampled_mat_dir.py \
+  --data-root data/janelia_8f/excitatory \
+  --out-root results/gt_downsampled/janelia_8f_excitatory_windowed \
+  --smoothing-level 30Hz \
+  --edges-path results/excitatory_time_stamp_edges.npy
+```
+
 ## PGAS on your data (produce `param_samples_*.dat`)
 To run PGAS and write its output files (including `param_samples_*.dat` used for distillation), the easiest entrypoint is `scripts/demo_compare_methods.py` with ENS2/CASCADE disabled:
 
