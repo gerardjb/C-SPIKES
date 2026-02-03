@@ -20,6 +20,10 @@
 #include <Kokkos_Core.hpp>
 namespace py = pybind11;
 
+#ifndef PGAS_PYBIND_MODULE
+#define PGAS_PYBIND_MODULE pgas_bound
+#endif
+
 /* //method to extract final array entries as numpy array
 py::array_t<double> get_final_params(Analyzer& analyzer) {
   // Create a NumPy array from the std::vector
@@ -31,11 +35,12 @@ py::array_t<double> get_final_params(Analyzer& analyzer) {
 auto cleanup_callback = []() {
 	// perform cleanup here -- this function is called with the GIL held
 	// You must call finalize() after you are done using Kokkos.
-	Kokkos::finalize();
+	if (Kokkos::is_initialized() && !Kokkos::is_finalized()) {
+		Kokkos::finalize();
+	}
 };
 
-
-PYBIND11_MODULE(pgas_bound, m) {
+PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
   // Initialize kokkos on binding to prevent finalize() call prior to initialization
   if (!Kokkos::is_initialized() && !Kokkos::is_finalized())
         Kokkos::initialize();

@@ -16,6 +16,36 @@ Check that the extension imports:
 python -c "import c_spikes.pgas.pgas_bound as p; print('pgas_bound OK')"
 ```
 
+### CPU/GPU PGAS builds
+This repo now builds **CPU** and (optionally) **GPU** PGAS backends side-by-side:
+
+- CPU module: `c_spikes.pgas.pgas_bound_cpu` (always built)
+- GPU module: `c_spikes.pgas.pgas_bound_gpu` (built when Kokkos CUDA is available)
+- Default import: `c_spikes.pgas.pgas_bound` (a shim that picks GPU if available, else CPU)
+
+**Build options (scikit-build-core)**:
+
+```bash
+# AUTO (default): build GPU only if Kokkos CUDA is enabled
+pip install -ve .
+
+# Force GPU build (error if CUDA/Kokkos CUDA not enabled)
+pip install -ve . --config-settings=cmake.args="-DPGAS_BUILD_GPU=ON"
+
+# CPU only
+pip install -ve . --config-settings=cmake.args="-DPGAS_BUILD_GPU=OFF"
+```
+
+**Runtime selection**:
+- Default: GPU if `pgas_bound_gpu` imports, otherwise CPU.
+- Override with `C_SPIKES_PGAS_BACKEND=cpu|gpu`, e.g.:
+  ```bash
+  C_SPIKES_PGAS_BACKEND=cpu python scripts/demo_compare_methods.py ...
+  ```
+
+If you previously installed an older `pgas_bound` extension, remove it and rebuild so the shim
+module can take effect.
+
 ## Pretrained models
 This repo ships pretrained model bundles under `Pretrained_models/` at the repo root:
 - ENS2 published checkpoints: `Pretrained_models/ens2_published/`

@@ -10,16 +10,14 @@
 // Define the scalar type for the Kokkos views
 using Scalar = double;
 
-#define USE_GPU
-
-#ifndef USE_GPU
-// using ExecSpace = Kokkos::Serial;
-// using MemSpace = Kokkos::HostSpace;
-    using ExecSpace = Kokkos::OpenMP;
-    using MemSpace = Kokkos::HostSpace;
-#else
+#if defined(USE_GPU) && USE_GPU
     using ExecSpace = Kokkos::Cuda;
     using MemSpace = Kokkos::CudaSpace;
+#else
+    // using ExecSpace = Kokkos::Serial;
+    // using MemSpace = Kokkos::HostSpace;
+    using ExecSpace = Kokkos::OpenMP;
+    using MemSpace = Kokkos::HostSpace;
 #endif
 
 using DeviceType = Kokkos::Device<ExecSpace, MemSpace>;
