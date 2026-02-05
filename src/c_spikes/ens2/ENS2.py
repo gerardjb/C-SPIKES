@@ -240,7 +240,7 @@ def load_recordings_from_file(file_path, sampling_rate):
                 causal_smoothing_kernel = build_causal_kernel(sampling_rate)            
             events_binned_smooth = np.convolve(events_binned.astype(float),causal_smoothing_kernel,mode='same')
         if opt.gaussian_kernel:
-            events_binned_smooth = scipy.ndimage.filters.gaussian_filter(events_binned.astype(float), sigma=opt.smoothing_std*sampling_rate)
+            events_binned_smooth = scipy.ndimage.gaussian_filter(events_binned.astype(float), sigma=opt.smoothing_std*sampling_rate)
         
         # format data into segments
         data_len = len(events_binned)-opt.signal_len
@@ -784,12 +784,12 @@ def estimate_spike(rate, std=opt.smoothing, debug=False):
                 cur_spike = np.zeros(slices.shape, dtype='float32')
                 if np.sum(slices)>=0.5:
                     cur_spike[np.argmax(slices)] = 1
-                cur_rate = scipy.ndimage.filters.gaussian_filter(cur_spike, sigma=std, mode='constant', cval=0.)
+                cur_rate = scipy.ndimage.gaussian_filter(cur_spike, sigma=std, mode='constant', cval=0.)
                 cur_loss = np.sum((slices-cur_rate)**2)
                 # iteratively insert spikes that are best-match
                 while could_add:
                     candidate_spike = cur_spike + np.eye(len(slices),len(slices),dtype='float32')
-                    candidate_rate = scipy.ndimage.filters.gaussian_filter(candidate_spike, sigma=(0,std), mode='constant', cval=0.)
+                    candidate_rate = scipy.ndimage.gaussian_filter(candidate_spike, sigma=(0,std), mode='constant', cval=0.)
                     candidate_loss = np.sum(np.power(slices-candidate_rate,2),1)
                     new_loss, new_loss_idx = np.amin(candidate_loss), np.argmin(candidate_loss)
                     if new_loss - cur_loss <= -0.00000001:

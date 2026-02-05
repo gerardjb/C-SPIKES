@@ -8,7 +8,7 @@ Infer discrete spikes from probabilities: define helper functions
 """
 
 
-from scipy.ndimage.filters import gaussian_filter
+from scipy.ndimage import gaussian_filter
 import scipy.ndimage as ndim
 from copy import deepcopy
 import numpy as np

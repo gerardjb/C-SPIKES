@@ -45,7 +45,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import scipy.io as sio
-from scipy.ndimage.filters import gaussian_filter
+from scipy.ndimage import gaussian_filter
 from scipy.signal import resample, convolve
 from scipy.interpolate import interp1d
 from scipy.stats import invgauss
