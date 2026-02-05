@@ -42,6 +42,10 @@ pip install -ve . --config-settings=cmake.args="-DPGAS_BUILD_GPU=OFF"
   ```bash
   C_SPIKES_PGAS_BACKEND=cpu python scripts/demo_compare_methods.py ...
   ```
+- CPU code runs the OpenMP framework. Thread count can be specified as, e.g.:
+  ```bash
+  export OMP_NUM_THREADS=4
+  ```
 
 If you previously installed an older `pgas_bound` extension, remove it and rebuild so the shim
 module can take effect.
