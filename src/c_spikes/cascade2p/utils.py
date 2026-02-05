@@ -93,7 +93,7 @@ def define_model(filter_sizes,filter_numbers,dense_expansion,windowsize,loss_fun
 
 
 
-def convert_h5_models_to_keras(model_folder, overwrite=False, verbose=2):
+def convert_h5_models_to_keras(model_folder, overwrite=True, verbose=2):
 
   """
   Convert all .h5 Keras model files in 'model_folder' to the newer .keras format.
@@ -140,6 +140,12 @@ def convert_h5_models_to_keras(model_folder, overwrite=False, verbose=2):
     converted_paths.append(keras_path)
 
     if verbose > 1: print('Saved {}'.format(os.path.basename(keras_path)))
+    try:
+      os.remove(model_file)
+      if verbose > 1: print('Removed {}'.format(os.path.basename(model_file)))
+    except OSError as exc:
+      if verbose > 0:
+        print('Warning: could not remove {} ({}).'.format(os.path.basename(model_file), exc))
 
   if verbose > 0:
     print('Converted {} model(s); skipped {} existing file(s).'.format(

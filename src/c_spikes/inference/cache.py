@@ -14,14 +14,27 @@ from .types import MethodResult, compute_config_signature, ensure_serializable
 CACHE_ROOT = Path("results") / "inference_cache"
 
 
+def get_cache_root() -> Path:
+    return CACHE_ROOT
+
+
+def set_cache_root(root: Path) -> None:
+    global CACHE_ROOT
+    CACHE_ROOT = Path(root)
+
+
+def _resolve_cache_root(cache_root: Optional[Path]) -> Path:
+    return CACHE_ROOT if cache_root is None else Path(cache_root)
+
+
 def get_cache_paths(
     method: str,
     dataset_tag: str,
     config_hash: str,
     *,
-    cache_root: Path = CACHE_ROOT,
+    cache_root: Optional[Path] = None,
 ) -> Tuple[Path, Path]:
-    cache_dir = cache_root / method / dataset_tag
+    cache_dir = _resolve_cache_root(cache_root) / method / dataset_tag
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"{config_hash}.mat", cache_dir / f"{config_hash}.json"
 
@@ -33,7 +46,7 @@ def save_method_cache(
     config: Mapping[str, Any],
     trace_hash: str,
     *,
-    cache_root: Path = CACHE_ROOT,
+    cache_root: Optional[Path] = None,
 ) -> None:
     config_hash, config_ser = compute_config_signature(dict(config))
     mat_path, meta_path = get_cache_paths(method, dataset_tag, config_hash, cache_root=cache_root)
@@ -66,7 +79,7 @@ def load_method_cache(
     config: Mapping[str, Any],
     trace_hash: str,
     *,
-    cache_root: Path = CACHE_ROOT,
+    cache_root: Optional[Path] = None,
     allow_mismatched_trace: bool = False,
 ) -> Optional[MethodResult]:
     config_hash, config_ser = compute_config_signature(dict(config))
@@ -118,4 +131,3 @@ def load_method_cache(
             discrete_spikes=discrete,
         )
     return None
-

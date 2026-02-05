@@ -689,6 +689,14 @@ def download_model(
 
     os.remove(tmp_file)
 
+    # Convert legacy .h5 weights to .keras and clean up .h5 artifacts.
+    model_path = os.path.join(model_folder, model_name)
+    try:
+        utils.convert_h5_models_to_keras(model_path, overwrite=False, verbose=verbose)
+    except Exception as exc:
+        if verbose:
+            print(f"Warning: failed to convert legacy .h5 models: {exc}")
+
     if verbose:
         print(
             'Pretrained model was saved in folder "{}"'.format(
