@@ -1,0 +1,3 @@
+from c_spikes.tensorflow_env import configure_tensorflow_environment
+
+configure_tensorflow_environment()
