@@ -46,12 +46,18 @@ class InferenceSettings:
     pgas_bm_sigma_gap_s: float = 0.15
 
 
-def build_run_context(data_dir: Path, run_tag_input: str) -> RunContext:
+def build_run_context(
+    data_dir: Path,
+    run_tag_input: str,
+    *,
+    run_parent: str = "spike_inference",
+) -> RunContext:
     data_dir = Path(data_dir)
+    parent = _normalize_run_parent(run_parent)
     run_tag = _normalize_run_tag(run_tag_input)
     if not run_tag:
-        run_tag = _next_run_tag(data_dir)
-    run_root = data_dir / f"c_spikes_run_{run_tag}"
+        run_tag = _next_run_tag(data_dir, parent)
+    run_root = data_dir / parent / run_tag
     cache_root = run_root / "inference_cache"
     pgas_output_root = run_root / "pgas_output"
     pgas_temp_root = run_root / "pgas_temp"
@@ -302,19 +308,28 @@ def _normalize_run_tag(run_tag: str) -> str:
     return token
 
 
-def _next_run_tag(data_dir: Path) -> str:
-    data_dir = Path(data_dir)
+def _normalize_run_parent(run_parent: str) -> str:
+    parent = str(run_parent).strip()
+    parent = re.sub(r"\s+", "_", parent)
+    parent = re.sub(r"[^A-Za-z0-9_\-]", "", parent)
+    if not parent:
+        return "spike_inference"
+    return parent
+
+
+def _next_run_tag(data_dir: Path, run_parent: str) -> str:
+    parent_dir = Path(data_dir) / run_parent
     existing = []
-    if data_dir.exists():
-        for child in data_dir.iterdir():
+    if parent_dir.exists():
+        for child in parent_dir.iterdir():
             if not child.is_dir():
                 continue
-            match = re.match(r"c_spikes_run_(\d+)$", child.name)
+            match = re.match(r"run_(\d+)$", child.name)
             if match:
                 existing.append(int(match.group(1)))
     if not existing:
-        return "1"
-    return str(max(existing) + 1)
+        return "run_1"
+    return f"run_{max(existing) + 1}"
 
 
 def _build_trial(time: np.ndarray, dff: np.ndarray) -> TrialSeries:
