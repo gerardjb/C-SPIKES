@@ -33,6 +33,11 @@ def plot_epoch(
     title: Optional[str] = None,
 ) -> None:
     fig.clear()
+    # Use constrained layout when available; tight_layout can warn with some shared-axes setups.
+    try:
+        fig.set_layout_engine("constrained")
+    except Exception:
+        pass
     method_keys = [m for m in METHOD_ORDER if m in methods]
     n_rows = 1 + len(method_keys)
     gs = fig.add_gridspec(n_rows, 1, hspace=0.25)
@@ -55,7 +60,9 @@ def plot_epoch(
         _plot_discrete_spikes(ax, result)
 
     fig.axes[-1].set_xlabel("Time (s)")
-    fig.tight_layout()
+    # Fallback spacing for matplotlib builds without constrained layout support.
+    if getattr(fig, "get_layout_engine", None) is None or fig.get_layout_engine() is None:
+        fig.subplots_adjust(left=0.08, right=0.98, top=0.94, bottom=0.08, hspace=0.25)
 
 
 def _plot_discrete_spikes(ax, result: MethodResult) -> None:

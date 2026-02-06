@@ -15,6 +15,10 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 from matplotlib.figure import Figure
 
 import numpy as np
+from c_spikes.tensorflow_env import preload_tensorflow_quietly
+
+preload_tensorflow_quietly()
+
 from c_spikes.cascade2p.cascade import download_model as cascade_download_model
 from c_spikes.gui.data import DataManager, EpochRef, scan_dataset_dir
 from c_spikes.gui.inference import (
@@ -428,8 +432,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._biophys_check = QtWidgets.QCheckBox("BiophysML", box)
         self._cascade_check = QtWidgets.QCheckBox("Cascade", box)
         self._ens2_check = QtWidgets.QCheckBox("ENS2", box)
-        self._pgas_check.setChecked(True)
-        self._biophys_check.setChecked(False)
+        self._pgas_check.setChecked(False)
+        self._biophys_check.setChecked(True)
         self._cascade_check.setChecked(True)
         self._ens2_check.setChecked(True)
         layout.addWidget(self._pgas_check)
