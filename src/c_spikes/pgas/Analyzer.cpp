@@ -130,6 +130,10 @@ void Analyzer::run() {
         if (has_gtspikes) traj_sam1.S(t) = gtSpikes(t);
         traj_sam1.Y(t) = 0;
     }
+    // Set initial calcium value to first observation if specified in config
+    if (constants.c0_is_first_y) {
+        traj_sam1.C(0) = data(0);
+    }
 
     // set initial parameters 
     if (append) {

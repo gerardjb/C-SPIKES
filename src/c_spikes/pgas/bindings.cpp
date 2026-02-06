@@ -16,8 +16,13 @@
 #include "include/Analyzer.h"
 //In case any other functions or classes need to be exposed to python
 #include "include/GCaMP_model.h"
-
+// Attempting kokkos integration
+#include <Kokkos_Core.hpp>
 namespace py = pybind11;
+
+#ifndef PGAS_PYBIND_MODULE
+#define PGAS_PYBIND_MODULE pgas_bound
+#endif
 
 /* //method to extract final array entries as numpy array
 py::array_t<double> get_final_params(Analyzer& analyzer) {
@@ -27,8 +32,19 @@ py::array_t<double> get_final_params(Analyzer& analyzer) {
   return result;
 } */
 
+auto cleanup_callback = []() {
+	// perform cleanup here -- this function is called with the GIL held
+	// You must call finalize() after you are done using Kokkos.
+	if (Kokkos::is_initialized() && !Kokkos::is_finalized()) {
+		Kokkos::finalize();
+	}
+};
 
-PYBIND11_MODULE(pgas_bound, m) {
+PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
+  // Initialize kokkos on binding to prevent finalize() call prior to initialization
+  if (!Kokkos::is_initialized() && !Kokkos::is_finalized())
+        Kokkos::initialize();
+
 	// bindings for Analyzer.cpp
 		py::class_<Analyzer>(m, "Analyzer")
         .def(py::init<const arma::vec&, const arma::vec&, const std::string&, const std::string&, unsigned int, const std::string&, unsigned int,
@@ -74,4 +90,6 @@ PYBIND11_MODULE(pgas_bound, m) {
             states["Ca_in"] = g.getCaInValues();
             return states;
         });
+    // Add Kokkos cleanup callback	
+    m.add_object("_cleanup", py::capsule(cleanup_callback));
 }

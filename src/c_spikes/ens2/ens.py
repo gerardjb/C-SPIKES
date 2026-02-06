@@ -1,163 +1,217 @@
-# High-level training and inference functions for ENS2 model integration
+"""
+Lightweight wrapper around the ENS2 training/inference code to mirror the
+CASCADE-style API (train_model / predict) and make it easy to point ENS2 at
+synthetic ground-truth datasets produced by syn_gen.
+"""
+
+from __future__ import annotations
 
 import os
-import time
+import shutil
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Optional, Sequence, Tuple
+
 import numpy as np
 import torch
-import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader
-from tqdm.auto import trange
-from c_spikes.ens2.utils import EarlyStopping, weights_init_normal, load_training_data
-from c_spikes.ens2.models import UNet
 
-def train_model(model_name, tag="", sampling_rate=60, smoothing_std=0.025, use_causal_kernel=False,
-                epochs=5000, patience=500, batch_size=512, learning_rate=0.001, loss_type='MSE', verbose=0):
+
+@contextmanager
+def _pushd(path: Path):
+    prev = Path.cwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(prev)
+
+
+def _stage_ground_truth(synth_dirs: Sequence[Path], stage_root: Path) -> Sequence[Path]:
     """
-    Train an ENS2 neural network for spike inference on synthetic data.
-    Parameters:
-      model_name (str): Name for the model (used for saving outputs).
-      sampling_rate (float): Frame rate (Hz) of the training data.
-      smoothing_std (float): Gaussian smoothing sigma (in seconds) for ground-truth spikes.
-      use_causal_kernel (bool): If True, use a causal kernel instead of Gaussian for smoothing.
-      epochs (int): Maximum training epochs.
-      patience (int): Patience for early stopping (no improvement epochs).
-      batch_size (int): Batch size for training (randomly sampled each epoch).
-      learning_rate (float): Learning rate for Adam optimizer.
-      loss_type (str): Loss function ('MSE' supported; placeholders for 'EucD', 'Corr').
-      verbose (int): If >0, print progress and info during training.
+    ENS2's training code expects relative paths ./ground_truth/DS*.
+    ENS2 also assumes DS numbering starts at 1 and skips DS1 for training.
+
+    We therefore create an empty DS1 placeholder and place each synthetic
+    directory under a separate DS index starting at 2 to align with the
+    ENS2 Exc/Inh index conventions.
     """
-    # Load synthetic (or whatever) training data
-    data_folder = os.path.join('results/Ground_truth', f'synth_{tag}')
-    trace_segments, rate_segments, spike_segments = load_training_data(
-        data_folder, sampling_rate, smoothing_std=smoothing_std, use_causal_kernel=use_causal_kernel
-    )
-    assert not np.isnan(trace_segments).any() and not np.isinf(trace_segments).any(), \
-        "NaN or Inf in trace_segments!"
-    assert not np.isnan(rate_segments).any()  and not np.isinf(rate_segments).any(), \
-        "NaN or Inf in rate_segments!"
-    if trace_segments.size == 0:
-        raise FileNotFoundError(f"No training data found in {data_folder}")
-    # Convert to torch tensors
-    trace_tensor = torch.FloatTensor(trace_segments)
-    rate_tensor  = torch.FloatTensor(rate_segments)
-    N = trace_tensor.shape[0]
+    stage_root = stage_root.resolve()
+    gt_root = stage_root / "ground_truth"
+    gt_root.mkdir(parents=True, exist_ok=True)
+    # Placeholder to keep ENS2 dataset indices aligned (DS1 is ignored in training).
+    (gt_root / "DS1").mkdir(parents=True, exist_ok=True)
 
-    # Initialize model and optimizer
-    model = UNet()  # default: 96-length window, init_features=9 (≈150K params)
-    model.apply(weights_init_normal)  # random weight init
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model.to(device)
+    staged_dirs = []
+    for idx, synth_dir in enumerate(synth_dirs, start=2):
+        ds_dir = gt_root / f"DS{idx}"
+        ds_dir.mkdir(parents=True, exist_ok=True)
+        synth_dir = synth_dir.resolve()
+        for mat in synth_dir.glob("*.mat"):
+            target = ds_dir / mat.name
+            if not target.exists():
+                try:
+                    target.symlink_to(mat)
+                except FileExistsError:
+                    pass
+        staged_dirs.append(ds_dir)
+    return staged_dirs
 
-    # One of these days I might put in other metrics from the paper; they did suggest those suck, though
-    if loss_type != 'MSE':
-        print(f"Warning: Loss type '{loss_type}' not implemented. Using MSE.")
-    criterion = torch.nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    # Setup early stopping
-    stopper = EarlyStopping(patience=patience, verbose=(verbose > 0))
-    # Training loop
-    for epoch in (trange(1, epochs+1) if verbose else range(1, epochs+1)):
-        model.train()
-        # Sample a random batch from all segments
-        idx = torch.randint(0, N, (min(batch_size, N),))
-        batch_trace = trace_tensor[idx].to(device)
-        batch_rate  = rate_tensor[idx].to(device)
-        optimizer.zero_grad()
-        outputs = model(batch_trace)
-        loss = criterion(outputs, batch_rate)
-        loss.backward()
-        optimizer.step()
-        # Early stopping check on training loss
-        stopper(loss.item(), model)
-        if stopper.early_stop:
-            if verbose:
-                print(f"Early stopping triggered at epoch {epoch}.")
-            break
-    # Save trained model weights
-    save_dir = os.path.join('results/Pretrained_models', f"ens_{model_name}")
-    os.makedirs(save_dir, exist_ok=True)
-    torch.save(model.state_dict(), os.path.join(save_dir, 'ens2_model.pth'))
-    if verbose:
-        print(f"ENS2 model saved to {save_dir}/ens2_model.pth")
 
-def predict(model_name, traces, sampling_rate, smoothing_std=0.05, model_folder='results/Pretrained_models',window_len=96, batch_size=8192):
+def _select_checkpoint(saved_model_dir: Path) -> Optional[Path]:
+    candidates = sorted(saved_model_dir.glob("C_*Epoch*.pt"))
+    return candidates[-1] if candidates else None
+
+
+def _load_ens2_module():
+    import importlib
+
+    return importlib.import_module("c_spikes.ens2.ENS2")
+
+
+def train_model(
+    model_name: str,
+    synth_gt_dir: str | Path | Sequence[str | Path],
+    *,
+    model_root: str | Path = Path("results/Pretrained_models"),
+    neuron_type: str = "Exc",
+    sampling_rate: float = 60.0,
+    smoothing_std: float = 0.025,
+    verbose: int = 1,
+    manifest_path: str | Path | None = None,
+    run_tag: str | None = None,
+) -> Path:
     """
-    Use a trained ENS2 model to predict spike activity for given fluorescence traces.
-    Parameters:
-      model_name (str): Name of the trained model to load.
-      traces (array-like): 1 or 2D array of fluorescence (ΔF/F) values (single neuron trace) size (n_trace x time).
-      sampling_rate (float): Frame rate of the data (Hz).
-      smoothing_std (float): Smoothing std (s) used in training (for thresholding logic).
-      model_folder (str): Folder where the trained model weights are stored.
-      window_len (int): Length of the input window for the model (default 96).
-      batch_size (int): Batch size for processing input traces (default 8192 as ENS2).
+    Train ENS2 on a synthetic ground-truth folder (output of syn_gen).
+
+    Args:
+        model_name: Destination subfolder under model_root.
+        synth_gt_dir: Path (or list of paths) to synthetic ground-truth mat files (e.g., results/Ground_truth/synth_<tag>).
+        model_root: Root under which to place the training artifacts/checkpoints.
+        neuron_type: "Exc" or "Inh".
+        sampling_rate: Target sampling rate for ENS2 (Hz).
+        smoothing_std: Smoothing std (seconds) for ENS2 labels.
+        verbose: Verbosity flag passed through to ENS2 (0=silent).
+        manifest_path: Where to write the manifest for this custom model (defaults to model_dir/ens2_manifest.json).
+        run_tag: Optional tag to carry through into the manifest.
+
     Returns:
-      predicted_rate (np.ndarray): Predicted continuous spike probability/rate for each timepoint.
+        Path to the published-format checkpoint (exc_ens2_pub.pt or inh_ens2_pub.pt).
     """
-    # Load the trained model weights to target device
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = UNet()
-    model_path = os.path.join(model_folder, f"ens_{model_name}", 'ens2_model.pth')
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.to(device)
-    model.eval()
+    ens2_mod = _load_ens2_module()
+    opt = ens2_mod.opt
+    opt.sampling_rate = float(sampling_rate)
+    opt.smoothing_std = float(smoothing_std)
+    opt.smoothing = opt.smoothing_std * opt.sampling_rate
 
-    # Prepare input trace
-    traces = np.asarray(traces).squeeze()
-    if traces.ndim == 1:
-        traces = traces[np.newaxis, :]  # Convert to 2D for consistency
-    n_traces, T = traces.shape
-    window_len = 96  # model window length
-    pad = window_len // 2
+    model_root = Path(model_root).resolve()
+    model_dir = model_root / model_name
+    model_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = Path(manifest_path) if manifest_path is not None else model_dir / "ens2_manifest.json"
 
-    # Allocate output array for predicted rates
-    predicted_rates = np.zeros((n_traces, T), dtype=np.float32)
+    # Stage ground truth as ground_truth/DS2+ inside the model directory (DS1 placeholder created automatically).
+    synth_dirs: Sequence[Path]
+    if isinstance(synth_gt_dir, (str, Path)):
+        synth_dirs = [Path(synth_gt_dir)]
+    else:
+        synth_dirs = [Path(p) for p in synth_gt_dir]
+    staged_dirs = _stage_ground_truth(synth_dirs, model_dir)
 
-    start_time = time.perf_counter()
-    # Process each trace independently
-    for i_trace in range(n_traces):
-        trace = traces[i_trace]
-        padded = np.concatenate([np.zeros(pad), trace, np.zeros(pad)])
+    checkpoint_name = "exc_ens2_pub.pt" if neuron_type.lower().startswith("exc") else "inh_ens2_pub.pt"
 
-        # 
-        padded_tensor = torch.from_numpy(padded).float()  # shape (T+2*pad,)
-        # Use unfold to get a (T, window_len) tensor of all length-96 windows
-        # unfold(dim=0, size=window_len, step=1)
-        windows = padded_tensor.unfold(0, window_len, 1)[:-1]  # shape (T, 96)
+    # Run training with CWD set to model_dir so ENS2 finds ./ground_truth/DS*.
+    with _pushd(model_dir):
+        ens = ens2_mod.ENS2()
+        ens.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        # ENS2.train signature is largely string-based; convert to match.
+        ens.train(
+            neuron=neuron_type,
+            Fs=str(opt.sampling_rate),
+            smoothing_std=str(opt.smoothing_std),
+            verbose=verbose,
+        )
+        saved_model_dir = Path("saved_model")
+        latest = _select_checkpoint(saved_model_dir)
+        if latest is None:
+            raise RuntimeError("ENS2 training did not produce a checkpoint in ./saved_model")
+        target = Path(checkpoint_name)
+        shutil.copy2(latest, target)
+        checkpoint_path = model_dir / target
 
-        # Build a 2D array of shape (T, window_len), where each row is a window
-        #windows = np.lib.stride_tricks.sliding_window_view(padded, window_shape=window_len)
-        #windows = windows[:T] # only need first T rows
+        # Record training metadata
+        try:
+            from c_spikes.ens2.manifest import add_training_entry
 
-        # Convert to torch and wrap in DataLoader
-        #tensor_windows = torch.from_numpy(windows).float()  # shape (T,96)
-        ds = TensorDataset(windows)                   # each sample: (96,)
-        dl = DataLoader(ds, batch_size=batch_size, shuffle=False)
+            add_training_entry(
+                manifest_path,
+                model_name=model_name,
+                checkpoint_path=checkpoint_path,
+                neuron_type=neuron_type,
+                sampling_rate=opt.sampling_rate,
+                smoothing_std=opt.smoothing_std,
+                run_tag=run_tag,
+                ground_truth_dir=[str(p) for p in staged_dirs],
+                device=ens.DEVICE,
+            )
+        except Exception:
+            # Keep training success even if manifest write fails
+            pass
 
-        # Storage for all batch outputs: shape (T, window_len)
-        all_out = np.zeros((T, window_len), dtype=np.float32)
-        start_idx = 0  # to track where this batch’s output goes
+        return checkpoint_path
 
-        # Process the batches
-        with torch.no_grad():
-            for batch in dl:
-                batch_tensors = batch[0].to(device)  # shape (bs, 96)
-                out_batch = model(batch_tensors).cpu().numpy()  # (bs, 96)
-                bs = out_batch.shape[0]
-                all_out[start_idx : start_idx + bs, :] = out_batch
-                start_idx += bs
 
-        # Reconstruct continuous prediction by summing overlapping windows
-        accum = np.zeros(T + window_len - 1, dtype=np.float32)
-        for align_idx in range(T):
-            accum[align_idx : align_idx + window_len] += all_out[align_idx]
+def predict(
+    model_dir: str | Path,
+    traces: np.ndarray,
+    *,
+    neuron_type: str = "Exc",
+    sampling_rate: float = 60.0,
+    smoothing_std: float = 0.025,
+    trial_time: Optional[float] = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Sequence[float]]:
+    """
+    Run ENS2 inference on provided traces using a checkpoint stored in model_dir.
 
-        # Extract centered portion and normalize
-        predicted_rates[i_trace] = accum[pad : pad + T] / window_len
+    Args:
+        model_dir: Directory containing exc_ens2_pub.pt or inh_ens2_pub.pt.
+        traces: Array of shape (trials, timepoints) with dFF traces.
+        neuron_type: "Exc" or "Inh" (selects checkpoint name).
+        sampling_rate: Trace sampling rate in Hz.
+        smoothing_std: ENS2 smoothing std in seconds (sets opt).
+        trial_time: Optional duration override in seconds; if None, inferred from len(trace)/sampling_rate.
 
-    if predicted_rates.shape[0] == 1:
-        return predicted_rates[0]  # Return 1D if input was 1D
+    Returns:
+        calcium (center sample), pd_rate, pd_spike, pd_event from ENS2.predict.
+    """
+    ens2_mod = _load_ens2_module()
+    opt = ens2_mod.opt
+    opt.sampling_rate = float(sampling_rate)
+    opt.smoothing_std = float(smoothing_std)
+    opt.smoothing = opt.smoothing_std * opt.sampling_rate
 
-    stop_time = time.perf_counter()
-    print(f"time to load and process tensors was {stop_time - start_time}")
-    return predicted_rates
+    model_dir = Path(model_dir).resolve()
+    checkpoint_name = "exc_ens2_pub.pt" if neuron_type.lower().startswith("exc") else "inh_ens2_pub.pt"
+    checkpoint_path = model_dir / checkpoint_name
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(checkpoint_path)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    if trial_time is None:
+        # assume uniform sampling
+        trial_time = traces.shape[-1] / float(sampling_rate)
+
+    test_data = ens2_mod.compile_test_data(traces, trial_time)
+
+    load_kwargs = {"map_location": torch.device(device)}
+    try:
+        checkpoint = torch.load(checkpoint_path, weights_only=False, **load_kwargs)
+    except TypeError:
+        checkpoint = torch.load(checkpoint_path, **load_kwargs)
+    state_dict = checkpoint.state_dict() if hasattr(checkpoint, "state_dict") else checkpoint
+
+    ens = ens2_mod.ENS2()
+    ens.DEVICE = device
+    return ens.predict(test_data, state_dict=state_dict)
+
+
+__all__ = ["train_model", "predict"]

@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-def smooth_spike_train(spike_times, sampling_rate, duration=None, sigma_ms=50):
+def smooth_spike_train(spike_times, sampling_rate, duration=None, sigma_ms=50, binning="linear"):
     """
     Bin spike times into a high-resolution array and apply Gaussian smoothing.
     Args:
@@ -9,6 +9,11 @@ def smooth_spike_train(spike_times, sampling_rate, duration=None, sigma_ms=50):
         sampling_rate (float): Sampling rate in Hz for the binned spike train.
         duration (float, optional): Total duration in seconds. If None, uses max(spike_times).
         sigma_ms (float): Standard deviation of Gaussian kernel in milliseconds.
+        binning (str): How to place spikes on the discrete grid before smoothing.
+            - "linear" (default): distribute each spike between the two neighboring bins
+              based on its fractional index (reduces timing-quantization error at low Fs).
+            - "round": assign each spike to the nearest bin.
+            - "floor": assign each spike to the left bin (legacy behavior).
     Returns:
         np.ndarray: Smoothed spike-rate array (length = duration * sampling_rate).
     """
@@ -17,9 +22,28 @@ def smooth_spike_train(spike_times, sampling_rate, duration=None, sigma_ms=50):
         duration = spike_times.max() if spike_times.size > 0 else 0
     N = int(np.ceil(duration * sampling_rate)) + 1
     spike_array = np.zeros(N, dtype=float)
-    indices = np.rint(spike_times * sampling_rate).astype(np.int64)
-    indices = indices[(indices >= 0) & (indices < N)]
-    np.add.at(spike_array, indices, 1)
+    pos = spike_times * float(sampling_rate)
+    if binning == "floor":
+        indices = pos.astype(int)
+        indices = indices[(indices >= 0) & (indices < N)]
+        np.add.at(spike_array, indices, 1.0)
+    elif binning == "round":
+        indices = np.rint(pos).astype(int)
+        indices = indices[(indices >= 0) & (indices < N)]
+        np.add.at(spike_array, indices, 1.0)
+    elif binning == "linear":
+        i0 = np.floor(pos).astype(int)
+        frac = pos - i0
+        i1 = i0 + 1
+
+        m0 = (i0 >= 0) & (i0 < N)
+        if np.any(m0):
+            np.add.at(spike_array, i0[m0], (1.0 - frac[m0]).astype(float))
+        m1 = (i1 >= 0) & (i1 < N)
+        if np.any(m1):
+            np.add.at(spike_array, i1[m1], frac[m1].astype(float))
+    else:
+        raise ValueError(f"Unsupported binning mode: {binning!r}. Use 'linear', 'round', or 'floor'.")
     sigma_samples = (sigma_ms / 1000) * sampling_rate
     smoothed = gaussian_filter1d(spike_array, sigma=sigma_samples)
 

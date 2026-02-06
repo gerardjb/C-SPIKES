@@ -45,7 +45,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import scipy.io as sio
-from scipy.ndimage.filters import gaussian_filter
+from scipy.ndimage import gaussian_filter
 from scipy.signal import resample, convolve
 from scipy.interpolate import interp1d
 from scipy.stats import invgauss
@@ -91,6 +91,62 @@ def define_model(filter_sizes,filter_numbers,dense_expansion,windowsize,loss_fun
 
   return model
 
+
+
+def convert_h5_models_to_keras(model_folder, overwrite=False, verbose=2):
+
+  """
+  Convert all .h5 Keras model files in 'model_folder' to the newer .keras format.
+
+  input:  model_folder (directory containing .h5 model files)
+          overwrite (if True, regenerate existing .keras files)
+          verbose (verbosity level for printed status messages)
+  output: list with paths to the .keras files that were created or found
+
+  """
+
+  model_folder = os.path.abspath(model_folder)
+  model_files = sorted(glob.glob(os.path.join(model_folder, '*.h5')))
+
+  if not model_files:
+    if verbose > 0: print('No .h5 models found in {}'.format(model_folder))
+    return []
+
+  try:
+    from tensorflow import keras
+  except ModuleNotFoundError:
+    raise ModuleNotFoundError('Tensorflow is required to convert .h5 models. '
+                              'Please install tensorflow (e.g. "pip install tensorflow==2.12.0").')
+
+  converted_paths = []
+  skipped_paths = []
+
+  for model_file in model_files:
+
+    keras_path = os.path.splitext(model_file)[0] + '.keras'
+
+    if os.path.exists(keras_path) and not overwrite:
+      if verbose > 1: print('Skipping {} (already converted).'.format(os.path.basename(model_file)))
+      converted_paths.append(keras_path)
+      skipped_paths.append(keras_path)
+      continue
+
+    if verbose > 1: print('Converting {}'.format(os.path.basename(model_file)))
+
+    model = keras.models.load_model(model_file, compile=False)
+    model.save(keras_path, overwrite=True, save_format='keras')
+    keras.backend.clear_session()
+
+    converted_paths.append(keras_path)
+
+    if verbose > 1: print('Saved {}'.format(os.path.basename(keras_path)))
+
+  if verbose > 0:
+    print('Converted {} model(s); skipped {} existing file(s).'.format(
+      len(converted_paths) - len(skipped_paths),
+      len(skipped_paths)))
+
+  return converted_paths
 
 
 

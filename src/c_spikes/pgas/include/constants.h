@@ -32,6 +32,12 @@ public:
     double gam_out_prop_sd;
 
     double sampling_frequency;
+    double physics_frequency_hz = 100.0;
+    int substeps_per_frame = 0;
+    int min_substeps = 1;
+    bool time_integrated_observations = true;
+    int num_substeps = 1;
+    double sim_dt = 0.0;
 
     bool MOVE_SPIKES         = true;
     bool SAMPLE_KINETICS     = true;
@@ -39,10 +45,12 @@ public:
     bool SAMPLE_PARAMETERS   = true;
     bool CROP_TRACE          = false;
     bool KNOWN_SPIKES        = false;
+    bool c0_is_first_y       = false;
 
     int seed;
     int niter;
     int nparticles;
+    int maxspikes;
 
     // Preprocessing
     int t_min, t_max;

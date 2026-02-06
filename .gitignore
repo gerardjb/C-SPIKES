@@ -19,24 +19,24 @@ __pycache__
 Ground_truth/*
 data/
 
+# Misc in codebase
 vcpkg/
-
 .vscode/
-
-sample_data/output/
-
 src/c_spikes/_version.py
-
 profiles/
-
 results/
-
 gt_noise_dir/
-
 gt_data/
+logs/
+tmp/
+
+# kokkos tools
+kokkos-tools/
+
+# slurm stuff
+slurm-*.out
 
 # Outputs for syn_gen and cascade
-Pretrained_models/*
 Ground_truth/*
 
 # Outputs for pgas test, when run outside of pytest.
@@ -220,3 +220,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# codex things
+.codex/
+.codex_temp/

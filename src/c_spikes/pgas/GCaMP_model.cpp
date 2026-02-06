@@ -462,7 +462,10 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& st
     state_out(10) = Ca;
     state_out(11) = Ca_in;
 
-    double DFF_out = (arma::accu(G(brightStates)) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
+    //double DFF_out = (arma::accu(G(brightStates)) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));<- avoids loading arma to gpu
+    double brightStatesSum = 0.0;
+    for(unsigned int i=0;i<5;i++) brightStatesSum += G[brightStates[i]];
+    double DFF_out = (brightStatesSum - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
 
     return DFF_out;
 }
@@ -657,4 +660,48 @@ double GCaMP::getAmplitude(){
     }
 
     return(resp.max());
+}
+
+// For kokkos port
+void GCaMP::read_params(GCaMP_params & params)
+{
+
+  for (int i = 0; i < 14; i++) 
+    params.Gparams[i] = Gparams(i);
+
+  // parameters that are allowed to vary
+  params.G_tot = G_tot;
+  params.gamma = gamma;
+  params.DCaT = DCaT;
+  params.Rf = Rf;
+  
+  // parameters that can be fixed
+  // indicator
+  params.konN = konN;
+  params.koffN = koffN;
+  params.konC = konC;
+  params.koffC = koffC;
+  params.konPN = konPN;
+  params.koffPN = koffPN;
+  params.konPN2 = konPN2;
+  params.koffPN2 = koffPN2;
+  params.konPC = konPC;
+  params.koffPC = koffPC;
+  params.konPC2 = konPC2;
+  params.koffPC2 = koffPC2;
+
+  //calcium
+  params.sigma2_calcium_spike = sigma2_calcium_spike;
+  params.gam_in = gam_in;
+  params.gam_out = gam_out;
+
+  // buffer
+  params.BCa0 = BCa0;
+  params.kapB = kapB;
+  
+  // dFF normalization
+  params.G0 = G0;
+  params.Gsat = Gsat;
+  params.Ginit = Ginit;
+
 }
