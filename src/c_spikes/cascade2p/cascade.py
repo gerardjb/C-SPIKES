@@ -37,6 +37,10 @@ import warnings
 from pathlib import Path
 from typing import Dict, List, Tuple, TYPE_CHECKING
 from . import config, utils
+from c_spikes.tensorflow_env import (
+    configure_tensorflow_environment,
+    suppress_tensorflow_stderr_if_configured,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - avoids heavy TF import during runtime
     from tensorflow.keras.models import Model  # type: ignore
@@ -78,6 +82,7 @@ def train_model(
         All results are saved in the folder model_name as .keras files containing the trained model
 
     """
+    configure_tensorflow_environment()
     import tensorflow.keras
     from tensorflow.keras.optimizers import Adagrad
 
@@ -292,6 +297,7 @@ def predict(
         This array can contain NaNs if the value 'padding' was np.nan as input argument
 
     """
+    configure_tensorflow_environment()
     import tensorflow.keras
     from tensorflow.keras.models import load_model
 
@@ -433,7 +439,8 @@ def predict(
             if verbose:
                 print("\t... ensemble", j)
 
-            prediction_flat = model.predict(XX_sel, batch_size, verbose=verbose)
+            with suppress_tensorflow_stderr_if_configured():
+                prediction_flat = model.predict(XX_sel, batch_size, verbose=verbose)
             prediction = np.reshape(prediction_flat, (len(neuron_idx), XX.shape[1]))
 
             Y_predict[neuron_idx, :] += prediction / len(models)  # average predictions
