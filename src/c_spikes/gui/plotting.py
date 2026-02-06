@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Optional
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -29,6 +29,7 @@ def plot_epoch(
     time: np.ndarray,
     dff: np.ndarray,
     methods: Dict[str, MethodResult],
+    method_labels: Optional[Dict[str, str]] = None,
     spike_times: Optional[np.ndarray] = None,
     title: Optional[str] = None,
 ) -> None:
@@ -38,7 +39,7 @@ def plot_epoch(
         fig.set_layout_engine("constrained")
     except Exception:
         pass
-    method_keys = [m for m in METHOD_ORDER if m in methods]
+    method_keys = sorted(methods.keys(), key=_method_sort_key)
     n_rows = 1 + len(method_keys)
     gs = fig.add_gridspec(n_rows, 1, hspace=0.25)
 
@@ -53,9 +54,13 @@ def plot_epoch(
     for idx, method in enumerate(method_keys, start=1):
         ax = fig.add_subplot(gs[idx, 0], sharex=ax_dff)
         result = methods[method]
-        color = METHOD_COLORS.get(method, "#444444")
+        base_method = _method_base(method)
+        color = METHOD_COLORS.get(base_method, "#444444")
         ax.plot(result.time_stamps, result.spike_prob, color=color, linewidth=1.0)
-        ax.set_ylabel(METHOD_LABELS.get(method, method))
+        if method_labels and method in method_labels:
+            ax.set_ylabel(method_labels[method])
+        else:
+            ax.set_ylabel(_method_label(method))
         ax.grid(True, alpha=0.2)
         _plot_discrete_spikes(ax, result)
 
@@ -101,3 +106,35 @@ def _plot_ground_truth_spikes(ax, time: np.ndarray, spike_times: Optional[np.nda
         return
     for s in spikes:
         ax.axvline(float(s), color="#888888", linestyle=":", linewidth=0.6, alpha=0.9, zorder=0)
+
+
+def _method_base(method_key: str) -> str:
+    token = str(method_key)
+    if "::" in token:
+        return token.split("::", 1)[0]
+    return token
+
+
+def _method_variant(method_key: str) -> str:
+    token = str(method_key)
+    if "::" in token:
+        return token.split("::", 1)[1]
+    return ""
+
+
+def _method_sort_key(method_key: str) -> tuple[int, str, str]:
+    base = _method_base(method_key)
+    try:
+        idx = METHOD_ORDER.index(base)
+    except ValueError:
+        idx = len(METHOD_ORDER)
+    return idx, base, _method_variant(method_key)
+
+
+def _method_label(method_key: str) -> str:
+    base = _method_base(method_key)
+    variant = _method_variant(method_key)
+    label = METHOD_LABELS.get(base, base)
+    if not variant:
+        return label
+    return f"{label} | {variant}"

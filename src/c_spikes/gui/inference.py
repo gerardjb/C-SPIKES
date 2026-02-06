@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import re
 
 import numpy as np
@@ -30,13 +30,12 @@ class InferenceSettings:
     run_ens2: bool
     run_pgas: bool
     run_biophys: bool
-    biophys_kind: str
     neuron_type: str
     use_cache: bool
     cascade_model_folder: Path
-    cascade_model_name: str
-    ens2_pretrained_dir: Path
-    biophys_pretrained_dir: Path
+    cascade_model_names: List[str]
+    ens2_models: List["ModelSpec"]
+    biophys_models: List["BiophysModelSpec"]
     pgas_constants_file: Path
     pgas_gparam_file: Path
     cascade_discretize: bool = True
@@ -44,6 +43,19 @@ class InferenceSettings:
     pgas_resample_fs: Optional[float] = None
     pgas_fixed_bm_sigma: Optional[float] = None
     pgas_bm_sigma_gap_s: float = 0.15
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    label: str
+    path: Path
+
+
+@dataclass(frozen=True)
+class BiophysModelSpec:
+    label: str
+    kind: str
+    path: Path
 
 
 def build_run_context(
@@ -94,6 +106,13 @@ def run_inference_for_epoch(
     raw_fs = compute_sampling_rate(trial.times)
     spikes = np.asarray(spike_times if spike_times is not None else np.array([]), dtype=np.float64).ravel()
     results: Dict[str, MethodResult] = {}
+    padded_cache: Optional[Tuple[np.ndarray, np.ndarray]] = None
+
+    def get_padded() -> Tuple[np.ndarray, np.ndarray]:
+        nonlocal padded_cache
+        if padded_cache is None:
+            padded_cache = _pad_trials(trials)
+        return padded_cache
 
     if settings.run_pgas:
         pgas_cfg = PgasConfig(
@@ -115,70 +134,86 @@ def run_inference_for_epoch(
         )
 
     if settings.run_ens2:
-        ens2_cfg = Ens2Config(
-            dataset_tag=epoch_id,
-            pretrained_dir=settings.ens2_pretrained_dir,
-            neuron_type=settings.neuron_type,
-            downsample_label="raw",
-            use_cache=settings.use_cache,
-        )
-        time_arr, trace_arr = _pad_trials(trials)
-        results["ens2"] = run_ens2_inference(
-            raw_time_stamps=time_arr,
-            raw_traces=trace_arr,
-            config=ens2_cfg,
-            valid_lengths=[trial.times.size for trial in trials],
-        )
-
-    if settings.run_biophys:
-        if settings.biophys_kind == "cascade":
-            cascade_cfg = CascadeConfig(
-                dataset_tag=epoch_id,
-                model_folder=settings.biophys_pretrained_dir.parent,
-                model_name=settings.biophys_pretrained_dir.name,
-                resample_fs=settings.cascade_resample_fs,
-                downsample_label="raw",
-                use_cache=settings.use_cache,
-                discretize=bool(settings.cascade_discretize),
-            )
-            biophys_result = run_cascade_inference(trials=trials, config=cascade_cfg)
-            results["biophys_ml"] = _clone_method_result(
-                biophys_result,
-                "biophys_ml",
-                extra_metadata={"base_method": "cascade"},
-            )
-        else:
+        time_arr, trace_arr = get_padded()
+        for ens2_model in settings.ens2_models:
+            key = _make_method_key("ens2", ens2_model.label)
             ens2_cfg = Ens2Config(
                 dataset_tag=epoch_id,
-                pretrained_dir=settings.biophys_pretrained_dir,
+                pretrained_dir=ens2_model.path,
                 neuron_type=settings.neuron_type,
                 downsample_label="raw",
                 use_cache=settings.use_cache,
             )
-            time_arr, trace_arr = _pad_trials(trials)
-            biophys_result = run_ens2_inference(
+            ens2_result = run_ens2_inference(
                 raw_time_stamps=time_arr,
                 raw_traces=trace_arr,
                 config=ens2_cfg,
                 valid_lengths=[trial.times.size for trial in trials],
             )
-            results["biophys_ml"] = _clone_method_result(
-                biophys_result,
-                "biophys_ml",
-                extra_metadata={"base_method": "ens2"},
+            results[key] = _clone_method_result(
+                ens2_result,
+                key,
+                extra_metadata={"base_method": "ens2", "model_label": ens2_model.label},
             )
 
+    if settings.run_biophys:
+        time_arr, trace_arr = get_padded()
+        for model in settings.biophys_models:
+            key = _make_method_key("biophys_ml", model.label)
+            if model.kind == "cascade":
+                cascade_cfg = CascadeConfig(
+                    dataset_tag=epoch_id,
+                    model_folder=model.path.parent,
+                    model_name=model.path.name,
+                    resample_fs=settings.cascade_resample_fs,
+                    downsample_label="raw",
+                    use_cache=settings.use_cache,
+                    discretize=bool(settings.cascade_discretize),
+                )
+                biophys_result = run_cascade_inference(trials=trials, config=cascade_cfg)
+                results[key] = _clone_method_result(
+                    biophys_result,
+                    key,
+                    extra_metadata={"base_method": "cascade", "model_label": model.label},
+                )
+            else:
+                ens2_cfg = Ens2Config(
+                    dataset_tag=epoch_id,
+                    pretrained_dir=model.path,
+                    neuron_type=settings.neuron_type,
+                    downsample_label="raw",
+                    use_cache=settings.use_cache,
+                )
+                biophys_result = run_ens2_inference(
+                    raw_time_stamps=time_arr,
+                    raw_traces=trace_arr,
+                    config=ens2_cfg,
+                    valid_lengths=[trial.times.size for trial in trials],
+                )
+                results[key] = _clone_method_result(
+                    biophys_result,
+                    key,
+                    extra_metadata={"base_method": "ens2", "model_label": model.label},
+                )
+
     if settings.run_cascade:
-        cascade_cfg = CascadeConfig(
-            dataset_tag=epoch_id,
-            model_folder=settings.cascade_model_folder,
-            model_name=settings.cascade_model_name,
-            resample_fs=settings.cascade_resample_fs,
-            downsample_label="raw",
-            use_cache=settings.use_cache,
-            discretize=bool(settings.cascade_discretize),
-        )
-        results["cascade"] = run_cascade_inference(trials=trials, config=cascade_cfg)
+        for cascade_name in settings.cascade_model_names:
+            key = _make_method_key("cascade", cascade_name)
+            cascade_cfg = CascadeConfig(
+                dataset_tag=epoch_id,
+                model_folder=settings.cascade_model_folder,
+                model_name=cascade_name,
+                resample_fs=settings.cascade_resample_fs,
+                downsample_label="raw",
+                use_cache=settings.use_cache,
+                discretize=bool(settings.cascade_discretize),
+            )
+            cascade_result = run_cascade_inference(trials=trials, config=cascade_cfg)
+            results[key] = _clone_method_result(
+                cascade_result,
+                key,
+                extra_metadata={"base_method": "cascade", "model_label": cascade_name},
+            )
 
     return results
 
@@ -200,6 +235,13 @@ def run_inference_for_epoch_safe(
     spikes = np.asarray(spike_times if spike_times is not None else np.array([]), dtype=np.float64).ravel()
     results: Dict[str, MethodResult] = {}
     errors: Dict[str, str] = {}
+    padded_cache: Optional[Tuple[np.ndarray, np.ndarray]] = None
+
+    def get_padded() -> Tuple[np.ndarray, np.ndarray]:
+        nonlocal padded_cache
+        if padded_cache is None:
+            padded_cache = _pad_trials(trials)
+        return padded_cache
 
     if settings.run_pgas:
         try:
@@ -224,79 +266,95 @@ def run_inference_for_epoch_safe(
             errors["pgas"] = str(exc)
 
     if settings.run_ens2:
-        try:
-            ens2_cfg = Ens2Config(
-                dataset_tag=epoch_id,
-                pretrained_dir=settings.ens2_pretrained_dir,
-                neuron_type=settings.neuron_type,
-                downsample_label="raw",
-                use_cache=settings.use_cache,
-            )
-            time_arr, trace_arr = _pad_trials(trials)
-            results["ens2"] = run_ens2_inference(
-                raw_time_stamps=time_arr,
-                raw_traces=trace_arr,
-                config=ens2_cfg,
-                valid_lengths=[trial.times.size for trial in trials],
-            )
-        except Exception as exc:
-            errors["ens2"] = str(exc)
-
-    if settings.run_biophys:
-        try:
-            if settings.biophys_kind == "cascade":
-                cascade_cfg = CascadeConfig(
-                    dataset_tag=epoch_id,
-                    model_folder=settings.biophys_pretrained_dir.parent,
-                    model_name=settings.biophys_pretrained_dir.name,
-                    resample_fs=settings.cascade_resample_fs,
-                    downsample_label="raw",
-                    use_cache=settings.use_cache,
-                    discretize=bool(settings.cascade_discretize),
-                )
-                biophys_result = run_cascade_inference(trials=trials, config=cascade_cfg)
-                results["biophys_ml"] = _clone_method_result(
-                    biophys_result,
-                    "biophys_ml",
-                    extra_metadata={"base_method": "cascade"},
-                )
-            else:
+        time_arr, trace_arr = get_padded()
+        for ens2_model in settings.ens2_models:
+            key = _make_method_key("ens2", ens2_model.label)
+            try:
                 ens2_cfg = Ens2Config(
                     dataset_tag=epoch_id,
-                    pretrained_dir=settings.biophys_pretrained_dir,
+                    pretrained_dir=ens2_model.path,
                     neuron_type=settings.neuron_type,
                     downsample_label="raw",
                     use_cache=settings.use_cache,
                 )
-                time_arr, trace_arr = _pad_trials(trials)
-                biophys_result = run_ens2_inference(
+                ens2_result = run_ens2_inference(
                     raw_time_stamps=time_arr,
                     raw_traces=trace_arr,
                     config=ens2_cfg,
                     valid_lengths=[trial.times.size for trial in trials],
                 )
-                results["biophys_ml"] = _clone_method_result(
-                    biophys_result,
-                    "biophys_ml",
-                    extra_metadata={"base_method": "ens2"},
+                results[key] = _clone_method_result(
+                    ens2_result,
+                    key,
+                    extra_metadata={"base_method": "ens2", "model_label": ens2_model.label},
                 )
-        except Exception as exc:
-            errors["biophys_ml"] = str(exc)
+            except Exception as exc:
+                errors[key] = str(exc)
+
+    if settings.run_biophys:
+        time_arr, trace_arr = get_padded()
+        for model in settings.biophys_models:
+            key = _make_method_key("biophys_ml", model.label)
+            try:
+                if model.kind == "cascade":
+                    cascade_cfg = CascadeConfig(
+                        dataset_tag=epoch_id,
+                        model_folder=model.path.parent,
+                        model_name=model.path.name,
+                        resample_fs=settings.cascade_resample_fs,
+                        downsample_label="raw",
+                        use_cache=settings.use_cache,
+                        discretize=bool(settings.cascade_discretize),
+                    )
+                    biophys_result = run_cascade_inference(trials=trials, config=cascade_cfg)
+                    results[key] = _clone_method_result(
+                        biophys_result,
+                        key,
+                        extra_metadata={"base_method": "cascade", "model_label": model.label},
+                    )
+                else:
+                    ens2_cfg = Ens2Config(
+                        dataset_tag=epoch_id,
+                        pretrained_dir=model.path,
+                        neuron_type=settings.neuron_type,
+                        downsample_label="raw",
+                        use_cache=settings.use_cache,
+                    )
+                    biophys_result = run_ens2_inference(
+                        raw_time_stamps=time_arr,
+                        raw_traces=trace_arr,
+                        config=ens2_cfg,
+                        valid_lengths=[trial.times.size for trial in trials],
+                    )
+                    results[key] = _clone_method_result(
+                        biophys_result,
+                        key,
+                        extra_metadata={"base_method": "ens2", "model_label": model.label},
+                    )
+            except Exception as exc:
+                errors[key] = str(exc)
 
     if settings.run_cascade:
-        try:
-            cascade_cfg = CascadeConfig(
-                dataset_tag=epoch_id,
-                model_folder=settings.cascade_model_folder,
-                model_name=settings.cascade_model_name,
-                resample_fs=settings.cascade_resample_fs,
-                downsample_label="raw",
-                use_cache=settings.use_cache,
-                discretize=bool(settings.cascade_discretize),
-            )
-            results["cascade"] = run_cascade_inference(trials=trials, config=cascade_cfg)
-        except Exception as exc:
-            errors["cascade"] = str(exc)
+        for cascade_name in settings.cascade_model_names:
+            key = _make_method_key("cascade", cascade_name)
+            try:
+                cascade_cfg = CascadeConfig(
+                    dataset_tag=epoch_id,
+                    model_folder=settings.cascade_model_folder,
+                    model_name=cascade_name,
+                    resample_fs=settings.cascade_resample_fs,
+                    downsample_label="raw",
+                    use_cache=settings.use_cache,
+                    discretize=bool(settings.cascade_discretize),
+                )
+                cascade_result = run_cascade_inference(trials=trials, config=cascade_cfg)
+                results[key] = _clone_method_result(
+                    cascade_result,
+                    key,
+                    extra_metadata={"base_method": "cascade", "model_label": cascade_name},
+                )
+            except Exception as exc:
+                errors[key] = str(exc)
 
     return results, errors
 
@@ -383,3 +441,10 @@ def _clone_method_result(
         reconstruction=None if result.reconstruction is None else np.asarray(result.reconstruction),
         discrete_spikes=None if result.discrete_spikes is None else np.asarray(result.discrete_spikes),
     )
+
+
+def _make_method_key(base_method: str, label: str) -> str:
+    token = str(label).strip()
+    if not token:
+        return base_method
+    return f"{base_method}::{token}"

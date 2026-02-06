@@ -29,7 +29,9 @@ from c_spikes.biophys_ml.pipeline import (
 )
 from c_spikes.gui.data import DataManager, EpochRef, scan_dataset_dir
 from c_spikes.gui.inference import (
+    BiophysModelSpec,
     InferenceSettings,
+    ModelSpec,
     RunContext,
     build_run_context,
     ensure_run_dirs,
@@ -43,7 +45,7 @@ from c_spikes.gui.models import (
     list_cascade_local_models,
     list_ens2_model_dirs,
 )
-from c_spikes.gui.plotting import plot_epoch
+from c_spikes.gui.plotting import METHOD_ORDER, plot_epoch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -326,6 +328,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._epoch_refs: List[EpochRef] = []
         self._results_by_epoch: Dict[str, Dict[str, object]] = {}
         self._errors_by_epoch: Dict[str, Dict[str, str]] = {}
+        self._display_selection_by_epoch: Dict[str, set[str]] = {}
+        self._display_available_by_epoch: Dict[str, set[str]] = {}
+        self._axis_labels_by_epoch: Dict[str, Dict[str, str]] = {}
+        self._updating_display_list = False
         self._current_epoch_index: Optional[int] = None
         self._run_context: Optional[RunContext] = None
         self._bio_run_context: Optional[RunContext] = None
@@ -397,6 +403,7 @@ class MainWindow(QtWidgets.QMainWindow):
         left_layout.addWidget(self._build_dataset_group())
         left_layout.addWidget(self._build_epoch_group())
         left_layout.addWidget(self._build_batch_group())
+        left_layout.addWidget(self._build_display_group())
         left_layout.addWidget(self._build_method_group())
         left_layout.addWidget(self._build_model_group())
         left_layout.addWidget(self._build_biophys_group())
@@ -596,6 +603,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(box)
         self._status_log = QtWidgets.QPlainTextEdit(box)
         self._status_log.setReadOnly(True)
+        self._status_log.setMaximumHeight(110)
         layout.addWidget(self._status_log)
         return box
 
@@ -761,6 +769,26 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return box
 
+    def _build_display_group(self) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox("Displayed Results")
+        layout = QtWidgets.QVBoxLayout(box)
+
+        self._display_list = QtWidgets.QListWidget(box)
+        self._display_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self._display_list.itemSelectionChanged.connect(self._on_display_selection_changed)
+        layout.addWidget(self._display_list)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        select_all = QtWidgets.QPushButton("Select All", box)
+        clear = QtWidgets.QPushButton("Clear", box)
+        select_all.clicked.connect(self._select_all_display_results)
+        clear.clicked.connect(self._clear_display_results)
+        btn_row.addWidget(select_all)
+        btn_row.addWidget(clear)
+        layout.addLayout(btn_row)
+
+        return box
+
     def _build_method_group(self) -> QtWidgets.QGroupBox:
         box = QtWidgets.QGroupBox("Methods")
         layout = QtWidgets.QVBoxLayout(box)
@@ -789,8 +817,10 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(box)
 
         layout.addWidget(QtWidgets.QLabel("Cascade model (installed)", box))
-        self._cascade_model_combo = QtWidgets.QComboBox(box)
-        layout.addWidget(self._cascade_model_combo)
+        self._cascade_model_list = QtWidgets.QListWidget(box)
+        self._cascade_model_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self._cascade_model_list.setMaximumHeight(100)
+        layout.addWidget(self._cascade_model_list)
 
         layout.addWidget(QtWidgets.QLabel("Cascade download (repo)", box))
         self._cascade_download_combo = QtWidgets.QComboBox(box)
@@ -806,8 +836,10 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(cascade_btn_row)
 
         layout.addWidget(QtWidgets.QLabel("ENS2 model (official)", box))
-        self._ens2_official_combo = QtWidgets.QComboBox(box)
-        layout.addWidget(self._ens2_official_combo)
+        self._ens2_official_list = QtWidgets.QListWidget(box)
+        self._ens2_official_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self._ens2_official_list.setMaximumHeight(100)
+        layout.addWidget(self._ens2_official_list)
 
         neuron_row = QtWidgets.QHBoxLayout()
         neuron_row.addWidget(QtWidgets.QLabel("Neuron type", box))
@@ -823,8 +855,10 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(box)
 
         layout.addWidget(QtWidgets.QLabel("BiophysML model", box))
-        self._biophys_combo = QtWidgets.QComboBox(box)
-        layout.addWidget(self._biophys_combo)
+        self._biophys_list = QtWidgets.QListWidget(box)
+        self._biophys_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self._biophys_list.setMaximumHeight(100)
+        layout.addWidget(self._biophys_list)
 
         refresh_row = QtWidgets.QHBoxLayout()
         refresh_btn = QtWidgets.QPushButton("Refresh List", box)
@@ -891,6 +925,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._epoch_refs = epochs
         self._results_by_epoch.clear()
         self._errors_by_epoch.clear()
+        self._display_selection_by_epoch.clear()
+        self._display_available_by_epoch.clear()
+        self._axis_labels_by_epoch.clear()
+        if hasattr(self, "_display_list"):
+            self._display_list.clear()
         self._current_epoch_index = None
         self._run_context = None
         self._bio_run_context = None
@@ -996,11 +1035,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log(f"Failed to load epoch: {exc}")
             return
         methods = self._results_by_epoch.get(epoch.epoch_id, {})
+        self._refresh_display_list_for_epoch(epoch.epoch_id, methods)
+        methods = self._filter_methods_for_display(epoch.epoch_id, methods)
+        method_labels = self._filter_method_labels_for_display(epoch.epoch_id, methods)
         plot_epoch(
             self._figure,
             time=time,
             dff=dff,
             methods=methods,
+            method_labels=method_labels,
             spike_times=spikes,
             title=epoch.display,
         )
@@ -1243,13 +1286,12 @@ class MainWindow(QtWidgets.QMainWindow):
             run_ens2=False,
             run_pgas=True,
             run_biophys=False,
-            biophys_kind="ens2",
             neuron_type=self._neuron_combo.currentText(),
             use_cache=self._bio_use_cache_check.isChecked(),
             cascade_model_folder=CASCADE_ROOT,
-            cascade_model_name="",
-            ens2_pretrained_dir=ENS2_ROOT,
-            biophys_pretrained_dir=BIOPHYS_ROOT,
+            cascade_model_names=[],
+            ens2_models=[],
+            biophys_models=[],
             pgas_constants_file=constants_path,
             pgas_gparam_file=gparam_path,
         )
@@ -1529,9 +1571,16 @@ class MainWindow(QtWidgets.QMainWindow):
         available = list_cascade_available_models(CASCADE_ROOT)
         local = list_cascade_local_models(CASCADE_ROOT)
 
-        self._cascade_model_combo.clear()
+        selected = self._selected_values(self._cascade_model_list)
+        self._cascade_model_list.clear()
         for name in local:
-            self._cascade_model_combo.addItem(name)
+            item = QtWidgets.QListWidgetItem(name)
+            item.setData(Qt.UserRole, name)
+            self._cascade_model_list.addItem(item)
+            if name in selected:
+                item.setSelected(True)
+        if self._cascade_model_list.count() and not self._cascade_model_list.selectedItems():
+            self._cascade_model_list.item(0).setSelected(True)
 
         self._cascade_download_combo.clear()
         for name in available:
@@ -1547,13 +1596,42 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log("Refreshing Cascade model list...")
 
     def _refresh_ens2_models(self) -> None:
-        self._ens2_official_combo.clear()
+        selected = self._selected_values(self._ens2_official_list)
+        self._ens2_official_list.clear()
         for model_dir in list_ens2_model_dirs(ENS2_ROOT):
-            self._ens2_official_combo.addItem(format_model_dir_label(ENS2_ROOT, model_dir), model_dir)
+            label = format_model_dir_label(ENS2_ROOT, model_dir)
+            item = QtWidgets.QListWidgetItem(label)
+            item.setData(Qt.UserRole, model_dir)
+            self._ens2_official_list.addItem(item)
+            if str(model_dir) in selected:
+                item.setSelected(True)
+        if self._ens2_official_list.count() and not self._ens2_official_list.selectedItems():
+            self._ens2_official_list.item(0).setSelected(True)
+
     def _refresh_biophys_models(self) -> None:
-        self._biophys_combo.clear()
+        selected = self._selected_values(self._biophys_list)
+        self._biophys_list.clear()
         for model_dir in list_biophys_model_dirs(BIOPHYS_ROOT):
-            self._biophys_combo.addItem(format_model_dir_label(BIOPHYS_ROOT, model_dir), model_dir)
+            label = format_model_dir_label(BIOPHYS_ROOT, model_dir)
+            item = QtWidgets.QListWidgetItem(label)
+            item.setData(Qt.UserRole, model_dir)
+            self._biophys_list.addItem(item)
+            if str(model_dir) in selected:
+                item.setSelected(True)
+        if self._biophys_list.count() and not self._biophys_list.selectedItems():
+            self._biophys_list.item(0).setSelected(True)
+
+    def _selected_values(self, widget: QtWidgets.QListWidget) -> set[str]:
+        values: set[str] = set()
+        for item in widget.selectedItems():
+            data = item.data(Qt.UserRole)
+            if isinstance(data, Path):
+                values.add(str(data))
+            elif data is not None:
+                values.add(str(data))
+            else:
+                values.add(item.text())
+        return values
 
     def _refresh_pgas_lists(self) -> None:
         self._pgas_constants_combo.clear()
@@ -1701,6 +1779,166 @@ class MainWindow(QtWidgets.QMainWindow):
             return []
         return [self._epoch_refs[self._current_epoch_index]]
 
+    def _method_base(self, method_key: str) -> str:
+        token = str(method_key)
+        if "::" in token:
+            return token.split("::", 1)[0]
+        return token
+
+    def _method_variant(self, method_key: str) -> str:
+        token = str(method_key)
+        if "::" in token:
+            return token.split("::", 1)[1]
+        return ""
+
+    def _method_sort_key(self, method_key: str) -> tuple[int, str]:
+        base = self._method_base(method_key)
+        try:
+            idx = METHOD_ORDER.index(base)
+        except ValueError:
+            idx = len(METHOD_ORDER)
+        return idx, str(method_key)
+
+    def _method_display_label(self, method_key: str) -> str:
+        base = self._method_base(method_key)
+        variant = self._method_variant(method_key)
+        label = self._family_display_name(base)
+        if not variant:
+            return label
+        return f"{label} | {variant}"
+
+    def _family_display_name(self, base_method: str) -> str:
+        names = {
+            "pgas": "BiophysSMC",
+            "biophys_ml": "BiophysML",
+            "cascade": "Cascade",
+            "ens2": "ENS2",
+        }
+        return names.get(base_method, base_method)
+
+    def _numbered_method_labels(
+        self, method_keys: List[str]
+    ) -> tuple[Dict[str, str], Dict[str, str]]:
+        display_labels: Dict[str, str] = {}
+        axis_labels: Dict[str, str] = {}
+        family_index: Dict[str, int] = {}
+        model_families = {"biophys_ml", "cascade", "ens2"}
+        for method_key in method_keys:
+            base = self._method_base(method_key)
+            variant = self._method_variant(method_key)
+            family = self._family_display_name(base)
+            idx = family_index.get(base, 0) + 1
+            family_index[base] = idx
+            if base in model_families:
+                axis_labels[method_key] = f"{family} {idx}"
+                if variant:
+                    display_labels[method_key] = f"{family} {idx}: {variant}"
+                else:
+                    display_labels[method_key] = f"{family} {idx}"
+            else:
+                axis_labels[method_key] = family
+                if variant:
+                    display_labels[method_key] = f"{family}: {variant}"
+                else:
+                    display_labels[method_key] = family
+        return display_labels, axis_labels
+
+    def _refresh_display_list_for_epoch(self, epoch_id: str, methods: Dict[str, object]) -> None:
+        available = sorted(methods.keys(), key=self._method_sort_key)
+        available_set = set(available)
+        previous = self._display_available_by_epoch.get(epoch_id, set())
+        selected = self._display_selection_by_epoch.get(epoch_id)
+        if selected is None:
+            selected = set(available_set)
+        else:
+            selected = set(selected)
+            selected |= available_set - previous
+            selected &= available_set
+        self._display_selection_by_epoch[epoch_id] = selected
+        self._display_available_by_epoch[epoch_id] = available_set
+        display_labels, axis_labels = self._numbered_method_labels(available)
+        self._axis_labels_by_epoch[epoch_id] = axis_labels
+
+        self._updating_display_list = True
+        try:
+            self._display_list.clear()
+            for key in available:
+                item = QtWidgets.QListWidgetItem(display_labels.get(key, self._method_display_label(key)))
+                item.setData(Qt.UserRole, key)
+                self._display_list.addItem(item)
+                if key in selected:
+                    item.setSelected(True)
+        finally:
+            self._updating_display_list = False
+
+    def _filter_methods_for_display(self, epoch_id: str, methods: Dict[str, object]) -> Dict[str, object]:
+        selected = self._display_selection_by_epoch.get(epoch_id)
+        if selected is None:
+            return methods
+        return {key: value for key, value in methods.items() if key in selected}
+
+    def _filter_method_labels_for_display(
+        self, epoch_id: str, methods: Dict[str, object]
+    ) -> Dict[str, str]:
+        labels = self._axis_labels_by_epoch.get(epoch_id, {})
+        if not labels:
+            return {}
+        return {key: labels[key] for key in methods.keys() if key in labels}
+
+    def _on_display_selection_changed(self) -> None:
+        if self._updating_display_list:
+            return
+        if self._current_epoch_index is None or not self._epoch_refs:
+            return
+        epoch = self._epoch_refs[self._current_epoch_index]
+        selected = {
+            str(item.data(Qt.UserRole))
+            for item in self._display_list.selectedItems()
+            if item.data(Qt.UserRole) is not None
+        }
+        self._display_selection_by_epoch[epoch.epoch_id] = selected
+        self._on_epoch_selected(self._current_epoch_index)
+
+    def _select_all_display_results(self) -> None:
+        if self._display_list.count() == 0:
+            return
+        self._display_list.selectAll()
+
+    def _clear_display_results(self) -> None:
+        self._display_list.clearSelection()
+
+    def _selected_cascade_models(self) -> List[str]:
+        models: List[str] = []
+        for item in self._cascade_model_list.selectedItems():
+            value = item.data(Qt.UserRole)
+            name = str(value).strip() if value is not None else item.text().strip()
+            if name:
+                models.append(name)
+        return models
+
+    def _selected_ens2_models(self) -> List[ModelSpec]:
+        models: List[ModelSpec] = []
+        for item in self._ens2_official_list.selectedItems():
+            path = item.data(Qt.UserRole)
+            if not isinstance(path, Path):
+                continue
+            label = item.text().strip() or path.name
+            models.append(ModelSpec(label=label, path=path))
+        return models
+
+    def _selected_biophys_models(self) -> List[BiophysModelSpec]:
+        models: List[BiophysModelSpec] = []
+        for item in self._biophys_list.selectedItems():
+            path = item.data(Qt.UserRole)
+            if not isinstance(path, Path):
+                continue
+            kind = detect_biophys_model_kind(path)
+            if kind is None:
+                continue
+            label = item.text().strip() or path.name
+            models.append(BiophysModelSpec(label=label, kind=kind, path=path))
+        return models
+
     def _build_settings(self) -> Optional[InferenceSettings]:
         run_cascade = self._cascade_check.isChecked()
         run_ens2 = self._ens2_check.isChecked()
@@ -1710,45 +1948,49 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log("Select at least one method to run.")
             return None
 
+        cascade_root = CASCADE_ROOT
         if run_cascade:
-            cascade_name = self._cascade_model_combo.currentText().strip()
-            if not cascade_name:
-                self._log("Select a Cascade model.")
+            cascade_models = self._selected_cascade_models()
+            if not cascade_models:
+                self._log("Select at least one Cascade model.")
                 return None
-            cascade_root = CASCADE_ROOT
-            model_dir = cascade_root / cascade_name
-            if not (model_dir / "config.yaml").exists():
+            for cascade_name in cascade_models:
+                model_dir = cascade_root / cascade_name
+                if (model_dir / "config.yaml").exists():
+                    continue
                 self._log(
                     f"Cascade model not found locally: {model_dir}. Download or select a different model."
                 )
                 return None
         else:
-            cascade_name = ""
-            cascade_root = CASCADE_ROOT
+            cascade_models = []
 
         if run_ens2:
-            ens2_dir = self._ens2_official_combo.currentData()
-            if not isinstance(ens2_dir, Path):
-                self._log("Select an ENS2 model directory.")
+            ens2_models = self._selected_ens2_models()
+            if not ens2_models:
+                self._log("Select at least one ENS2 model directory.")
                 return None
-            if not (ens2_dir / "exc_ens2_pub.pt").exists() and not (ens2_dir / "inh_ens2_pub.pt").exists():
+            for ens2_model in ens2_models:
+                ens2_dir = ens2_model.path
+                if (ens2_dir / "exc_ens2_pub.pt").exists() or (ens2_dir / "inh_ens2_pub.pt").exists():
+                    continue
                 self._log(f"ENS2 weights not found in {ens2_dir}.")
                 return None
         else:
-            ens2_dir = ENS2_ROOT
+            ens2_models = []
 
         if run_biophys:
-            biophys_dir = self._biophys_combo.currentData()
-            if not isinstance(biophys_dir, Path):
-                self._log("Select a BiophysML model directory.")
+            biophys_models = self._selected_biophys_models()
+            if not biophys_models:
+                self._log("Select at least one BiophysML model directory.")
                 return None
-            biophys_kind = detect_biophys_model_kind(biophys_dir)
-            if biophys_kind is None:
-                self._log(f"BiophysML model not recognized in {biophys_dir}.")
+            for model in biophys_models:
+                if detect_biophys_model_kind(model.path) is not None:
+                    continue
+                self._log(f"BiophysML model not recognized in {model.path}.")
                 return None
         else:
-            biophys_dir = BIOPHYS_ROOT
-            biophys_kind = "ens2"
+            biophys_models = []
 
         if run_pgas:
             constants_path = self._current_pgas_constants_path()
@@ -1771,10 +2013,9 @@ class MainWindow(QtWidgets.QMainWindow):
             neuron_type=self._neuron_combo.currentText(),
             use_cache=self._use_cache_check.isChecked(),
             cascade_model_folder=cascade_root,
-            cascade_model_name=cascade_name,
-            ens2_pretrained_dir=ens2_dir,
-            biophys_pretrained_dir=biophys_dir,
-            biophys_kind=biophys_kind,
+            cascade_model_names=cascade_models,
+            ens2_models=ens2_models,
+            biophys_models=biophys_models,
             pgas_constants_file=constants_path,
             pgas_gparam_file=gparam_path,
         )
@@ -1847,10 +2088,15 @@ class MainWindow(QtWidgets.QMainWindow):
             },
             "models": {
                 "cascade_model_folder": str(settings.cascade_model_folder),
-                "cascade_model_name": settings.cascade_model_name,
-                "ens2_pretrained_dir": str(settings.ens2_pretrained_dir),
-                "biophys_pretrained_dir": str(settings.biophys_pretrained_dir),
-                "biophys_kind": settings.biophys_kind,
+                "cascade_model_names": list(settings.cascade_model_names),
+                "ens2_models": [
+                    {"label": model.label, "path": str(model.path)}
+                    for model in settings.ens2_models
+                ],
+                "biophys_models": [
+                    {"label": model.label, "kind": model.kind, "path": str(model.path)}
+                    for model in settings.biophys_models
+                ],
                 "neuron_type": settings.neuron_type,
             },
             "pgas": {
