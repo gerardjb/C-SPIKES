@@ -78,7 +78,7 @@ def _plot_discrete_spikes(ax, result: MethodResult) -> None:
     y_max = float(np.nanmax(y_vals))
     y_min = float(np.nanmin(y_vals))
     height = max((y_max - y_min) * 0.1, 1e-3)
-    ax.vlines(times, y_max - height, y_max, color=ax.lines[-1].get_color(), linewidth=0.8)
+    ax.vlines(times, y_max - height, y_max, color=ax.lines[-1].get_color(), linewidth=1.5)
 
 
 def _plot_ground_truth_spikes(ax, time: np.ndarray, spike_times: Optional[np.ndarray]) -> None:

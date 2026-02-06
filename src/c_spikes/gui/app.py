@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -87,27 +88,33 @@ class InferenceWorker(QtCore.QThread):
         self._edges_enabled = edges_enabled
 
     def run(self) -> None:
-        for epoch in self._epochs:
-            self.status.emit(f"Loading {epoch.display}...")
-            try:
-                time, dff, spikes = self._data_manager.load_epoch(epoch)
-            except Exception as exc:
-                self.result_ready.emit(epoch.epoch_id, {}, {"load": str(exc)})
-                continue
-            edges = None
-            if self._edges_enabled:
-                edges = _edges_for_epoch(self._edges_map, epoch)
-            method_results, method_errors = run_inference_for_epoch_safe(
-                epoch_id=epoch.epoch_id,
-                time=time,
-                dff=dff,
-                spike_times=spikes,
-                settings=self._settings,
-                context=self._context,
-                edges=edges,
-            )
-            self.result_ready.emit(epoch.epoch_id, method_results, method_errors)
-        self.finished.emit()
+        try:
+            for epoch in self._epochs:
+                self.status.emit(f"Loading {epoch.display}...")
+                try:
+                    time, dff, spikes = self._data_manager.load_epoch(epoch)
+                except Exception as exc:
+                    self.result_ready.emit(epoch.epoch_id, {}, {"load": str(exc)})
+                    continue
+                edges = None
+                if self._edges_enabled:
+                    edges = _edges_for_epoch(self._edges_map, epoch)
+                try:
+                    method_results, method_errors = run_inference_for_epoch_safe(
+                        epoch_id=epoch.epoch_id,
+                        time=time,
+                        dff=dff,
+                        spike_times=spikes,
+                        settings=self._settings,
+                        context=self._context,
+                        edges=edges,
+                    )
+                except Exception as exc:
+                    message = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+                    method_results, method_errors = {}, {"setup": message}
+                self.result_ready.emit(epoch.epoch_id, method_results, method_errors)
+        finally:
+            self.finished.emit()
 
 
 class DownloadWorker(QtCore.QThread):
@@ -182,6 +189,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._worker: Optional[InferenceWorker] = None
         self._download_worker: Optional[DownloadWorker] = None
         self._device_locked = False
+        self._last_batch_rows: List[int] = []
         self._edges_path: Optional[Path] = None
         self._edges_map: Optional[Dict[str, np.ndarray]] = None
         self._edges_enabled = False
@@ -416,7 +424,7 @@ class MainWindow(QtWidgets.QMainWindow):
         box = QtWidgets.QGroupBox("Methods")
         layout = QtWidgets.QVBoxLayout(box)
 
-        self._pgas_check = QtWidgets.QCheckBox("biophys_smc", box)
+        self._pgas_check = QtWidgets.QCheckBox("BiophysSMC", box)
         self._biophys_check = QtWidgets.QCheckBox("BiophysML", box)
         self._cascade_check = QtWidgets.QCheckBox("Cascade", box)
         self._ens2_check = QtWidgets.QCheckBox("ENS2", box)
@@ -439,12 +447,16 @@ class MainWindow(QtWidgets.QMainWindow):
         box = QtWidgets.QGroupBox("Models")
         layout = QtWidgets.QVBoxLayout(box)
 
-        layout.addWidget(QtWidgets.QLabel("Cascade model (official)", box))
-        self._cascade_official_combo = QtWidgets.QComboBox(box)
-        layout.addWidget(self._cascade_official_combo)
+        layout.addWidget(QtWidgets.QLabel("Cascade model (installed)", box))
+        self._cascade_model_combo = QtWidgets.QComboBox(box)
+        layout.addWidget(self._cascade_model_combo)
+
+        layout.addWidget(QtWidgets.QLabel("Cascade download (repo)", box))
+        self._cascade_download_combo = QtWidgets.QComboBox(box)
+        layout.addWidget(self._cascade_download_combo)
 
         cascade_btn_row = QtWidgets.QHBoxLayout()
-        self._cascade_refresh_btn = QtWidgets.QPushButton("Refresh List", box)
+        self._cascade_refresh_btn = QtWidgets.QPushButton("Refresh Repo List", box)
         self._cascade_download_btn = QtWidgets.QPushButton("Download", box)
         self._cascade_refresh_btn.clicked.connect(self._update_cascade_available_models)
         self._cascade_download_btn.clicked.connect(self._download_selected_cascade)
@@ -702,11 +714,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_cascade_models(self) -> None:
         available = list_cascade_available_models(CASCADE_ROOT)
         local = list_cascade_local_models(CASCADE_ROOT)
-        models = available if available else local
-        self._cascade_official_combo.clear()
-        if models:
-            for name in models:
-                self._cascade_official_combo.addItem(name)
+
+        self._cascade_model_combo.clear()
+        for name in local:
+            self._cascade_model_combo.addItem(name)
+
+        self._cascade_download_combo.clear()
+        for name in available:
+            self._cascade_download_combo.addItem(name)
 
     def _update_cascade_available_models(self) -> None:
         if self._download_worker and self._download_worker.isRunning():
@@ -756,7 +771,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log(f"Saved edited constants to {temp_path}")
 
     def _download_selected_cascade(self) -> None:
-        model_name = self._cascade_official_combo.currentText().strip()
+        model_name = self._cascade_download_combo.currentText().strip()
         if not model_name:
             self._log("Select a Cascade model to download.")
             return
@@ -802,9 +817,11 @@ class MainWindow(QtWidgets.QMainWindow):
         return True
 
     def _collect_epoch_selection(self) -> List[EpochRef]:
-        selected = [item.data(Qt.UserRole) for item in self._epoch_list.selectedItems()]
-        if selected:
-            return [epoch for epoch in selected if isinstance(epoch, EpochRef)]
+        selected_rows = sorted({index.row() for index in self._epoch_list.selectedIndexes()})
+        self._last_batch_rows = selected_rows
+        if selected_rows:
+            return [self._epoch_refs[row] for row in selected_rows if 0 <= row < len(self._epoch_refs)]
+        self._last_batch_rows = []
         if self._current_epoch_index is None and self._epoch_refs:
             self._current_epoch_index = 0
         if self._current_epoch_index is None:
@@ -821,7 +838,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
 
         if run_cascade:
-            cascade_name = self._cascade_official_combo.currentText().strip()
+            cascade_name = self._cascade_model_combo.currentText().strip()
             if not cascade_name:
                 self._log("Select a Cascade model.")
                 return None
@@ -891,38 +908,56 @@ class MainWindow(QtWidgets.QMainWindow):
         return settings
 
     def _run_inference(self) -> None:
-        if self._worker and self._worker.isRunning():
-            self._log("Inference already running.")
-            return
-        if not self._ensure_run_context():
-            return
-        settings = self._build_settings()
-        if settings is None:
-            return
-        epochs = self._collect_epoch_selection()
-        if not epochs:
-            self._log("No epochs selected.")
-            return
+        try:
+            if self._worker and self._worker.isRunning():
+                self._log("Inference already running.")
+                return
+            if not self._ensure_run_context():
+                return
+            settings = self._build_settings()
+            if settings is None:
+                return
+            epochs = self._collect_epoch_selection()
+            if not epochs:
+                self._log("No epochs selected.")
+                return
+            if self._last_batch_rows:
+                rows_display = ", ".join(str(row + 1) for row in self._last_batch_rows)
+                self._log(f"Batch rows (1-based): {rows_display}")
+                labels = ", ".join(epoch.display for epoch in epochs)
+                self._log(f"Batch labels: {labels}")
 
-        self._apply_device_preference()
-        assert self._run_context is not None
-        ensure_run_dirs(self._run_context)
-        self._write_manifest(settings, epochs)
+            batch_ids: List[str] = []
+            for epoch in epochs:
+                try:
+                    batch_ids.append(str(epoch.epoch_id))
+                except Exception:
+                    batch_ids.append("<unknown>")
+            self._log("Batch order: " + ", ".join(batch_ids))
+            self._apply_device_preference()
+            assert self._run_context is not None
+            ensure_run_dirs(self._run_context)
+            self._write_manifest(settings, epochs)
 
-        self._worker = InferenceWorker(
-            epochs=epochs,
-            data_manager=self._data_manager,
-            settings=settings,
-            context=self._run_context,
-            edges_map=self._edges_map,
-            edges_enabled=self._edges_enabled,
-        )
-        self._worker.status.connect(self._log)
-        self._worker.result_ready.connect(self._on_result_ready)
-        self._worker.finished.connect(self._on_run_finished)
-        self._run_btn.setEnabled(False)
-        self._worker.start()
-        self._log(f"Running inference on {len(epochs)} epoch(s)...")
+            self._worker = InferenceWorker(
+                epochs=epochs,
+                data_manager=self._data_manager,
+                settings=settings,
+                context=self._run_context,
+                edges_map=self._edges_map,
+                edges_enabled=self._edges_enabled,
+            )
+            self._worker.status.connect(self._log)
+            self._worker.result_ready.connect(self._on_result_ready)
+            self._worker.finished.connect(self._on_run_finished)
+            self._run_btn.setEnabled(False)
+            self._worker.start()
+            self._log(f"Running inference on {len(epochs)} epoch(s)...")
+        except Exception as exc:
+            traceback.print_exc()
+            self._log(f"Inference failed: {exc}")
+            QtWidgets.QMessageBox.critical(self, "Inference Error", str(exc))
+            self._run_btn.setEnabled(True)
 
     def _write_manifest(self, settings: InferenceSettings, epochs: List[EpochRef]) -> None:
         if self._run_context is None:
