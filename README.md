@@ -87,8 +87,15 @@ This tab contains panels that allow selection of which methods (i.e., BiophysSMC
   - CASCADE models: `Pretrained_models/CASCADE/<model_name>/`
   - ENS2 models: `Pretrained_models/ENS2/<model_dir>/` containing `exc_ens2_pub.pt` or `inh_ens2_pub.pt`
   - BiophysML: `Pretrained_models/BiophysML/<model_dir>/` (auto-detects CASCADE vs ENS2 based on contents)
-- **Use cache**: reuses cached inference under `data_dir/c_spikes_run_<tag>/inference_cache/`.
+- **Run tag**: outputs are organized under `data_dir/spike_inference/<run_tag>/`.
+- **Use cache**: reuses cached inference under `data_dir/spike_inference/<run_tag>/inference_cache/`.
 - **Use edges**: apply an edges file (selected in the Dataset panel) when running PGAS.
+
+### Biophys ML tab
+- **Run tag**: outputs are organized under `data_dir/biophys_ml/<run_tag>/`.
+- **Use cache**: PGAS cell-parameter inference can reuse cache under `data_dir/biophys_ml/<run_tag>/inference_cache/`.
+- **Synthetic config**: use `Edit config` to edit/save run-scoped synthetic settings.
+- **Load last synthetic config for this run**: restores `data_dir/biophys_ml/<run_tag>/biophys_ml/synthetic_config.json` into the editor.
 
 ### Edge Selection tab
 - Select a dataset directory and epoch.
