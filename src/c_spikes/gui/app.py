@@ -57,7 +57,10 @@ def _edges_for_epoch(
         return None
     if epoch.epoch_index >= edges.shape[0]:
         return None
-    return edges[epoch.epoch_index : epoch.epoch_index + 1]
+    row = np.asarray(edges[epoch.epoch_index], dtype=float)
+    if row.shape != (2,) or not np.all(np.isfinite(row)):
+        return None
+    return row.reshape(1, 2)
 
 
 class InferenceWorker(QtCore.QThread):
@@ -184,6 +187,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._edges_enabled = False
         self._xlim_cids: List[Tuple[object, int]] = []
         self._syncing_x = False
+        self._edge_epoch_index: Optional[int] = None
+        self._edge_time: Optional[np.ndarray] = None
+        self._edge_dff: Optional[np.ndarray] = None
+        self._edge_spikes: Optional[np.ndarray] = None
+        self._edge_click_cid: Optional[int] = None
 
         self._build_ui()
         self._refresh_model_lists()
@@ -192,18 +200,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_ui(self) -> None:
         central = QtWidgets.QWidget(self)
-        main_layout = QtWidgets.QHBoxLayout(central)
+        outer_layout = QtWidgets.QVBoxLayout(central)
 
-        left_panel = QtWidgets.QWidget(central)
+        tabs = QtWidgets.QTabWidget(central)
+        outer_layout.addWidget(tabs)
+        self.setCentralWidget(central)
+
+        spike_tab = QtWidgets.QWidget(tabs)
+        spike_layout = QtWidgets.QHBoxLayout(spike_tab)
+
+        left_panel = QtWidgets.QWidget(spike_tab)
         left_layout = QtWidgets.QVBoxLayout(left_panel)
         left_layout.setAlignment(Qt.AlignTop)
 
-        scroll = QtWidgets.QScrollArea(central)
+        scroll = QtWidgets.QScrollArea(spike_tab)
         scroll.setWidgetResizable(True)
         scroll.setWidget(left_panel)
-        main_layout.addWidget(scroll, 0)
+        spike_layout.addWidget(scroll, 0)
 
-        right_panel = QtWidgets.QWidget(central)
+        right_panel = QtWidgets.QWidget(spike_tab)
         right_layout = QtWidgets.QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(2)
@@ -213,9 +228,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._toolbar = NavigationToolbar(self._canvas, self)
         right_layout.addWidget(self._toolbar, 0)
         right_layout.addWidget(self._canvas, 1)
-        main_layout.addWidget(right_panel, 1)
-
-        self.setCentralWidget(central)
+        spike_layout.addWidget(right_panel, 1)
 
         left_layout.addWidget(self._build_dataset_group())
         left_layout.addWidget(self._build_epoch_group())
@@ -226,6 +239,39 @@ class MainWindow(QtWidgets.QMainWindow):
         left_layout.addWidget(self._build_pgas_group())
         left_layout.addWidget(self._build_device_group())
         left_layout.addWidget(self._build_status_group())
+
+        tabs.addTab(spike_tab, "Spike Inference")
+
+        edge_tab = QtWidgets.QWidget(tabs)
+        edge_layout = QtWidgets.QHBoxLayout(edge_tab)
+
+        edge_left = QtWidgets.QWidget(edge_tab)
+        edge_left_layout = QtWidgets.QVBoxLayout(edge_left)
+        edge_left_layout.setAlignment(Qt.AlignTop)
+
+        edge_scroll = QtWidgets.QScrollArea(edge_tab)
+        edge_scroll.setWidgetResizable(True)
+        edge_scroll.setWidget(edge_left)
+        edge_layout.addWidget(edge_scroll, 0)
+
+        edge_right = QtWidgets.QWidget(edge_tab)
+        edge_right_layout = QtWidgets.QVBoxLayout(edge_right)
+        edge_right_layout.setContentsMargins(0, 0, 0, 0)
+        edge_right_layout.setSpacing(2)
+
+        self._edge_figure = Figure(figsize=(6, 5), dpi=100)
+        self._edge_canvas = FigureCanvas(self._edge_figure)
+        self._edge_toolbar = NavigationToolbar(self._edge_canvas, self)
+        edge_right_layout.addWidget(self._edge_toolbar, 0)
+        edge_right_layout.addWidget(self._edge_canvas, 1)
+        edge_layout.addWidget(edge_right, 1)
+
+        edge_left_layout.addWidget(self._build_edge_dataset_group())
+        edge_left_layout.addWidget(self._build_edge_epoch_group())
+        edge_left_layout.addWidget(self._build_edge_width_group())
+        edge_left_layout.addWidget(self._build_edge_status_group())
+
+        tabs.addTab(edge_tab, "Edge Selection")
 
     def _build_dataset_group(self) -> QtWidgets.QGroupBox:
         box = QtWidgets.QGroupBox("Dataset")
@@ -268,6 +314,24 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return box
 
+    def _build_edge_dataset_group(self) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox("Dataset")
+        layout = QtWidgets.QVBoxLayout(box)
+
+        row = QtWidgets.QHBoxLayout()
+        self._edge_data_dir_edit = QtWidgets.QLineEdit(box)
+        self._edge_data_dir_edit.setReadOnly(True)
+        browse_btn = QtWidgets.QPushButton("Browse", box)
+        browse_btn.clicked.connect(self._choose_edge_data_dir)
+        row.addWidget(self._edge_data_dir_edit)
+        row.addWidget(browse_btn)
+        layout.addLayout(row)
+
+        self._edge_data_info_label = QtWidgets.QLabel("No dataset loaded", box)
+        layout.addWidget(self._edge_data_info_label)
+
+        return box
+
     def _build_epoch_group(self) -> QtWidgets.QGroupBox:
         box = QtWidgets.QGroupBox("Epoch")
         layout = QtWidgets.QVBoxLayout(box)
@@ -285,6 +349,48 @@ class MainWindow(QtWidgets.QMainWindow):
         nav_row.addWidget(self._next_btn)
         layout.addLayout(nav_row)
 
+        return box
+
+    def _build_edge_epoch_group(self) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox("Epoch")
+        layout = QtWidgets.QVBoxLayout(box)
+
+        self._edge_epoch_combo = QtWidgets.QComboBox(box)
+        self._edge_epoch_combo.currentIndexChanged.connect(self._on_edge_epoch_selected)
+        layout.addWidget(self._edge_epoch_combo)
+
+        nav_row = QtWidgets.QHBoxLayout()
+        self._edge_prev_btn = QtWidgets.QPushButton("Prev", box)
+        self._edge_next_btn = QtWidgets.QPushButton("Next", box)
+        clear_btn = QtWidgets.QPushButton("Clear Selection", box)
+        self._edge_prev_btn.clicked.connect(lambda: self._step_edge_epoch(-1, clear_current=False))
+        self._edge_next_btn.clicked.connect(lambda: self._step_edge_epoch(1, clear_current=False))
+        clear_btn.clicked.connect(self._clear_edge_selection_current)
+        nav_row.addWidget(self._edge_prev_btn)
+        nav_row.addWidget(self._edge_next_btn)
+        nav_row.addWidget(clear_btn)
+        layout.addLayout(nav_row)
+
+        return box
+
+    def _build_edge_width_group(self) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox("Epoch Width")
+        layout = QtWidgets.QHBoxLayout(box)
+        layout.addWidget(QtWidgets.QLabel("Width (s)", box))
+        self._edge_width_spin = QtWidgets.QDoubleSpinBox(box)
+        self._edge_width_spin.setRange(0.1, 10_000.0)
+        self._edge_width_spin.setDecimals(3)
+        self._edge_width_spin.setSingleStep(0.1)
+        self._edge_width_spin.setValue(5.0)
+        layout.addWidget(self._edge_width_spin)
+        return box
+
+    def _build_edge_status_group(self) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox("Status")
+        layout = QtWidgets.QVBoxLayout(box)
+        self._edge_status_log = QtWidgets.QPlainTextEdit(box)
+        self._edge_status_log.setReadOnly(True)
+        layout.addWidget(self._edge_status_log)
         return box
 
     def _build_batch_group(self) -> QtWidgets.QGroupBox:
@@ -415,23 +521,42 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _log(self, message: str) -> None:
         self._status_log.appendPlainText(message)
+        if hasattr(self, "_edge_status_log") and self._edge_status_log is not None:
+            self._edge_status_log.appendPlainText(message)
 
     def _choose_data_dir(self) -> None:
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Dataset Directory")
         if directory:
-            self._data_dir_edit.setText(directory)
+            self._load_dataset_dir(Path(directory))
+
+    def _choose_edge_data_dir(self) -> None:
+        directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Dataset Directory")
+        if directory:
             self._load_dataset_dir(Path(directory))
 
     def _load_dataset_dir(self, directory: Path) -> None:
+        directory = Path(directory)
         epochs, errors = scan_dataset_dir(directory)
         self._epoch_refs = epochs
         self._results_by_epoch.clear()
         self._errors_by_epoch.clear()
+        self._current_epoch_index = None
+        self._edge_epoch_index = None
+        self._edge_time = None
+        self._edge_dff = None
+        self._edge_spikes = None
+
+        self._data_dir_edit.setText(str(directory))
+        if hasattr(self, "_edge_data_dir_edit"):
+            self._edge_data_dir_edit.setText(str(directory))
         try:
             default_context = build_run_context(directory, "")
             self._run_tag_edit.setPlaceholderText(f"auto ({default_context.run_tag})")
         except Exception:
             self._run_tag_edit.setPlaceholderText("auto")
+
+        self._reset_edges_state()
+        self._auto_load_edges_for_dir(directory)
         self._epoch_combo.blockSignals(True)
         self._epoch_combo.clear()
         self._epoch_list.clear()
@@ -441,16 +566,33 @@ class MainWindow(QtWidgets.QMainWindow):
             item.setData(Qt.UserRole, epoch)
             self._epoch_list.addItem(item)
         self._epoch_combo.blockSignals(False)
+        if hasattr(self, "_edge_epoch_combo"):
+            self._edge_epoch_combo.blockSignals(True)
+            self._edge_epoch_combo.clear()
+            for epoch in epochs:
+                self._edge_epoch_combo.addItem(epoch.display, epoch)
+            self._edge_epoch_combo.blockSignals(False)
         if errors:
             for err in errors:
                 self._log(f"Dataset scan error: {err}")
         if epochs:
             self._data_info_label.setText(f"Loaded {len(epochs)} epochs from {directory}")
             self._epoch_combo.setCurrentIndex(0)
+            self._on_epoch_selected(0)
+            if hasattr(self, "_edge_data_info_label"):
+                self._edge_data_info_label.setText(f"Loaded {len(epochs)} epochs from {directory}")
+            if hasattr(self, "_edge_epoch_combo"):
+                self._edge_epoch_combo.setCurrentIndex(0)
+                self._on_edge_epoch_selected(0)
         else:
             self._data_info_label.setText("No epochs found")
             self._figure.clear()
             self._canvas.draw()
+            if hasattr(self, "_edge_data_info_label"):
+                self._edge_data_info_label.setText("No epochs found")
+            if hasattr(self, "_edge_figure"):
+                self._edge_figure.clear()
+                self._edge_canvas.draw()
 
     def _on_epoch_selected(self, idx: int) -> None:
         if idx < 0 or idx >= len(self._epoch_refs):
@@ -479,8 +621,52 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if self._current_epoch_index is None:
             self._current_epoch_index = 0
-        new_idx = (self._current_epoch_index + delta) % len(self._epoch_refs)
+        new_idx = self._current_epoch_index + delta
+        if new_idx >= len(self._epoch_refs):
+            self._notify_epoch_boundary(reached_end=True, context="Spike Inference")
+            return
+        if new_idx < 0:
+            self._notify_epoch_boundary(reached_end=False, context="Spike Inference")
+            return
         self._epoch_combo.setCurrentIndex(new_idx)
+
+    def _on_edge_epoch_selected(self, idx: int) -> None:
+        if idx < 0 or idx >= len(self._epoch_refs):
+            return
+        self._edge_epoch_index = idx
+        epoch = self._epoch_refs[idx]
+        try:
+            time, dff, spikes = self._data_manager.load_epoch(epoch)
+        except Exception as exc:
+            self._log(f"Failed to load epoch: {exc}")
+            return
+        self._edge_time = time
+        self._edge_dff = dff
+        self._edge_spikes = spikes
+        self._render_edge_plot()
+
+    def _step_edge_epoch(self, delta: int, *, clear_current: bool) -> None:
+        if not self._epoch_refs:
+            return
+        if self._edge_epoch_index is None:
+            self._edge_epoch_index = 0
+        if clear_current:
+            self._clear_edge_selection_current()
+        new_idx = self._edge_epoch_index + delta
+        if new_idx >= len(self._epoch_refs):
+            self._notify_epoch_boundary(reached_end=True, context="Edge Selection")
+            return
+        if new_idx < 0:
+            self._notify_epoch_boundary(reached_end=False, context="Edge Selection")
+            return
+        self._edge_epoch_combo.setCurrentIndex(new_idx)
+
+    def _clear_edge_selection_current(self) -> None:
+        if self._edge_epoch_index is None or not self._epoch_refs:
+            return
+        epoch = self._epoch_refs[self._edge_epoch_index]
+        self._set_edges_for_epoch(epoch, None)
+        self._render_edge_plot()
 
     def _update_gpu_options(self) -> None:
         if os.environ.get("CUDA_VISIBLE_DEVICES", None) == "":
@@ -815,6 +1001,140 @@ class MainWindow(QtWidgets.QMainWindow):
             cid = ax.callbacks.connect("xlim_changed", _on_xlim_changed)
             self._xlim_cids.append((ax, cid))
 
+    def _notify_epoch_boundary(self, *, reached_end: bool, context: str) -> None:
+        if reached_end:
+            message = f"{context}: reached the last epoch."
+            title = "Last Epoch"
+        else:
+            message = f"{context}: already at the first epoch."
+            title = "First Epoch"
+        self._log(message)
+        QtWidgets.QMessageBox.information(self, title, message)
+
+    def _render_edge_plot(self) -> None:
+        if self._edge_time is None or self._edge_dff is None:
+            return
+        self._edge_figure.clear()
+        ax = self._edge_figure.add_subplot(1, 1, 1)
+        ax.plot(self._edge_time, self._edge_dff, color="black", linewidth=1.0)
+        self._plot_edge_spikes(ax, self._edge_time, self._edge_spikes)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("dF/F")
+
+        current_edges = self._get_edges_for_current_epoch()
+        if current_edges is not None and np.all(np.isfinite(current_edges)):
+            start, end = float(current_edges[0]), float(current_edges[1])
+            if end < start:
+                start, end = end, start
+            ax.axvspan(start, end, color="#999999", alpha=0.2)
+            ax.axvline(start, color="#666666", linestyle="--", linewidth=0.8)
+            ax.axvline(end, color="#666666", linestyle="--", linewidth=0.8)
+
+        self._edge_figure.tight_layout()
+        if self._edge_click_cid is None:
+            self._edge_click_cid = self._edge_canvas.mpl_connect("button_press_event", self._on_edge_plot_click)
+        self._edge_canvas.draw()
+
+    def _on_edge_plot_click(self, event) -> None:
+        if event.inaxes is None or self._edge_time is None or self._edge_epoch_index is None:
+            return
+        if event.xdata is None:
+            return
+        time = self._edge_time
+        x = float(event.xdata)
+        idx_start = int(np.nanargmin(np.abs(time - x)))
+        start = float(time[idx_start])
+        width = float(self._edge_width_spin.value())
+        target_end = start + max(width, 0.0)
+        idx_end = int(np.nanargmin(np.abs(time - target_end)))
+        end = float(time[idx_end])
+        if end < start:
+            end = start
+        epoch = self._epoch_refs[self._edge_epoch_index]
+        self._set_edges_for_epoch(epoch, np.array([start, end], dtype=float))
+        self._render_edge_plot()
+
+    def _plot_edge_spikes(self, ax, time: np.ndarray, spike_times: Optional[np.ndarray]) -> None:
+        if spike_times is None:
+            return
+        spikes = np.asarray(spike_times, dtype=np.float64).ravel()
+        if spikes.size == 0:
+            return
+        t_min = float(np.nanmin(time))
+        t_max = float(np.nanmax(time))
+        spikes = spikes[(spikes >= t_min) & (spikes <= t_max)]
+        if spikes.size == 0:
+            return
+        for s in spikes:
+            ax.axvline(float(s), color="#888888", linestyle=":", linewidth=0.6, alpha=0.9, zorder=0)
+
+    def _get_edges_for_current_epoch(self) -> Optional[np.ndarray]:
+        if self._edge_epoch_index is None or not self._epoch_refs:
+            return None
+        epoch = self._epoch_refs[self._edge_epoch_index]
+        edges_arr = self._ensure_edges_array(epoch)
+        if edges_arr is None:
+            return None
+        return edges_arr[epoch.epoch_index]
+
+    def _ensure_edges_array(self, epoch: EpochRef) -> Optional[np.ndarray]:
+        if self._edges_map is None:
+            self._edges_map = {}
+        key = epoch.file_path.stem
+        edges_arr = self._edges_map.get(key)
+        n_epochs = epoch.epoch_count
+        if edges_arr is None or np.asarray(edges_arr).shape != (n_epochs, 2):
+            new_arr = np.full((n_epochs, 2), np.nan, dtype=float)
+            if edges_arr is not None:
+                old = np.asarray(edges_arr, dtype=float)
+                if old.ndim == 2 and old.shape[1] == 2:
+                    n_copy = min(old.shape[0], n_epochs)
+                    new_arr[:n_copy] = old[:n_copy]
+            edges_arr = new_arr
+            self._edges_map[key] = edges_arr
+        return edges_arr
+
+    def _set_edges_for_epoch(self, epoch: EpochRef, edges: Optional[np.ndarray]) -> None:
+        edges_arr = self._ensure_edges_array(epoch)
+        if edges_arr is None:
+            return
+        if edges is None:
+            edges_arr[epoch.epoch_index] = np.array([np.nan, np.nan], dtype=float)
+        else:
+            edges_arr[epoch.epoch_index] = np.asarray(edges, dtype=float)
+        self._save_edges_map()
+
+    def _save_edges_map(self) -> None:
+        if self._edges_map is None:
+            return
+        data_dir = self._data_dir_edit.text().strip()
+        if not data_dir:
+            return
+        if self._edges_path is None:
+            edges_dir = Path(data_dir) / "edges"
+            edges_dir.mkdir(parents=True, exist_ok=True)
+            self._edges_path = edges_dir / "edges.npy"
+        np.save(self._edges_path, self._edges_map, allow_pickle=True)
+        self._edges_path_edit.setText(str(self._edges_path))
+
+    def _reset_edges_state(self) -> None:
+        self._edges_map = None
+        self._edges_path = None
+        self._edges_enabled = False
+        if hasattr(self, "_edges_check") and self._edges_check.isChecked():
+            self._edges_check.setChecked(False)
+        self._edges_path_edit.setText("")
+
+    def _auto_load_edges_for_dir(self, directory: Path) -> None:
+        edges_dir = Path(directory) / "edges"
+        if not edges_dir.exists():
+            return
+        candidates = list(edges_dir.glob("edges*.npy"))
+        if not candidates:
+            return
+        newest = max(candidates, key=lambda p: p.stat().st_mtime)
+        self._load_edges_file(newest, log=False)
+
     def _on_edges_toggled(self, checked: bool) -> None:
         self._edges_enabled = bool(checked)
         if self._edges_enabled and self._edges_map is None:
@@ -850,10 +1170,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self._edges_map = cleaned
             self._edges_path = path
             self._edges_path_edit.setText(str(path))
-            if hasattr(self, "_edges_check") and not self._edges_check.isChecked():
-                self._edges_check.setChecked(True)
             if log:
                 self._log(f"Loaded edges file: {path}")
+            if self._edge_time is not None:
+                self._render_edge_plot()
         except Exception as exc:
             self._edges_map = None
             self._edges_path = None

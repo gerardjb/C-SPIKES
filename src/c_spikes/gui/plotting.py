@@ -16,10 +16,10 @@ METHOD_COLORS = {
     "biophys_ml": "#007755",
 }
 METHOD_LABELS = {
-    "pgas": "biophys_smc",
-    "cascade": "cascade",
-    "ens2": "ens2",
-    "biophys_ml": "biophys_ml",
+    "pgas": r"Biophys$_{SMC}$",
+    "cascade": "CASCADE",
+    "ens2": r"ENS$^2$",
+    "biophys_ml": r"Biophys$_{ML}$",
 }
 
 
