@@ -17,6 +17,7 @@ dependencies = [
     "numpy",
     "scipy",
     "matplotlib",
+    "PySide6",
     "tensorflow",  # pip install CPU and GPU tensorflow
     "h5py",
     "ruamel.yaml",
