@@ -21,6 +21,7 @@ data/
 
 # Misc in codebase
 vcpkg/
+vcpkg_downloads/
 .vscode/
 src/c_spikes/_version.py
 profiles/
