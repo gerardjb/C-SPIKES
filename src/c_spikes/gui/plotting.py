@@ -64,6 +64,8 @@ def plot_epoch(
         ax.grid(True, alpha=0.2)
         _plot_discrete_spikes(ax, result)
 
+    for ax in fig.axes[:-1]:
+        ax.tick_params(axis="x", which="both", labelbottom=False)
     fig.axes[-1].set_xlabel("Time (s)")
     # Fallback spacing for matplotlib builds without constrained layout support.
     if getattr(fig, "get_layout_engine", None) is None or fig.get_layout_engine() is None:

@@ -557,6 +557,8 @@ class MainWindow(QtWidgets.QMainWindow):
         run_row.addWidget(run_refresh)
         layout.addLayout(run_row)
         self._run_root_label = QtWidgets.QLabel("Run root: (set dataset/run tag)", box)
+        self._run_root_label.setWordWrap(True)
+        self._run_root_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         layout.addWidget(self._run_root_label)
 
         self._use_cache_check = QtWidgets.QCheckBox("Use cache", box)
@@ -576,6 +578,8 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(edges_row)
 
         self._data_info_label = QtWidgets.QLabel("No dataset loaded", box)
+        self._data_info_label.setWordWrap(True)
+        self._data_info_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         layout.addWidget(self._data_info_label)
 
         return box
@@ -594,6 +598,8 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(row)
 
         self._edge_data_info_label = QtWidgets.QLabel("No dataset loaded", box)
+        self._edge_data_info_label.setWordWrap(True)
+        self._edge_data_info_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         layout.addWidget(self._edge_data_info_label)
 
         return box
@@ -603,6 +609,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(box)
 
         self._epoch_combo = QtWidgets.QComboBox(box)
+        self._configure_combo_for_long_text(self._epoch_combo)
         self._epoch_combo.currentIndexChanged.connect(self._on_epoch_selected)
         layout.addWidget(self._epoch_combo)
 
@@ -622,6 +629,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(box)
 
         self._edge_epoch_combo = QtWidgets.QComboBox(box)
+        self._configure_combo_for_long_text(self._edge_epoch_combo)
         self._edge_epoch_combo.currentIndexChanged.connect(self._on_edge_epoch_selected)
         layout.addWidget(self._edge_epoch_combo)
 
@@ -689,11 +697,15 @@ class MainWindow(QtWidgets.QMainWindow):
         run_row.addWidget(run_refresh)
         layout.addLayout(run_row)
         self._bio_run_root_label = QtWidgets.QLabel("Run root: (set dataset/run tag)", box)
+        self._bio_run_root_label.setWordWrap(True)
+        self._bio_run_root_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         layout.addWidget(self._bio_run_root_label)
         self._bio_use_cache_check = QtWidgets.QCheckBox("Use cache", box)
         self._bio_use_cache_check.setChecked(True)
         layout.addWidget(self._bio_use_cache_check)
         self._bio_data_info_label = QtWidgets.QLabel("No dataset loaded", box)
+        self._bio_data_info_label.setWordWrap(True)
+        self._bio_data_info_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         layout.addWidget(self._bio_data_info_label)
         return box
 
@@ -702,6 +714,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(box)
 
         self._bio_epoch_combo = QtWidgets.QComboBox(box)
+        self._configure_combo_for_long_text(self._bio_epoch_combo)
         self._bio_epoch_combo.currentIndexChanged.connect(self._on_bio_epoch_selected)
         layout.addWidget(self._bio_epoch_combo)
 
@@ -740,6 +753,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(button_row)
 
         self._bio_selected_list = QtWidgets.QListWidget(box)
+        self._configure_list_for_long_text(self._bio_selected_list)
         self._bio_selected_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         layout.addWidget(self._bio_selected_list)
 
@@ -773,6 +787,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self._bio_generate_synth_btn)
 
         self._bio_bundle_list = QtWidgets.QListWidget(box)
+        self._configure_list_for_long_text(self._bio_bundle_list)
         layout.addWidget(self._bio_bundle_list)
         return box
 
@@ -830,6 +845,7 @@ class MainWindow(QtWidgets.QMainWindow):
         run_row = QtWidgets.QHBoxLayout()
         run_row.addWidget(QtWidgets.QLabel("Run tag", box))
         self._smc_run_combo = QtWidgets.QComboBox(box)
+        self._configure_combo_for_long_text(self._smc_run_combo)
         self._smc_run_combo.currentIndexChanged.connect(self._on_smc_run_changed)
         run_row.addWidget(self._smc_run_combo)
         run_refresh = QtWidgets.QPushButton("Refresh", box)
@@ -840,6 +856,7 @@ class MainWindow(QtWidgets.QMainWindow):
         cache_row = QtWidgets.QHBoxLayout()
         cache_row.addWidget(QtWidgets.QLabel("Cached inference", box))
         self._smc_cache_combo = QtWidgets.QComboBox(box)
+        self._configure_combo_for_long_text(self._smc_cache_combo)
         self._smc_cache_combo.currentIndexChanged.connect(self._on_smc_cache_changed)
         cache_row.addWidget(self._smc_cache_combo)
         cache_refresh = QtWidgets.QPushButton("Refresh", box)
@@ -848,6 +865,8 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(cache_row)
 
         self._smc_info_label = QtWidgets.QLabel("No cache selected", box)
+        self._smc_info_label.setWordWrap(True)
+        self._smc_info_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         layout.addWidget(self._smc_info_label)
         return box
 
@@ -884,6 +903,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(box)
 
         self._epoch_list = QtWidgets.QListWidget(box)
+        self._configure_list_for_long_text(self._epoch_list)
         self._epoch_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         layout.addWidget(self._epoch_list)
 
@@ -903,6 +923,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(box)
 
         self._display_list = QtWidgets.QListWidget(box)
+        self._configure_list_for_long_text(self._display_list)
         self._display_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self._display_list.itemSelectionChanged.connect(self._on_display_selection_changed)
         layout.addWidget(self._display_list)
@@ -1037,6 +1058,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _log(self, message: str) -> None:
         self._status_log.appendPlainText(message)
+
+    def _configure_combo_for_long_text(self, combo: QtWidgets.QComboBox, *, min_chars: int = 18) -> None:
+        combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        combo.setMinimumContentsLength(int(min_chars))
+        view = combo.view()
+        if view is not None:
+            view.setTextElideMode(Qt.ElideMiddle)
+
+    def _configure_list_for_long_text(self, widget: QtWidgets.QListWidget) -> None:
+        widget.setWordWrap(True)
+        widget.setTextElideMode(Qt.ElideMiddle)
+        widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
     def _choose_data_dir(self) -> None:
         directory = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Dataset Directory")
@@ -2127,6 +2160,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._plot_smc_spikes(ax, payload.gt_smooth_time, payload.full_spikes)
                 ax.set_ylabel("GT smooth")
             ax.grid(True, alpha=0.2)
+        for ax in axes[:-1]:
+            ax.tick_params(axis="x", which="both", labelbottom=False)
         axes[-1].set_xlabel("Time (s)")
         self._smc_left_canvas.draw()
 
@@ -2175,6 +2210,8 @@ class MainWindow(QtWidgets.QMainWindow):
             if i == 0:
                 ax.set_title("Parameter Trace Trajectory")
         if axes:
+            for ax in axes[:-1]:
+                ax.tick_params(axis="x", which="both", labelbottom=False)
             axes[-1].set_xlabel("Iteration")
         self._smc_right_canvas.draw()
 
