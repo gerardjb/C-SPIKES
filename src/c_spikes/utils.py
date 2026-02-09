@@ -51,6 +51,8 @@ def unroll_pgas_traj(dat_file):
     Args:
         dat_file (str): Path to the .csv file containing PGAS trajectory data.
     Returns:
+        index (np.ndarray): PGAS trajectory index / time-bin index.
+        burst (np.ndarray): Burst state (discrete, 0 or 1).
         B (np.ndarray): Baseline drift (Brownian motion).
         S (np.ndarray): Discretized spike number per time bin.
         C (np.ndarray): "Calcium" value, akin to a DFF-like metric.
@@ -60,6 +62,7 @@ def unroll_pgas_traj(dat_file):
     data = np.genfromtxt(dat_file, delimiter=',', skip_header=1)
     #Dealing out data
     index = data[:,0]
+    burst = data[:,1]
     B = data[:,2]
     S = data[:,3]
     C = data[:,4]
@@ -70,7 +73,7 @@ def unroll_pgas_traj(dat_file):
     except:
         Y = np.nan
     
-    return index,B,S,C,Y
+    return index,burst,B,S,C,Y
 
 def unroll_mean_pgas_traj(dat_file, logprob_file, burnin=100):
     """

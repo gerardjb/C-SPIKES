@@ -46,6 +46,13 @@ from c_spikes.gui.models import (
     list_ens2_model_dirs,
 )
 from c_spikes.gui.plotting import METHOD_ORDER, plot_epoch
+from c_spikes.gui.smc_viz import (
+    BiophysSmcPayload,
+    PgasCacheEntry,
+    list_pgas_cache_entries,
+    list_spike_inference_runs,
+    load_biophys_smc_payload,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -362,6 +369,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bio_train_worker: Optional[BioMlTrainWorker] = None
         self._bio_ens2_cfg_text: str = json.dumps(default_ens2_train_config(), indent=2)
         self._bio_cascade_cfg_text: str = json.dumps(default_cascade_train_config(), indent=2)
+        self._smc_entries: List[PgasCacheEntry] = []
+        self._smc_entries_by_tag: Dict[str, PgasCacheEntry] = {}
+        self._smc_payload: Optional[BiophysSmcPayload] = None
+        self._smc_left_checkboxes: Dict[str, QtWidgets.QCheckBox] = {}
+        self._smc_right_checkboxes: Dict[str, QtWidgets.QCheckBox] = {}
+        self._smc_updating_filters = False
+        self._loading_dataset = False
 
         self._build_ui()
         self._refresh_model_lists()
@@ -474,6 +488,50 @@ class MainWindow(QtWidgets.QMainWindow):
         bio_left_layout.addWidget(self._build_bio_train_group())
         tabs.addTab(bio_tab, "Biophys ML")
 
+        smc_tab = QtWidgets.QWidget(tabs)
+        smc_layout = QtWidgets.QHBoxLayout(smc_tab)
+
+        smc_left = QtWidgets.QWidget(smc_tab)
+        smc_left_layout = QtWidgets.QVBoxLayout(smc_left)
+        smc_left_layout.setAlignment(Qt.AlignTop)
+        smc_scroll = QtWidgets.QScrollArea(smc_tab)
+        smc_scroll.setWidgetResizable(True)
+        smc_scroll.setWidget(smc_left)
+        smc_layout.addWidget(smc_scroll, 0)
+
+        smc_right = QtWidgets.QWidget(smc_tab)
+        smc_right_layout = QtWidgets.QHBoxLayout(smc_right)
+        smc_right_layout.setContentsMargins(0, 0, 0, 0)
+        smc_right_layout.setSpacing(4)
+
+        smc_left_plot_panel = QtWidgets.QWidget(smc_right)
+        smc_left_plot_layout = QtWidgets.QVBoxLayout(smc_left_plot_panel)
+        smc_left_plot_layout.setContentsMargins(0, 0, 0, 0)
+        smc_left_plot_layout.setSpacing(2)
+        self._smc_left_figure = Figure(figsize=(6, 5), dpi=100)
+        self._smc_left_canvas = FigureCanvas(self._smc_left_figure)
+        self._smc_left_toolbar = NavigationToolbar(self._smc_left_canvas, self)
+        smc_left_plot_layout.addWidget(self._smc_left_toolbar, 0)
+        smc_left_plot_layout.addWidget(self._smc_left_canvas, 1)
+
+        smc_right_plot_panel = QtWidgets.QWidget(smc_right)
+        smc_right_plot_layout = QtWidgets.QVBoxLayout(smc_right_plot_panel)
+        smc_right_plot_layout.setContentsMargins(0, 0, 0, 0)
+        smc_right_plot_layout.setSpacing(2)
+        self._smc_right_figure = Figure(figsize=(6, 5), dpi=100)
+        self._smc_right_canvas = FigureCanvas(self._smc_right_figure)
+        self._smc_right_toolbar = NavigationToolbar(self._smc_right_canvas, self)
+        smc_right_plot_layout.addWidget(self._smc_right_toolbar, 0)
+        smc_right_plot_layout.addWidget(self._smc_right_canvas, 1)
+
+        smc_right_layout.addWidget(smc_left_plot_panel, 1)
+        smc_right_layout.addWidget(smc_right_plot_panel, 1)
+        smc_layout.addWidget(smc_right, 1)
+
+        smc_left_layout.addWidget(self._build_smc_dataset_group())
+        smc_left_layout.addWidget(self._build_smc_filter_group())
+        tabs.addTab(smc_tab, "BiophysSMC viz")
+
         outer_layout.addWidget(self._build_global_status_group())
 
     def _build_dataset_group(self) -> QtWidgets.QGroupBox:
@@ -494,6 +552,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._run_tag_edit = QtWidgets.QLineEdit(box)
         self._run_tag_edit.setPlaceholderText("auto")
         run_row.addWidget(self._run_tag_edit)
+        run_refresh = QtWidgets.QPushButton("Refresh", box)
+        run_refresh.clicked.connect(self._refresh_run_context_hints)
+        run_row.addWidget(run_refresh)
         layout.addLayout(run_row)
         self._run_root_label = QtWidgets.QLabel("Run root: (set dataset/run tag)", box)
         layout.addWidget(self._run_root_label)
@@ -623,6 +684,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bio_run_tag_edit = QtWidgets.QLineEdit(box)
         self._bio_run_tag_edit.setPlaceholderText("auto")
         run_row.addWidget(self._bio_run_tag_edit)
+        run_refresh = QtWidgets.QPushButton("Refresh", box)
+        run_refresh.clicked.connect(self._refresh_run_context_hints)
+        run_row.addWidget(run_refresh)
         layout.addLayout(run_row)
         self._bio_run_root_label = QtWidgets.QLabel("Run root: (set dataset/run tag)", box)
         layout.addWidget(self._bio_run_root_label)
@@ -748,6 +812,71 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bio_train_btn = QtWidgets.QPushButton("Train Models", box)
         self._bio_train_btn.clicked.connect(self._bio_train_models)
         layout.addWidget(self._bio_train_btn)
+        return box
+
+    def _build_smc_dataset_group(self) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox("Dataset")
+        layout = QtWidgets.QVBoxLayout(box)
+
+        row = QtWidgets.QHBoxLayout()
+        self._smc_data_dir_edit = QtWidgets.QLineEdit(box)
+        self._smc_data_dir_edit.setReadOnly(True)
+        browse_btn = QtWidgets.QPushButton("Browse", box)
+        browse_btn.clicked.connect(self._choose_data_dir)
+        row.addWidget(self._smc_data_dir_edit)
+        row.addWidget(browse_btn)
+        layout.addLayout(row)
+
+        run_row = QtWidgets.QHBoxLayout()
+        run_row.addWidget(QtWidgets.QLabel("Run tag", box))
+        self._smc_run_combo = QtWidgets.QComboBox(box)
+        self._smc_run_combo.currentIndexChanged.connect(self._on_smc_run_changed)
+        run_row.addWidget(self._smc_run_combo)
+        run_refresh = QtWidgets.QPushButton("Refresh", box)
+        run_refresh.clicked.connect(self._refresh_smc_sources)
+        run_row.addWidget(run_refresh)
+        layout.addLayout(run_row)
+
+        cache_row = QtWidgets.QHBoxLayout()
+        cache_row.addWidget(QtWidgets.QLabel("Cached inference", box))
+        self._smc_cache_combo = QtWidgets.QComboBox(box)
+        self._smc_cache_combo.currentIndexChanged.connect(self._on_smc_cache_changed)
+        cache_row.addWidget(self._smc_cache_combo)
+        cache_refresh = QtWidgets.QPushButton("Refresh", box)
+        cache_refresh.clicked.connect(self._refresh_smc_sources)
+        cache_row.addWidget(cache_refresh)
+        layout.addLayout(cache_row)
+
+        self._smc_info_label = QtWidgets.QLabel("No cache selected", box)
+        layout.addWidget(self._smc_info_label)
+        return box
+
+    def _build_smc_filter_group(self) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox("Plot Filters")
+        layout = QtWidgets.QHBoxLayout(box)
+
+        left_box = QtWidgets.QGroupBox("State Trajectory Plots", box)
+        left_layout = QtWidgets.QVBoxLayout(left_box)
+        left_scroll = QtWidgets.QScrollArea(left_box)
+        left_scroll.setWidgetResizable(True)
+        self._smc_left_filter_widget = QtWidgets.QWidget(left_scroll)
+        self._smc_left_filter_layout = QtWidgets.QVBoxLayout(self._smc_left_filter_widget)
+        self._smc_left_filter_layout.setAlignment(Qt.AlignTop)
+        left_scroll.setWidget(self._smc_left_filter_widget)
+        left_layout.addWidget(left_scroll)
+        layout.addWidget(left_box, 1)
+
+        right_box = QtWidgets.QGroupBox("Parameter Trace Trajectory", box)
+        right_layout = QtWidgets.QVBoxLayout(right_box)
+        right_scroll = QtWidgets.QScrollArea(right_box)
+        right_scroll.setWidgetResizable(True)
+        self._smc_right_filter_widget = QtWidgets.QWidget(right_scroll)
+        self._smc_right_filter_layout = QtWidgets.QVBoxLayout(self._smc_right_filter_widget)
+        self._smc_right_filter_layout.setAlignment(Qt.AlignTop)
+        right_scroll.setWidget(self._smc_right_filter_widget)
+        right_layout.addWidget(right_scroll)
+        layout.addWidget(right_box, 1)
+
         return box
 
     def _build_batch_group(self) -> QtWidgets.QGroupBox:
@@ -919,7 +1048,50 @@ class MainWindow(QtWidgets.QMainWindow):
         if directory:
             self._load_dataset_dir(Path(directory))
 
+    def _refresh_run_context_hints(self) -> None:
+        data_dir_raw = self._data_dir_edit.text().strip()
+        if not data_dir_raw:
+            self._run_tag_edit.setPlaceholderText("auto")
+            self._run_root_label.setText("Run root: (set dataset/run tag)")
+            if hasattr(self, "_bio_run_tag_edit"):
+                self._bio_run_tag_edit.setPlaceholderText("auto")
+                self._bio_run_root_label.setText("Run root: (set dataset/run tag)")
+            return
+        directory = Path(data_dir_raw)
+        try:
+            spike_context = build_run_context(
+                directory,
+                self._run_tag_edit.text().strip(),
+                run_parent="spike_inference",
+            )
+            self._run_tag_edit.setPlaceholderText(f"auto ({build_run_context(directory, '', run_parent='spike_inference').run_tag})")
+            self._run_root_label.setText(f"Run root: {spike_context.run_root}")
+        except Exception:
+            self._run_tag_edit.setPlaceholderText("auto")
+            self._run_root_label.setText("Run root: (unavailable)")
+
+        if hasattr(self, "_bio_run_tag_edit"):
+            try:
+                bio_context = build_run_context(
+                    directory,
+                    self._bio_run_tag_edit.text().strip(),
+                    run_parent="biophys_ml",
+                )
+                self._bio_run_tag_edit.setPlaceholderText(f"auto ({build_run_context(directory, '', run_parent='biophys_ml').run_tag})")
+                self._bio_run_root_label.setText(f"Run root: {bio_context.run_root}")
+            except Exception:
+                self._bio_run_tag_edit.setPlaceholderText("auto")
+                self._bio_run_root_label.setText("Run root: (unavailable)")
+
+    def _refresh_smc_sources(self) -> None:
+        data_dir_raw = self._data_dir_edit.text().strip()
+        if not data_dir_raw:
+            self._log("Select a dataset directory first.")
+            return
+        self._smc_refresh_run_tags(Path(data_dir_raw))
+
     def _load_dataset_dir(self, directory: Path) -> None:
+        self._loading_dataset = True
         directory = Path(directory)
         epochs, errors = scan_dataset_dir(directory)
         self._epoch_refs = epochs
@@ -944,26 +1116,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bio_windows_by_epoch = {}
         self._bio_param_samples_by_epoch = {}
         self._bio_bundles = []
+        self._smc_entries = []
+        self._smc_entries_by_tag = {}
+        self._smc_payload = None
 
         self._data_dir_edit.setText(str(directory))
         if hasattr(self, "_edge_data_dir_edit"):
             self._edge_data_dir_edit.setText(str(directory))
         if hasattr(self, "_bio_data_dir_edit"):
             self._bio_data_dir_edit.setText(str(directory))
-        try:
-            default_context = build_run_context(directory, "", run_parent="spike_inference")
-            self._run_tag_edit.setPlaceholderText(f"auto ({default_context.run_tag})")
-            self._run_root_label.setText(f"Run root: {default_context.run_root}")
-            bio_default_context = build_run_context(directory, "", run_parent="biophys_ml")
-            if hasattr(self, "_bio_run_tag_edit"):
-                self._bio_run_tag_edit.setPlaceholderText(f"auto ({bio_default_context.run_tag})")
-                self._bio_run_root_label.setText(f"Run root: {bio_default_context.run_root}")
-        except Exception:
-            self._run_tag_edit.setPlaceholderText("auto")
-            self._run_root_label.setText("Run root: (unavailable)")
-            if hasattr(self, "_bio_run_tag_edit"):
-                self._bio_run_tag_edit.setPlaceholderText("auto")
-                self._bio_run_root_label.setText("Run root: (unavailable)")
+        if hasattr(self, "_smc_data_dir_edit"):
+            self._smc_data_dir_edit.setText(str(directory))
+        self._refresh_run_context_hints()
 
         self._reset_edges_state()
         self._auto_load_edges_for_dir(directory)
@@ -992,37 +1156,49 @@ class MainWindow(QtWidgets.QMainWindow):
             self._bio_epoch_combo.blockSignals(False)
             self._bio_load_windows_for_dir(directory)
             self._bio_refresh_selection_list()
-        if errors:
-            for err in errors:
-                self._log(f"Dataset scan error: {err}")
-        if epochs:
-            self._data_info_label.setText(f"Loaded {len(epochs)} epochs from {directory}")
-            self._epoch_combo.setCurrentIndex(0)
-            self._on_epoch_selected(0)
-            if hasattr(self, "_edge_data_info_label"):
-                self._edge_data_info_label.setText(f"Loaded {len(epochs)} epochs from {directory}")
-            if hasattr(self, "_edge_epoch_combo"):
-                self._edge_epoch_combo.setCurrentIndex(0)
-                self._on_edge_epoch_selected(0)
-            if hasattr(self, "_bio_data_info_label"):
-                self._bio_data_info_label.setText(f"Loaded {len(epochs)} epochs from {directory}")
-            if hasattr(self, "_bio_epoch_combo"):
-                self._bio_epoch_combo.setCurrentIndex(0)
-                self._on_bio_epoch_selected(0)
-        else:
-            self._data_info_label.setText("No epochs found")
-            self._figure.clear()
-            self._canvas.draw()
-            if hasattr(self, "_edge_data_info_label"):
-                self._edge_data_info_label.setText("No epochs found")
-            if hasattr(self, "_edge_figure"):
-                self._edge_figure.clear()
-                self._edge_canvas.draw()
-            if hasattr(self, "_bio_data_info_label"):
-                self._bio_data_info_label.setText("No epochs found")
-            if hasattr(self, "_bio_figure"):
-                self._bio_figure.clear()
-                self._bio_canvas.draw()
+        try:
+            if errors:
+                for err in errors:
+                    self._log(f"Dataset scan error: {err}")
+            if epochs:
+                self._data_info_label.setText(f"Loaded {len(epochs)} epochs from {directory}")
+                self._epoch_combo.setCurrentIndex(0)
+                self._on_epoch_selected(0)
+                if hasattr(self, "_edge_data_info_label"):
+                    self._edge_data_info_label.setText(f"Loaded {len(epochs)} epochs from {directory}")
+                if hasattr(self, "_edge_epoch_combo"):
+                    self._edge_epoch_combo.setCurrentIndex(0)
+                    self._on_edge_epoch_selected(0)
+                if hasattr(self, "_bio_data_info_label"):
+                    self._bio_data_info_label.setText(f"Loaded {len(epochs)} epochs from {directory}")
+                if hasattr(self, "_bio_epoch_combo"):
+                    self._bio_epoch_combo.setCurrentIndex(0)
+                    self._on_bio_epoch_selected(0)
+                if hasattr(self, "_smc_info_label"):
+                    self._smc_info_label.setText(f"Loaded {len(epochs)} epochs from {directory}")
+            else:
+                self._data_info_label.setText("No epochs found")
+                self._figure.clear()
+                self._canvas.draw()
+                if hasattr(self, "_edge_data_info_label"):
+                    self._edge_data_info_label.setText("No epochs found")
+                if hasattr(self, "_edge_figure"):
+                    self._edge_figure.clear()
+                    self._edge_canvas.draw()
+                if hasattr(self, "_bio_data_info_label"):
+                    self._bio_data_info_label.setText("No epochs found")
+                if hasattr(self, "_bio_figure"):
+                    self._bio_figure.clear()
+                    self._bio_canvas.draw()
+                if hasattr(self, "_smc_left_figure"):
+                    self._smc_left_figure.clear()
+                    self._smc_left_canvas.draw()
+                if hasattr(self, "_smc_right_figure"):
+                    self._smc_right_figure.clear()
+                    self._smc_right_canvas.draw()
+        finally:
+            self._loading_dataset = False
+        self._smc_refresh_run_tags(directory)
 
     def _on_epoch_selected(self, idx: int) -> None:
         if idx < 0 or idx >= len(self._epoch_refs):
@@ -1739,6 +1915,310 @@ class MainWindow(QtWidgets.QMainWindow):
             return PGAS_GPARAM_ROOT / self._bio_pgas_gparam_combo.currentText()
         return None
 
+    def _smc_refresh_run_tags(self, directory: Optional[Path] = None) -> None:
+        if self._loading_dataset:
+            return
+        if not hasattr(self, "_smc_run_combo"):
+            return
+        data_dir = Path(directory) if directory is not None else Path(self._data_dir_edit.text().strip())
+        if not str(data_dir).strip():
+            return
+        runs = list_spike_inference_runs(data_dir)
+        current = self._smc_run_combo.currentText().strip()
+        self._smc_run_combo.blockSignals(True)
+        self._smc_run_combo.clear()
+        for run in runs:
+            self._smc_run_combo.addItem(run)
+        self._smc_run_combo.blockSignals(False)
+        if not runs:
+            self._smc_entries = []
+            self._smc_payload = None
+            self._smc_cache_combo.clear()
+            self._smc_build_filter_checkboxes(None)
+            self._render_smc_plots()
+            self._smc_info_label.setText("No spike_inference runs found.")
+            return
+        if current and current in runs:
+            self._smc_run_combo.setCurrentText(current)
+        else:
+            self._smc_run_combo.setCurrentIndex(0)
+        self._on_smc_run_changed(self._smc_run_combo.currentIndex())
+
+    def _on_smc_run_changed(self, idx: int) -> None:
+        if self._loading_dataset:
+            return
+        if idx < 0 or not hasattr(self, "_smc_run_combo"):
+            return
+        data_dir_raw = self._data_dir_edit.text().strip()
+        if not data_dir_raw:
+            return
+        data_dir = Path(data_dir_raw)
+        run_tag = self._smc_run_combo.currentText().strip()
+        if not run_tag:
+            return
+        entries = list_pgas_cache_entries(data_dir, run_tag)
+        self._smc_entries = entries
+        self._smc_entries_by_tag = {entry.cache_tag: entry for entry in entries}
+        current_cache = self._smc_cache_combo.currentText().strip() if self._smc_cache_combo.count() else ""
+        self._smc_cache_combo.blockSignals(True)
+        self._smc_cache_combo.clear()
+        for entry in entries:
+            self._smc_cache_combo.addItem(entry.cache_tag, entry.cache_tag)
+        self._smc_cache_combo.blockSignals(False)
+        if not entries:
+            self._smc_payload = None
+            self._smc_build_filter_checkboxes(None)
+            self._render_smc_plots()
+            self._smc_info_label.setText(f"{run_tag}: no cached PGAS inference found.")
+            return
+        if current_cache:
+            for i in range(self._smc_cache_combo.count()):
+                if self._smc_cache_combo.itemText(i) == current_cache:
+                    self._smc_cache_combo.setCurrentIndex(i)
+                    break
+            else:
+                self._smc_cache_combo.setCurrentIndex(0)
+        else:
+            self._smc_cache_combo.setCurrentIndex(0)
+        self._on_smc_cache_changed(self._smc_cache_combo.currentIndex())
+
+    def _on_smc_cache_changed(self, idx: int) -> None:
+        if self._loading_dataset:
+            return
+        if idx < 0:
+            return
+        cache_tag = self._smc_cache_combo.currentText().strip()
+        if not cache_tag:
+            return
+        data = self._smc_entries_by_tag.get(cache_tag)
+        if data is None:
+            return
+        data_dir_raw = self._data_dir_edit.text().strip()
+        if not data_dir_raw:
+            return
+        try:
+            payload = load_biophys_smc_payload(
+                data_dir=Path(data_dir_raw),
+                entry=data,
+                data_manager=self._data_manager,
+                epoch_refs=self._epoch_refs,
+            )
+        except Exception as exc:
+            self._smc_payload = None
+            self._smc_build_filter_checkboxes(None)
+            self._render_smc_plots()
+            self._smc_info_label.setText(f"Failed to load cache: {exc}")
+            self._log(f"[BiophysSMC viz] {exc}")
+            return
+        self._smc_payload = payload
+        self._smc_build_filter_checkboxes(payload)
+        self._render_smc_plots()
+        self._smc_info_label.setText(
+            f"{payload.run_tag} | {payload.cache_tag} | {payload.epoch_id} | "
+            f"samples={payload.n_samples}, burnin={payload.burnin}"
+        )
+
+    def _smc_left_rows(self) -> List[str]:
+        return ["DFF/B+C", "B", "C", "burst", "S", "GT smooth"]
+
+    def _smc_build_filter_checkboxes(self, payload: Optional[BiophysSmcPayload]) -> None:
+        self._smc_updating_filters = True
+        try:
+            left_prev = {k for k, cb in self._smc_left_checkboxes.items() if cb.isChecked()}
+            right_prev = {k for k, cb in self._smc_right_checkboxes.items() if cb.isChecked()}
+            self._smc_left_checkboxes = {}
+            self._smc_right_checkboxes = {}
+            self._clear_layout(self._smc_left_filter_layout)
+            self._clear_layout(self._smc_right_filter_layout)
+
+            if payload is None:
+                return
+
+            for row_name in self._smc_left_rows():
+                cb = QtWidgets.QCheckBox(row_name, self._smc_left_filter_widget)
+                default_checked = row_name in left_prev if left_prev else (row_name == "DFF/B+C")
+                cb.setChecked(default_checked)
+                cb.toggled.connect(self._on_smc_filter_changed)
+                self._smc_left_filter_layout.addWidget(cb)
+                self._smc_left_checkboxes[row_name] = cb
+
+            for i, param in enumerate(payload.param_names):
+                cb = QtWidgets.QCheckBox(param, self._smc_right_filter_widget)
+                default_checked = param in right_prev if right_prev else (i == 0)
+                cb.setChecked(default_checked)
+                cb.toggled.connect(self._on_smc_filter_changed)
+                self._smc_right_filter_layout.addWidget(cb)
+                self._smc_right_checkboxes[param] = cb
+        finally:
+            self._smc_updating_filters = False
+
+    def _on_smc_filter_changed(self, _checked: bool) -> None:
+        if self._smc_updating_filters or self._loading_dataset:
+            return
+        self._render_smc_plots()
+
+    def _smc_selected_left_rows(self) -> List[str]:
+        out: List[str] = []
+        for name in self._smc_left_rows():
+            cb = self._smc_left_checkboxes.get(name)
+            if cb is not None and cb.isChecked():
+                out.append(name)
+        return out
+
+    def _smc_selected_params(self) -> List[str]:
+        if self._smc_payload is None:
+            return []
+        out: List[str] = []
+        for name in self._smc_payload.param_names:
+            cb = self._smc_right_checkboxes.get(name)
+            if cb is not None and cb.isChecked():
+                out.append(name)
+        return out
+
+    def _render_smc_plots(self) -> None:
+        self._render_smc_left_plot()
+        self._render_smc_right_plot()
+
+    def _render_smc_left_plot(self) -> None:
+        fig = self._smc_left_figure
+        fig.clear()
+        payload = self._smc_payload
+        if payload is None:
+            ax = fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, "Select a cached inference.", ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+            self._smc_left_canvas.draw()
+            return
+        rows = self._smc_selected_left_rows()
+        if not rows:
+            ax = fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, "Select one or more state plots.", ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+            self._smc_left_canvas.draw()
+            return
+        try:
+            fig.set_layout_engine("constrained")
+        except Exception:
+            pass
+        axes = []
+        for i, row in enumerate(rows):
+            ax = fig.add_subplot(len(rows), 1, i + 1, sharex=axes[0] if axes else None)
+            axes.append(ax)
+            if row == "DFF/B+C":
+                ax.plot(payload.full_time, payload.full_dff, color="black", linewidth=1.0)
+                ax.plot(payload.run_time, payload.bc_mean, color="#009E73", linewidth=1.0)
+                self._plot_smc_spikes(ax, payload.full_time, payload.full_spikes)
+                ax.set_ylabel("DFF/B+C")
+                ax.set_title("State Trajectory Plots")
+            elif row == "B":
+                self._plot_mean_std(ax, payload.run_time, payload.b_mean, payload.b_std, color="#4C78A8")
+                ax.set_ylabel("B")
+            elif row == "C":
+                self._plot_mean_std(ax, payload.run_time, payload.c_mean, payload.c_std, color="#F58518")
+                ax.set_ylabel("C")
+            elif row == "burst":
+                self._plot_mean_std(ax, payload.run_time, payload.burst_mean, payload.burst_std, color="#54A24B")
+                ax.set_ylabel("burst")
+            elif row == "S":
+                self._plot_mean_std(ax, payload.run_time, payload.s_mean, payload.s_std, color="#B279A2")
+                ax.set_ylabel("S")
+            elif row == "GT smooth":
+                ax.plot(payload.gt_smooth_time, payload.gt_smooth, color="#666666", linewidth=1.0)
+                self._plot_smc_spikes(ax, payload.gt_smooth_time, payload.full_spikes)
+                ax.set_ylabel("GT smooth")
+            ax.grid(True, alpha=0.2)
+        axes[-1].set_xlabel("Time (s)")
+        self._smc_left_canvas.draw()
+
+    def _render_smc_right_plot(self) -> None:
+        fig = self._smc_right_figure
+        fig.clear()
+        payload = self._smc_payload
+        if payload is None:
+            ax = fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, "Select a cached inference.", ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+            self._smc_right_canvas.draw()
+            return
+        selected = self._smc_selected_params()
+        if not selected:
+            ax = fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, "Select one or more parameter traces.", ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+            self._smc_right_canvas.draw()
+            return
+        if payload.param_values.size == 0:
+            ax = fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, "No parameter samples found.", ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+            self._smc_right_canvas.draw()
+            return
+        try:
+            fig.set_layout_engine("constrained")
+        except Exception:
+            pass
+        name_to_col = {name: i for i, name in enumerate(payload.param_names)}
+        n_iter = int(payload.param_values.shape[0])
+        x = np.arange(1, n_iter + 1, dtype=np.int64)
+        axes = []
+        for i, name in enumerate(selected):
+            col = name_to_col.get(name)
+            if col is None:
+                continue
+            ax = fig.add_subplot(len(selected), 1, i + 1, sharex=axes[0] if axes else None)
+            axes.append(ax)
+            ax.plot(x, payload.param_values[:, col], color="#444444", linewidth=0.9)
+            if payload.burnin > 0:
+                ax.axvline(payload.burnin + 1, color="#999999", linestyle="--", linewidth=0.8)
+            ax.set_ylabel(name)
+            ax.grid(True, alpha=0.2)
+            if i == 0:
+                ax.set_title("Parameter Trace Trajectory")
+        if axes:
+            axes[-1].set_xlabel("Iteration")
+        self._smc_right_canvas.draw()
+
+    def _plot_mean_std(
+        self,
+        ax,
+        time: np.ndarray,
+        mean: np.ndarray,
+        std: np.ndarray,
+        *,
+        color: str,
+    ) -> None:
+        n = min(time.size, mean.size, std.size)
+        if n <= 0:
+            return
+        t = np.asarray(time[:n], dtype=np.float64)
+        m = np.asarray(mean[:n], dtype=np.float64)
+        s = np.asarray(std[:n], dtype=np.float64)
+        ax.plot(t, m, color=color, linewidth=1.0)
+        ax.fill_between(t, m - s, m + s, color=color, alpha=0.2, linewidth=0.0)
+
+    def _plot_smc_spikes(self, ax, time: np.ndarray, spike_times: np.ndarray) -> None:
+        spikes = np.asarray(spike_times, dtype=np.float64).ravel()
+        if spikes.size == 0:
+            return
+        t = np.asarray(time, dtype=np.float64).ravel()
+        if t.size == 0:
+            return
+        t_min = float(np.nanmin(t))
+        t_max = float(np.nanmax(t))
+        spikes = spikes[(spikes >= t_min) & (spikes <= t_max)]
+        for s in spikes:
+            ax.axvline(float(s), color="#888888", linestyle=":", linewidth=0.6, alpha=0.9, zorder=0)
+
+    def _clear_layout(self, layout: QtWidgets.QLayout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            child_layout = item.layout()
+            if widget is not None:
+                widget.deleteLater()
+            elif child_layout is not None:
+                self._clear_layout(child_layout)
+
     def _ensure_run_context(self) -> bool:
         data_dir = self._data_dir_edit.text().strip()
         if not data_dir:
@@ -2127,6 +2607,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_run_finished(self) -> None:
         self._run_btn.setEnabled(True)
         self._log("Inference finished.")
+        data_dir = self._data_dir_edit.text().strip()
+        if data_dir:
+            self._smc_refresh_run_tags(Path(data_dir))
 
     def _connect_x_sync(self) -> None:
         for ax, cid in self._xlim_cids:
