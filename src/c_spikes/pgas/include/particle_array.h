@@ -13,10 +13,12 @@ using Scalar = double;
 #if defined(USE_GPU) && USE_GPU
     using ExecSpace = Kokkos::Cuda;
     using MemSpace = Kokkos::CudaSpace;
-#else
-    // using ExecSpace = Kokkos::Serial;
-    // using MemSpace = Kokkos::HostSpace;
+#elif defined(KOKKOS_ENABLE_OPENMP)
     using ExecSpace = Kokkos::OpenMP;
+    using MemSpace = Kokkos::HostSpace;
+#else
+    // CPU-only fallback when OpenMP backend is disabled/unavailable.
+    using ExecSpace = Kokkos::Serial;
     using MemSpace = Kokkos::HostSpace;
 #endif
 

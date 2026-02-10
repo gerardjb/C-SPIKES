@@ -362,9 +362,10 @@ void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, 
 void SMC::move_and_weight(Particle &part, const Particle& parent, double y, const param &par, double g_noise, double u_noise, bool set=false){
 
     //const int maxspikes = 2;  // The number of spikes goes from 0 to maxspikes-1
-    const auto maxspikes = constants->maxspikes;
-    double probs[2*maxspikes];
-    double log_probs[2*maxspikes];
+    const int maxspikes = constants->maxspikes;
+    const int num_states = 2 * maxspikes;
+    std::vector<double> probs(num_states);
+    std::vector<double> log_probs(num_states);
     double Z;
     double ct;
     unsigned int burst, ns;
@@ -379,27 +380,27 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
     //double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));
     
     arma::vec state_out(12); // <xxx flag for removal xxx>
-    for(unsigned int i=0;i<2*maxspikes;i++){
+    for(int i=0;i<num_states;i++){
 
-        burst = floor(i/maxspikes);
-        ns    = i%maxspikes;
+        burst = static_cast<unsigned int>(i / maxspikes);
+        ns    = static_cast<unsigned int>(i % maxspikes);
 
         model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
         
-        log_probs[i] = log(W[parent.burst][burst]);
-        log_probs[i] += ns*log(rate[burst]) - log(tgamma(ns+1)) -rate[burst];
-        log_probs[i] += -0.5/(par.sigma2+pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2); 
+        log_probs[static_cast<size_t>(i)] = log(W[parent.burst][burst]);
+        log_probs[static_cast<size_t>(i)] += ns*log(rate[burst]) - log(tgamma(ns+1)) -rate[burst];
+        log_probs[static_cast<size_t>(i)] += -0.5/(par.sigma2+pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2); 
         
     } 
 
-    utils::w_from_logW(log_probs,probs,2*maxspikes);
-    Z=utils::Z_from_logW(log_probs,2*maxspikes);
+    utils::w_from_logW(log_probs.data(), probs.data(), static_cast<unsigned int>(num_states));
+    Z=utils::Z_from_logW(log_probs.data(), static_cast<unsigned int>(num_states));
 
     part.logWeight = log(Z);
 
     if(!set){
         // move particle if not already set
-        gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(2*maxspikes, probs);
+        gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(num_states, probs.data());
         int idx = utils::gsl_ran_discrete_from_uniform(rdisc, u_noise);
 
         part.burst = floor(idx/maxspikes);
@@ -553,7 +554,7 @@ void SMC::PF(const param &par){
     cout<<"nparticles = "<<nparticles<<endl;
 
     // define weights
-    double w[nparticles],logW[nparticles];
+    std::vector<double> w(nparticles), logW(nparticles);
 
     // initialize all particles at time 0
     for(unsigned int i=0;i<nparticles;++i){
@@ -571,9 +572,9 @@ void SMC::PF(const param &par){
             logW[i] = particleSystem[t-1][i].logWeight;
         }
 
-        utils::w_from_logW(logW,w,nparticles);
+        utils::w_from_logW(logW.data(), w.data(), nparticles);
 
-        gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w);
+        gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w.data());
         
         // Pregenerate noise so we can have noise that is not dependent on the thread execution order
         double dt = 1.0/constants->sampling_frequency;
@@ -587,15 +588,16 @@ void SMC::PF(const param &par){
         }
 
         #pragma omp parallel for schedule(static)
-        for(unsigned int i=0;i<nparticles;i++){
-            
+        for(int i=0;i<static_cast<int>(nparticles);i++){
+             
             //set ancestor of particle i
-            
-            particleSystem[t][i].ancestor = a_noise[i]; 
-            particleSystem[t][i].logWeight = -log(nparticles);
+             
+            const unsigned int ui = static_cast<unsigned int>(i);
+            particleSystem[t][ui].ancestor = a_noise[ui]; 
+            particleSystem[t][ui].logWeight = -log(nparticles);
 
             //move particle
-            move_and_weight(particleSystem[t][i], particleSystem[t-1][a_noise[i]], data_y(t), par, g_noise[i], u_noise[i]);
+            move_and_weight(particleSystem[t][ui], particleSystem[t-1][a_noise[ui]], data_y(t), par, g_noise[ui], u_noise[ui]);
         }
 
         gsl_ran_discrete_free(rdisc);
@@ -684,8 +686,8 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
 
     
     // define weights
-    double w[nparticles],logW[nparticles];
-    double ar_w[nparticles], ar_logW[nparticles];
+    std::vector<double> w(nparticles), logW(nparticles);
+    std::vector<double> ar_w(nparticles), ar_logW(nparticles);
 	
     // initialize all particles at time 0 (excluded particle 0) and set all weights
     for(i=0;i<nparticles;++i){
@@ -757,11 +759,11 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
             ar_logW[i] = particleArray.ar_logW_h(i);
         }
 
-        utils::w_from_logW(logW,w,nparticles);
-        utils::w_from_logW(ar_logW,ar_w,nparticles);
+        utils::w_from_logW(logW.data(), w.data(), nparticles);
+        utils::w_from_logW(ar_logW.data(), ar_w.data(), nparticles);
 
-        gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w);
-        gsl_ran_discrete_t *ar_rdisc = gsl_ran_discrete_preproc(nparticles, ar_w);
+        gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w.data());
+        gsl_ran_discrete_t *ar_rdisc = gsl_ran_discrete_preproc(nparticles, ar_w.data());
 
         // Ancestor resampling of particle 0
         a = gsl_ran_discrete(rng,ar_rdisc);
@@ -828,9 +830,9 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
         logW[i] = particleSystem[TIME-1][i].logWeight;
     }
 
-    utils::w_from_logW(logW,w,nparticles);
+    utils::w_from_logW(logW.data(), w.data(), nparticles);
 
-    gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w);
+    gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w.data());
     i = gsl_ran_discrete(rng,rdisc);
 
     t=TIME;

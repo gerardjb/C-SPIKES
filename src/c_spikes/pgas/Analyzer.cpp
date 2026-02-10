@@ -3,9 +3,8 @@
 #include "include/particle.h"
 #include "include/constants.h"
 #include <fstream>
-#include <sys/stat.h>
+#include <filesystem>
 #include "include/utils.h"
-#include <getopt.h>
 #include "include/Analyzer.h"
 
 using namespace std;
@@ -49,11 +48,14 @@ void Analyzer::run() {
     ofstream logp;
     istringstream last_params;
 
-    struct stat sb;
-    if (stat(output_folder.c_str(), &sb) != 0) {
-        const int dir_err = mkdir(output_folder.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-        if (-1 == dir_err) {
-            printf("Error creating directory!");
+    std::error_code ec;
+    if (!std::filesystem::exists(output_folder, ec)) {
+        if (!std::filesystem::create_directories(output_folder, ec)) {
+            cerr << "Error creating directory: " << output_folder;
+            if (ec) {
+                cerr << " (" << ec.message() << ")";
+            }
+            cerr << endl;
             exit(1);
         }
     }
