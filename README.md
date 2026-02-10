@@ -50,6 +50,29 @@ pip install -ve . --config-settings=cmake.args="-DPGAS_BUILD_GPU=OFF"
 If you previously installed an older `pgas_bound` extension, remove it and rebuild so the shim
 module can take effect.
 
+### Windows dev build
+Lot's of path resolution issues right now that can be partially mitigated by mapping the project directory as a drive before proceeding with the build. Assuming a cmd environment:
+- Start by cloning the repo, then map with subst to a yet-unused drive with no path spaces:
+  ```bash
+  subst K: "<your_local_path>\C-SPIKES"
+  K:
+  ```
+- Then grab and install required vcpkg c++ installations:
+  ```bash
+  git clone https://github.com/microsoft/vcpkg
+  .\vcpkg\bootstrap-vcpkg.bat
+  cd vcpkg
+  git checkout tags/2025.04.09
+  cd ..
+  .\vcpkg\vcpkg.exe install gsl armadillo jsoncpp boost-circular-buffer --triplet x64-windows
+  .\vcpkg\vcpkg.exe integrate install
+  ```
+- Finally, build the project as an editable install with scikitbuild core:
+  ```bash
+  pip install -ve .
+  ```
+  (Note that you can pass that call with the --no-build-isolation flag to take advantage of cached build components and --no-deps as a smoke build)
+
 ## Pretrained models
 This repo ships pretrained model bundles under `Pretrained_models/` at the repo root:
 - ENS2 published checkpoints: `Pretrained_models/ens2_published/`
