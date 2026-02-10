@@ -136,9 +136,10 @@ def derive_bm_sigma(
 
 
 def build_constants_cache_path(base_constants: Path, tokens: Sequence[str]) -> Path:
+    from .cache import get_cache_root
     from .types import ensure_serializable  # unused import hint
 
-    cache_dir = Path("results") / "inference_cache" / "pgas_constants"
+    cache_dir = get_cache_root() / "pgas_constants"
     cache_dir.mkdir(parents=True, exist_ok=True)
     suffix = "_".join(tokens)
     return cache_dir / f"{base_constants.stem}_{suffix}{base_constants.suffix}"

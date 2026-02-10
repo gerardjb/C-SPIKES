@@ -6,6 +6,7 @@ from typing import Sequence
 
 import numpy as np
 
+from c_spikes.tensorflow_env import configure_tensorflow_environment
 from .cache import load_method_cache, save_method_cache
 from .smoothing import resample_trials_to_fs
 from .types import MethodResult, TrialSeries, ensure_serializable, hash_series
@@ -29,6 +30,7 @@ def run_cascade_inference(
     trials: Sequence[TrialSeries],
     config: CascadeConfig,
 ) -> MethodResult:
+    configure_tensorflow_environment()
     trials_resampled = resample_trials_to_fs(trials, config.resample_fs)
     from .types import flatten_trials
 

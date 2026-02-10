@@ -10,7 +10,7 @@ import scipy.io as sio
 
 from c_spikes.utils import load_Janelia_data
 
-from .cache import CACHE_ROOT, save_method_cache
+from .cache import get_cache_root, save_method_cache
 from .smoothing import mean_downsample_trace
 from .types import (
     MethodResult,
@@ -317,7 +317,7 @@ def import_external_method(
     run_tag: str,
     data_root: Optional[Path] = None,
     eval_root: Path = Path("results/full_evaluation"),
-    cache_root: Path = CACHE_ROOT,
+    cache_root: Optional[Path] = None,
     cache_tag: Optional[str] = None,
     label: Optional[str] = None,
     config: Optional[Mapping[str, Any]] = None,
@@ -344,6 +344,9 @@ def import_external_method(
         raise ValueError("smoothing must be non-empty.")
     if not run_tag:
         raise ValueError("run_tag must be non-empty.")
+
+    if cache_root is None:
+        cache_root = get_cache_root()
 
     pred_path = pred_path.expanduser().resolve()
     if not pred_path.exists():

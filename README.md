@@ -68,6 +68,52 @@ ln -s ../Pretrained_models results/Pretrained_models
 - Optional ground truth spikes: `ap_times` (1D, seconds). If you don’t have GT, store an empty array; correlations-to-GT will be unavailable/NaN.
 - Optional per-trial windows: an `edges` array (shape n_trials × 2, seconds) to trim data before inference. See `extract_time_stamp_edges.py` for generating these from existing recordings.
 
+## GUI usage
+The gui is the primary entry point for the majority of the functionality of the codebase for what most people will use it for. It functions in both the cpu-only or gpu builds and allows you to perform inference on your dataset with our biophysical methods as well as other methods (only CASCADE and ENS2 as MLspike is implemented in Matlab) we investigated in the original publication. Core tasks include:
+- Edge selection (a module that allows selection of subsets of data from every epoch. This is useful for reducing run times for the biophys_smc method, which can take a long time to run on longer datasets)
+- Spike Inference (a module that performs spike prediction on your data with our biophysical methods as well as CASCADE and ENS2 methods)
+
+To launch the desktop GUI:
+```bash
+python scripts/c_spikes_gui.py
+```
+
+### Spike Inference tab
+This tab contains panels that allow selection of which methods (i.e., BiophysSMC, BiophysML, CASCADE, ENS2) you'd like to run on your data as well as panels for selecting specific Pretrained models for the supervised methods (BiophysML, CASCADE, ENS2) and hyperparameters for the BiophyhsSMC method.
+- **Dataset**: select a directory containing `.mat` files.
+- **Epoch**: navigate epochs within files (multi-epoch `.mat` supported).
+- **Methods**: toggle `biophys_smc` (PGAS), `BiophysML`, `CASCADE`, `ENS2`.
+- **Models**:
+  - CASCADE models: `Pretrained_models/CASCADE/<model_name>/`
+  - ENS2 models: `Pretrained_models/ENS2/<model_dir>/` containing `exc_ens2_pub.pt` or `inh_ens2_pub.pt`
+  - BiophysML: `Pretrained_models/BiophysML/<model_dir>/` (auto-detects CASCADE vs ENS2 based on contents)
+- **Run tag**: outputs are organized under `data_dir/spike_inference/<run_tag>/`.
+- **Use cache**: reuses cached inference under `data_dir/spike_inference/<run_tag>/inference_cache/`.
+- **Use edges**: apply an edges file (selected in the Dataset panel) when running PGAS.
+
+### Biophys ML tab
+- **Run tag**: outputs are organized under `data_dir/biophys_ml/<run_tag>/`.
+- **Use cache**: PGAS cell-parameter inference can reuse cache under `data_dir/biophys_ml/<run_tag>/inference_cache/`.
+- **Synthetic config**: use `Edit config` to edit/save run-scoped synthetic settings.
+- **Load last synthetic config for this run**: restores `data_dir/biophys_ml/<run_tag>/biophys_ml/synthetic_config.json` into the editor.
+
+### Edge Selection tab
+- Select a dataset directory and epoch.
+- Set an **epoch width** (seconds), then click the trace to define `[start, start+width]` (snapped to nearest time bins).
+- Edges are saved to `data_dir/edges/edges.npy` after each change.
+- Reopening the same dataset auto-loads the most recent `edges*.npy` file in `data_dir/edges/`.
+
+### GUI data validation
+Before loading data in the GUI, you can validate a directory of `.mat` files:
+```bash
+python scripts/validate_gui_mat.py --data-dir data/my_data
+```
+Add `--deep` to load arrays and report basic time/spike statistics (slower on large files):
+```bash
+python scripts/validate_gui_mat.py --data-dir data/my_data --deep
+```
+The validator checks required keys (`time_stamps`, `dff`) and reports optional `ap_times` coverage.
+
 ### Bring your own `.mat`
 Most scripts use `c_spikes.utils.load_Janelia_data`, which expects keys `time_stamps`, `dff`, and `ap_times`. If your data uses different names, the easiest path is to export a normalized `.mat` with these keys.
 

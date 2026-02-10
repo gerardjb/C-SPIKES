@@ -17,6 +17,10 @@ import argparse
 from pathlib import Path
 from typing import List, Optional, Sequence
 
+from c_spikes.tensorflow_env import preload_tensorflow_quietly
+
+preload_tensorflow_quietly()
+
 from c_spikes.pipeline import RunConfig, run_batch
 from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
 

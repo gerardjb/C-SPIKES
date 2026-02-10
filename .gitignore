@@ -29,6 +29,7 @@ gt_noise_dir/
 gt_data/
 logs/
 tmp/
+core*
 
 # kokkos tools
 kokkos-tools/

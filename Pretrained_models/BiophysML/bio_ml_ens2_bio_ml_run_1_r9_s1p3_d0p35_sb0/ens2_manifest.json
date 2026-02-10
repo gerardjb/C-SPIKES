@@ -1,0 +1,19 @@
+{
+  "model_name": "bio_ml_ens2_bio_ml_run_1_r9_s1p3_d0p35_sb0",
+  "created": "2026-02-06T13:13:26.824581",
+  "updated": "2026-02-06T13:13:26.827409",
+  "synthetic_entries": [],
+  "training": {
+    "timestamp": "2026-02-06T13:13:26.824635",
+    "run_tag": "bio_ml_run_1_r9_s1p3_d0p35_sb0",
+    "checkpoint_path": "/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/Pretrained_models/BiophysML/bio_ml_ens2_bio_ml_run_1_r9_s1p3_d0p35_sb0/exc_ens2_pub.pt",
+    "checkpoint_sha256": "6d5ef8db761ccdee90064715c3204f686f0f7a94922096460014f94a02717858",
+    "neuron_type": "Exc",
+    "sampling_rate": 60.0,
+    "smoothing_std": 0.025,
+    "ground_truth_dir": [
+      "/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/Pretrained_models/BiophysML/bio_ml_ens2_bio_ml_run_1_r9_s1p3_d0p35_sb0/ground_truth/DS2"
+    ],
+    "device": "cuda"
+  }
+}
