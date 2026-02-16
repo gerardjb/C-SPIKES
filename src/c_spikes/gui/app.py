@@ -27,6 +27,7 @@ from c_spikes.biophys_ml.pipeline import (
     generate_synthetic_bundles,
     train_models_for_bundles,
 )
+from c_spikes.gui.cache_import import import_pgas_cache_run
 from c_spikes.gui.data import DataManager, EpochRef, scan_dataset_dir
 from c_spikes.gui.inference import (
     BiophysModelSpec,
@@ -289,6 +290,41 @@ class DownloadWorker(QtCore.QThread):
             self.finished.emit(True, f"Downloaded {self._model_name} into {self._model_root}")
 
 
+class ImportPgasCacheWorker(QtCore.QThread):
+    status = QtCore.Signal(str)
+    finished = QtCore.Signal(dict, str)
+
+    def __init__(
+        self,
+        *,
+        source_dir: Path,
+        data_dir: Path,
+        run_tag: str,
+        valid_epoch_ids: List[str],
+    ) -> None:
+        super().__init__()
+        self._source_dir = Path(source_dir)
+        self._data_dir = Path(data_dir)
+        self._run_tag = str(run_tag)
+        self._valid_epoch_ids = {str(epoch_id) for epoch_id in valid_epoch_ids}
+
+    def run(self) -> None:
+        try:
+            self.status.emit(
+                f"[BiophysSMC viz] Importing PGAS cache from {self._source_dir} into run '{self._run_tag}'..."
+            )
+            summary = import_pgas_cache_run(
+                source_dir=self._source_dir,
+                data_dir=self._data_dir,
+                run_tag=self._run_tag,
+                valid_epoch_ids=self._valid_epoch_ids,
+                overwrite=False,
+            )
+            self.finished.emit(summary, "")
+        except Exception as exc:
+            self.finished.emit({}, str(exc))
+
+
 class ConfigEditorDialog(QtWidgets.QDialog):
     def __init__(self, path: Path, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
@@ -375,6 +411,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._smc_left_checkboxes: Dict[str, QtWidgets.QCheckBox] = {}
         self._smc_right_checkboxes: Dict[str, QtWidgets.QCheckBox] = {}
         self._smc_updating_filters = False
+        self._smc_import_worker: Optional[ImportPgasCacheWorker] = None
         self._loading_dataset = False
 
         self._build_ui()
@@ -864,6 +901,12 @@ class MainWindow(QtWidgets.QMainWindow):
         cache_row.addWidget(cache_refresh)
         layout.addLayout(cache_row)
 
+        import_row = QtWidgets.QHBoxLayout()
+        self._smc_import_btn = QtWidgets.QPushButton("Import PGAS Cache...", box)
+        self._smc_import_btn.clicked.connect(self._smc_import_cache)
+        import_row.addWidget(self._smc_import_btn)
+        layout.addLayout(import_row)
+
         self._smc_info_label = QtWidgets.QLabel("No cache selected", box)
         self._smc_info_label.setWordWrap(True)
         self._smc_info_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
@@ -1122,6 +1165,118 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log("Select a dataset directory first.")
             return
         self._smc_refresh_run_tags(Path(data_dir_raw))
+
+    def _smc_import_cache(self) -> None:
+        if self._smc_import_worker and self._smc_import_worker.isRunning():
+            self._log("[BiophysSMC viz] Import already in progress.")
+            return
+        data_dir_raw = self._data_dir_edit.text().strip()
+        if not data_dir_raw:
+            self._log("[BiophysSMC viz] Select a dataset directory first.")
+            return
+        data_dir = Path(data_dir_raw)
+
+        source_dir = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            "Select Source Run/Cache Directory",
+            str(data_dir),
+        )
+        if not source_dir:
+            return
+
+        default_run_tag = f"import_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        run_tag_raw, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "Import PGAS Cache",
+            "Target run tag (under spike_inference):",
+            text=default_run_tag,
+        )
+        if not ok:
+            return
+        run_tag_raw = str(run_tag_raw).strip()
+        if not run_tag_raw:
+            self._log("[BiophysSMC viz] Run tag cannot be empty.")
+            return
+
+        context = build_run_context(data_dir, run_tag_raw, run_parent="spike_inference")
+        target_run_root = context.run_root
+        if target_run_root.exists():
+            try:
+                has_contents = any(target_run_root.iterdir())
+            except OSError:
+                has_contents = False
+            if has_contents:
+                answer = QtWidgets.QMessageBox.question(
+                    self,
+                    "Run Directory Exists",
+                    (
+                        f"Target run root already exists and is non-empty:\n{target_run_root}\n\n"
+                        "Continue and import entries that do not already exist?"
+                    ),
+                )
+                if answer != QtWidgets.QMessageBox.Yes:
+                    return
+
+        valid_epoch_ids = [epoch.epoch_id for epoch in self._epoch_refs]
+        if not valid_epoch_ids:
+            self._log("[BiophysSMC viz] No epochs loaded; cannot validate cache tags.")
+            return
+
+        if context.run_tag != run_tag_raw:
+            self._log(
+                f"[BiophysSMC viz] Normalized run tag '{run_tag_raw}' -> '{context.run_tag}'."
+            )
+
+        self._smc_import_btn.setEnabled(False)
+        self._smc_import_worker = ImportPgasCacheWorker(
+            source_dir=Path(source_dir),
+            data_dir=data_dir,
+            run_tag=context.run_tag,
+            valid_epoch_ids=valid_epoch_ids,
+        )
+        self._smc_import_worker.status.connect(self._log)
+        self._smc_import_worker.finished.connect(self._on_smc_import_finished)
+        self._smc_import_worker.start()
+
+    def _on_smc_import_finished(self, summary: dict, error: str) -> None:
+        self._smc_import_btn.setEnabled(True)
+        if error:
+            self._log(f"[BiophysSMC viz] Import failed: {error}")
+            QtWidgets.QMessageBox.warning(self, "Import Failed", error)
+            return
+        run_tag = str(summary.get("run_tag", "")).strip()
+        imported = int(summary.get("entries_imported", 0) or 0)
+        scanned = int(summary.get("entries_scanned", 0) or 0)
+        skipped_epoch = int(summary.get("entries_skipped_missing_epoch", 0) or 0)
+        skipped_existing = int(summary.get("entries_skipped_existing", 0) or 0)
+        missing_outputs = int(summary.get("entries_missing_outputs", 0) or 0)
+        manifest_path = str(summary.get("manifest_path", "")).strip()
+        self._log(
+            "[BiophysSMC viz] Import complete: "
+            f"run='{run_tag}', imported={imported}/{scanned}, "
+            f"skipped_missing_epoch={skipped_epoch}, skipped_existing={skipped_existing}, "
+            f"missing_outputs={missing_outputs}."
+        )
+        if manifest_path:
+            self._log(f"[BiophysSMC viz] Manifest: {manifest_path}")
+
+        warnings = summary.get("warnings", [])
+        if isinstance(warnings, list):
+            max_lines = 20
+            for line in warnings[:max_lines]:
+                self._log(f"[BiophysSMC viz] {line}")
+            if len(warnings) > max_lines:
+                self._log(
+                    f"[BiophysSMC viz] ... plus {len(warnings) - max_lines} additional warning(s)."
+                )
+
+        data_dir_raw = self._data_dir_edit.text().strip()
+        if data_dir_raw:
+            self._smc_refresh_run_tags(Path(data_dir_raw))
+        if run_tag and self._smc_run_combo.count():
+            idx = self._smc_run_combo.findText(run_tag)
+            if idx >= 0:
+                self._smc_run_combo.setCurrentIndex(idx)
 
     def _load_dataset_dir(self, directory: Path) -> None:
         self._loading_dataset = True
