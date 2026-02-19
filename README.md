@@ -94,7 +94,8 @@ This tab contains panels that allow selection of which methods (i.e., BiophysSMC
   `data_dir/spike_inference/<run_tag>/slurm/slurm_profile.json`, and `Generate sbatch...` previews then writes
   `data_dir/spike_inference/<run_tag>/slurm/<job_name>.sbatch`.
   The generated command includes current dataset selection, constants file, gparam file, run tag, cache mode, and
-  edges usage. `strict_mode` in `slurm_profile.json` controls shell flags (`eo_pipefail` default, `euo_pipefail`,
+  edges usage, and a run-scoped cache root (`data_dir/spike_inference/<run_tag>/inference_cache`). `strict_mode` in
+  `slurm_profile.json` controls shell flags (`eo_pipefail` default, `euo_pipefail`,
   or `off`).
 
 ### Biophys ML tab

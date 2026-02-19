@@ -23,6 +23,15 @@ def _looks_like_pgas_cache_root(path: Path) -> bool:
     return False
 
 
+def _find_nearby_repo_cache_root(path: Path) -> Optional[Path]:
+    here = Path(path).resolve()
+    for base in (here, *here.parents):
+        candidate = base / "results" / "inference_cache" / "pgas"
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
 def _resolve_source_roots(source_dir: Path) -> Tuple[Path, Optional[Path], str]:
     source_dir = Path(source_dir)
     if (source_dir / "results" / "inference_cache" / "pgas").is_dir():
@@ -42,6 +51,11 @@ def _resolve_source_roots(source_dir: Path) -> Tuple[Path, Optional[Path], str]:
         output_root = run_root / "pgas_output"
         return cache_root, (output_root if output_root.is_dir() else None), "inference_cache"
 
+    if (source_dir / "pgas_output").is_dir():
+        cache_root = _find_nearby_repo_cache_root(source_dir)
+        if cache_root is not None:
+            return cache_root, (source_dir / "pgas_output"), "run_output"
+
     if source_dir.name == "pgas" and _looks_like_pgas_cache_root(source_dir):
         cache_root = source_dir
         run_root = source_dir.parent.parent if source_dir.parent.name == "inference_cache" else None
@@ -55,7 +69,7 @@ def _resolve_source_roots(source_dir: Path) -> Tuple[Path, Optional[Path], str]:
 
     raise ValueError(
         "Could not resolve PGAS cache layout. Select a run root containing "
-        "'inference_cache/pgas', an 'inference_cache' directory, a direct PGAS cache root, "
+        "'inference_cache/pgas', a run root with 'pgas_output', an 'inference_cache' directory, a direct PGAS cache root, "
         "or a repository root containing 'results/inference_cache/pgas'."
     )
 
@@ -380,6 +394,7 @@ def import_pgas_cache_run(
         "entries_skipped_missing_epoch": 0,
         "entries_skipped_existing": 0,
         "entries_missing_outputs": 0,
+        "entries_skipped_unmatched_output": 0,
         "entries_remapped_to_epoch": 0,
         "warnings": [],
         "imported_entries": [],
@@ -404,12 +419,17 @@ def import_pgas_cache_run(
             payload=payload,
             source_dir=source_dir,
         )
+        if source_kind == "run_output" and primary_output_root is not None:
+            output_roots = [primary_output_root]
         output_index = _output_index_for_roots(roots=output_roots, cache=output_index_cache)
         output_files_raw, matched_output_tag = _locate_output_files(
             cache_tag=cache_tag,
             epoch_id=epoch_id,
             output_index=output_index,
         )
+        if source_kind == "run_output" and not output_files_raw:
+            summary["entries_skipped_unmatched_output"] = int(summary["entries_skipped_unmatched_output"]) + 1
+            continue
         output_by_trial = _group_output_files_by_trial(output_files_raw)
 
         targets: List[Dict[str, object]] = []

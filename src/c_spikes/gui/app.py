@@ -1307,12 +1307,14 @@ class MainWindow(QtWidgets.QMainWindow):
         scanned = int(summary.get("entries_scanned", 0) or 0)
         skipped_epoch = int(summary.get("entries_skipped_missing_epoch", 0) or 0)
         skipped_existing = int(summary.get("entries_skipped_existing", 0) or 0)
+        skipped_unmatched_output = int(summary.get("entries_skipped_unmatched_output", 0) or 0)
         missing_outputs = int(summary.get("entries_missing_outputs", 0) or 0)
         manifest_path = str(summary.get("manifest_path", "")).strip()
         self._log(
             "[BiophysSMC viz] Import complete: "
             f"run='{run_tag}', imported={imported}/{scanned}, "
             f"skipped_missing_epoch={skipped_epoch}, skipped_existing={skipped_existing}, "
+            f"skipped_unmatched_output={skipped_unmatched_output}, "
             f"missing_outputs={missing_outputs}."
         )
         if manifest_path:
@@ -2187,6 +2189,8 @@ class MainWindow(QtWidgets.QMainWindow):
             str(context.pgas_output_root),
             "--output-root",
             str(context.run_root / "cli_evaluation"),
+            "--cache-root",
+            str(context.run_root / "inference_cache"),
             "--run-tag",
             context.run_tag,
         ]
