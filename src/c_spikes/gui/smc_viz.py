@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import scipy.io as sio
@@ -22,6 +22,9 @@ class PgasCacheEntry:
     meta_path: Path
     mat_path: Path
     timestamp: str
+    trial_index: Optional[int] = None
+    epoch_id_hint: Optional[str] = None
+    display_tag: Optional[str] = None
 
 
 @dataclass
@@ -59,7 +62,12 @@ def list_spike_inference_runs(data_dir: Path) -> List[str]:
     return sorted(runs, key=_natural_sort_key)
 
 
-def list_pgas_cache_entries(data_dir: Path, run_tag: str) -> List[PgasCacheEntry]:
+def list_pgas_cache_entries(
+    data_dir: Path,
+    run_tag: str,
+    *,
+    epoch_refs: Optional[Sequence[EpochRef]] = None,
+) -> List[PgasCacheEntry]:
     pgas_root = Path(data_dir) / "spike_inference" / run_tag / "inference_cache" / "pgas"
     if not pgas_root.exists():
         return []
@@ -97,18 +105,28 @@ def list_pgas_cache_entries(data_dir: Path, run_tag: str) -> List[PgasCacheEntry
             previous = by_tag.get(cache_tag)
             if previous is None or mtime > previous[0]:
                 by_tag[cache_tag] = (mtime, entry)
-    return [v[1] for v in sorted(by_tag.values(), key=lambda pair: _natural_sort_key(pair[1].cache_tag))]
+    base_entries = [v[1] for v in sorted(by_tag.values(), key=lambda pair: _natural_sort_key(pair[1].cache_tag))]
+    expanded: List[PgasCacheEntry] = []
+    refs = list(epoch_refs or [])
+    for entry in base_entries:
+        expanded.extend(_expand_entry_for_trials(data_dir=Path(data_dir), entry=entry, epoch_refs=refs))
+    return sorted(expanded, key=lambda e: _natural_sort_key(e.display_tag or e.cache_tag))
 
 
 def cache_tag_to_epoch_id(cache_tag: str) -> str:
     token = str(cache_tag).strip()
-    match = re.search(r"(.+_epoch\d+)", token)
-    if match:
-        return str(match.group(1))
+    explicit = _extract_epoch_id_from_tag(token)
+    if explicit:
+        return explicit
     split = re.split(r"_s[^_]*_ms\d+", token, maxsplit=1)
     if split and split[0]:
         return split[0]
     return token
+
+
+def cache_tag_to_dataset_stem(cache_tag: str) -> str:
+    epoch_id = cache_tag_to_epoch_id(cache_tag)
+    return re.sub(r"_epoch\d+$", "", epoch_id)
 
 
 def load_biophys_smc_payload(
@@ -122,8 +140,26 @@ def load_biophys_smc_payload(
     metadata = meta.get("metadata", {}) if isinstance(meta, dict) else {}
     burnin = int(metadata.get("burnin", 100))
     cache_tag = entry.cache_tag
-    epoch_id = cache_tag_to_epoch_id(cache_tag)
-    epoch = _epoch_by_id(epoch_refs).get(epoch_id)
+    epoch_id = str(entry.epoch_id_hint or cache_tag_to_epoch_id(cache_tag))
+    epoch_lookup = _epoch_by_id(epoch_refs)
+    epoch = epoch_lookup.get(epoch_id)
+    if epoch is None and entry.trial_index is not None:
+        dataset_stem = cache_tag_to_dataset_stem(cache_tag)
+        original_idx = int(entry.trial_index)
+        selected = _trial_indices_from_metadata(metadata)
+        if selected is None:
+            selected = _run_trial_selection_lookup(data_dir, entry.run_tag).get(dataset_stem)
+        if selected is not None and entry.trial_index < len(selected):
+            original_idx = int(selected[entry.trial_index])
+        guessed = _epoch_id_for_dataset_trial(dataset_stem, original_idx, epoch_refs)
+        if guessed is not None:
+            epoch_id = guessed
+            epoch = epoch_lookup.get(epoch_id)
+    if epoch is None:
+        single_epoch = _single_epoch_id_for_dataset(cache_tag_to_dataset_stem(cache_tag), epoch_refs)
+        if single_epoch is not None:
+            epoch_id = single_epoch
+            epoch = epoch_lookup.get(epoch_id)
     if epoch is None:
         raise ValueError(f"Could not resolve epoch from cache tag '{cache_tag}'.")
     full_time, full_dff, full_spikes_opt = data_manager.load_epoch(epoch)
@@ -137,18 +173,42 @@ def load_biophys_smc_payload(
     output_root = Path(output_root_raw) if output_root_raw else fallback_output_root
     if not output_root.exists():
         output_root = fallback_output_root
-    traj_file = _pick_latest(output_root, f"traj_samples_{cache_tag}_trial*.dat")
-    param_file = _pick_latest(output_root, f"param_samples_{cache_tag}_trial*.dat")
+    traj_file = _pick_trial_file(
+        output_root,
+        prefix="traj_samples",
+        cache_tag=cache_tag,
+        trial_index=entry.trial_index,
+    )
+    param_file = _pick_trial_file(
+        output_root,
+        prefix="param_samples",
+        cache_tag=cache_tag,
+        trial_index=entry.trial_index,
+    )
     if traj_file is None:
-        raise FileNotFoundError(f"No trajectory file found for cache tag '{cache_tag}' in {output_root}")
+        trial_suffix = "" if entry.trial_index is None else f" (trial {entry.trial_index})"
+        raise FileNotFoundError(
+            f"No trajectory file found for cache tag '{cache_tag}'{trial_suffix} in {output_root}"
+        )
     if param_file is None:
-        raise FileNotFoundError(f"No parameter trace file found for cache tag '{cache_tag}' in {output_root}")
+        trial_suffix = "" if entry.trial_index is None else f" (trial {entry.trial_index})"
+        raise FileNotFoundError(
+            f"No parameter trace file found for cache tag '{cache_tag}'{trial_suffix} in {output_root}"
+        )
 
     traj = _load_traj_stats(traj_file, burnin=burnin)
     mat_data = sio.loadmat(entry.mat_path, squeeze_me=True)
     run_time = np.asarray(mat_data.get("time_stamps", []), dtype=np.float64).ravel()
     if run_time.size == 0:
         run_time = np.asarray(full_time, dtype=np.float64).ravel()
+    elif entry.trial_index is not None:
+        run_time = _slice_run_time_for_trial(
+            run_time=run_time,
+            output_root=output_root,
+            cache_tag=cache_tag,
+            trial_index=int(entry.trial_index),
+            expected_len=int(traj["time_len"]),
+        )
 
     n = min(
         run_time.size,
@@ -211,6 +271,169 @@ def _natural_sort_key(token: str) -> tuple:
     return tuple(out)
 
 
+def _extract_epoch_id_from_tag(cache_tag: str) -> Optional[str]:
+    token = str(cache_tag).strip()
+    match = re.search(r"(.+_epoch\d+)", token)
+    if match:
+        return str(match.group(1))
+    return None
+
+
+def _load_entry_metadata(entry: PgasCacheEntry) -> Dict[str, object]:
+    try:
+        payload = json.loads(entry.meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _normalize_trial_indices(value: object) -> Optional[List[int]]:
+    if not isinstance(value, list):
+        return None
+    out: List[int] = []
+    seen: set[int] = set()
+    for item in value:
+        try:
+            idx = int(item)
+        except Exception:
+            continue
+        if idx < 0 or idx in seen:
+            continue
+        seen.add(idx)
+        out.append(idx)
+    return sorted(out)
+
+
+def _trial_indices_from_metadata(metadata: Dict[str, object]) -> Optional[List[int]]:
+    config = metadata.get("config")
+    if isinstance(config, dict):
+        parsed = _normalize_trial_indices(config.get("trial_indices"))
+        if parsed:
+            return parsed
+    parsed = _normalize_trial_indices(metadata.get("trial_indices"))
+    if parsed:
+        return parsed
+    return None
+
+
+def _run_trial_selection_lookup(data_dir: Path, run_tag: str) -> Dict[str, List[int]]:
+    path = Path(data_dir) / "spike_inference" / run_tag / "slurm" / "trial_selection.json"
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    out: Dict[str, List[int]] = {}
+    for key, value in payload.items():
+        dataset = str(key).strip()
+        if not dataset:
+            continue
+        parsed = _normalize_trial_indices(value)
+        if parsed:
+            out[dataset] = parsed
+    return out
+
+
+def _entry_output_root(data_dir: Path, entry: PgasCacheEntry, metadata: Dict[str, object]) -> Path:
+    fallback = Path(data_dir) / "spike_inference" / entry.run_tag / "pgas_output"
+    raw = str(metadata.get("output_root") or "").strip()
+    output_root = Path(raw) if raw else fallback
+    if not output_root.exists():
+        output_root = fallback
+    return output_root
+
+
+def _parse_trial_index_from_name(name: str) -> Optional[int]:
+    match = re.search(r"_trial(\d+)(?:\D.*)?\.dat$", str(name))
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _trial_indices_from_output(output_root: Path, cache_tag: str) -> List[int]:
+    out: set[int] = set()
+    try:
+        paths = list(output_root.glob(f"traj_samples_{cache_tag}_trial*.dat"))
+    except Exception:
+        return []
+    for path in paths:
+        idx = _parse_trial_index_from_name(path.name)
+        if idx is not None:
+            out.add(idx)
+    return sorted(out)
+
+
+def _single_epoch_id_for_dataset(dataset_stem: str, epoch_refs: Sequence[EpochRef]) -> Optional[str]:
+    matches = [ref for ref in epoch_refs if ref.file_path.stem == dataset_stem]
+    if len(matches) == 1:
+        return matches[0].epoch_id
+    return None
+
+
+def _epoch_id_for_dataset_trial(
+    dataset_stem: str,
+    original_trial_index: int,
+    epoch_refs: Sequence[EpochRef],
+) -> Optional[str]:
+    expected = f"{dataset_stem}_epoch{int(original_trial_index) + 1}"
+    by_id = _epoch_by_id(list(epoch_refs))
+    if expected in by_id:
+        return expected
+    for ref in epoch_refs:
+        if ref.file_path.stem == dataset_stem and ref.epoch_index == int(original_trial_index):
+            return ref.epoch_id
+    return None
+
+
+def _expand_entry_for_trials(
+    *,
+    data_dir: Path,
+    entry: PgasCacheEntry,
+    epoch_refs: Sequence[EpochRef],
+) -> List[PgasCacheEntry]:
+    explicit_epoch = _extract_epoch_id_from_tag(entry.cache_tag)
+    if explicit_epoch is not None:
+        return [replace(entry, epoch_id_hint=explicit_epoch, display_tag=entry.cache_tag)]
+
+    metadata = _load_entry_metadata(entry)
+    output_root = _entry_output_root(data_dir, entry, metadata)
+    trial_indices = _trial_indices_from_output(output_root, entry.cache_tag)
+    dataset_stem = cache_tag_to_dataset_stem(entry.cache_tag)
+
+    if not trial_indices:
+        single_epoch = _single_epoch_id_for_dataset(dataset_stem, epoch_refs)
+        label = entry.cache_tag if single_epoch is None else f"{entry.cache_tag} | {single_epoch}"
+        return [replace(entry, epoch_id_hint=single_epoch, display_tag=label)]
+
+    selected = _trial_indices_from_metadata(metadata)
+    if selected is None:
+        selected = _run_trial_selection_lookup(data_dir, entry.run_tag).get(dataset_stem)
+
+    expanded: List[PgasCacheEntry] = []
+    for local_idx in trial_indices:
+        original_idx = int(local_idx)
+        if selected is not None and local_idx < len(selected):
+            original_idx = int(selected[local_idx])
+        epoch_id = _epoch_id_for_dataset_trial(dataset_stem, original_idx, epoch_refs)
+        if epoch_id is None:
+            label = f"{entry.cache_tag} | trial{local_idx}"
+        else:
+            label = f"{entry.cache_tag} | {epoch_id} [trial{local_idx}]"
+        expanded.append(
+            replace(
+                entry,
+                trial_index=int(local_idx),
+                epoch_id_hint=epoch_id,
+                display_tag=label,
+            )
+        )
+    return expanded
+
+
 def _epoch_by_id(epoch_refs: List[EpochRef]) -> Dict[str, EpochRef]:
     return {ref.epoch_id: ref for ref in epoch_refs}
 
@@ -223,6 +446,114 @@ def _pick_latest(root: Path, pattern: str) -> Optional[Path]:
     if not matches:
         return None
     return matches[-1]
+
+
+def _pick_trial_file(
+    root: Path,
+    *,
+    prefix: str,
+    cache_tag: str,
+    trial_index: Optional[int],
+) -> Optional[Path]:
+    if trial_index is None:
+        latest = _pick_latest(root, f"{prefix}_{cache_tag}_trial*.dat")
+        if latest is not None:
+            return latest
+        return _pick_latest(root, f"{prefix}_{cache_tag}.dat")
+    exact = root / f"{prefix}_{cache_tag}_trial{trial_index}.dat"
+    if exact.exists():
+        return exact
+    return _pick_latest(root, f"{prefix}_{cache_tag}_trial{trial_index}*.dat")
+
+
+def _traj_time_len(path: Path) -> int:
+    try:
+        idx = np.genfromtxt(path, delimiter=",", skip_header=1, usecols=(0,))
+    except Exception:
+        return 0
+    arr = np.asarray(idx, dtype=np.float64).ravel()
+    if arr.size == 0:
+        return 0
+    return int(np.count_nonzero(np.isclose(arr, 0.0)))
+
+
+def _trial_lengths_from_output(output_root: Path, cache_tag: str) -> Dict[int, int]:
+    out: Dict[int, int] = {}
+    try:
+        paths = sorted(output_root.glob(f"traj_samples_{cache_tag}_trial*.dat"))
+    except Exception:
+        return out
+    for path in paths:
+        idx = _parse_trial_index_from_name(path.name)
+        if idx is None:
+            continue
+        n = _traj_time_len(path)
+        if n > 0:
+            out[int(idx)] = int(n)
+    return out
+
+
+def _split_time_segments(time: np.ndarray) -> List[np.ndarray]:
+    t = np.asarray(time, dtype=np.float64).ravel()
+    if t.size <= 1:
+        return [t]
+    dt = np.diff(t)
+    dt_pos = dt[np.isfinite(dt) & (dt > 0)]
+    if dt_pos.size == 0:
+        return [t]
+    dt_ref = float(np.nanmedian(dt_pos))
+    gap_threshold = max(5.0 * dt_ref, 1e-9)
+    starts = [0]
+    for idx, delta in enumerate(dt, start=1):
+        if (not np.isfinite(delta)) or delta <= 0 or delta > gap_threshold:
+            starts.append(idx)
+    starts.append(t.size)
+    out: List[np.ndarray] = []
+    for start, end in zip(starts[:-1], starts[1:]):
+        if end > start:
+            out.append(t[start:end])
+    return out if out else [t]
+
+
+def _slice_run_time_for_trial(
+    *,
+    run_time: np.ndarray,
+    output_root: Path,
+    cache_tag: str,
+    trial_index: int,
+    expected_len: int,
+) -> np.ndarray:
+    t = np.asarray(run_time, dtype=np.float64).ravel()
+    if t.size == 0 or trial_index < 0:
+        return t
+
+    lengths = _trial_lengths_from_output(output_root, cache_tag)
+    if lengths:
+        ordered = sorted(lengths.items())
+        contiguous = [idx for idx, _n in ordered] == list(range(len(ordered)))
+        if contiguous and trial_index < len(ordered):
+            start = int(sum(length for _idx, length in ordered[:trial_index]))
+            seg_len = int(ordered[trial_index][1])
+            if start < t.size and seg_len > 0:
+                end = min(start + seg_len, t.size)
+                seg = t[start:end]
+                if seg.size > 0:
+                    return seg
+
+    segments = _split_time_segments(t)
+    if trial_index < len(segments):
+        seg = segments[trial_index]
+        if seg.size > 0:
+            return seg
+
+    if expected_len > 0:
+        start = int(trial_index) * int(expected_len)
+        if start < t.size:
+            end = min(start + int(expected_len), t.size)
+            seg = t[start:end]
+            if seg.size > 0:
+                return seg
+    return t
 
 
 def _load_traj_stats(path: Path, *, burnin: int) -> Dict[str, np.ndarray | int]:
@@ -254,6 +585,7 @@ def _load_traj_stats(path: Path, *, burnin: int) -> Dict[str, np.ndarray | int]:
     return {
         "n_samples": n_samples,
         "burnin_eff": burnin_eff,
+        "time_len": time_len,
         "burst_mean": np.mean(burst_mat[sample_slice], axis=0),
         "burst_std": np.std(burst_mat[sample_slice], axis=0),
         "b_mean": np.mean(b_mat[sample_slice], axis=0),

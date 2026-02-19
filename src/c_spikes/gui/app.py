@@ -2457,14 +2457,22 @@ class MainWindow(QtWidgets.QMainWindow):
         run_tag = self._smc_run_combo.currentText().strip()
         if not run_tag:
             return
-        entries = list_pgas_cache_entries(data_dir, run_tag)
+        entries = list_pgas_cache_entries(
+            data_dir,
+            run_tag,
+            epoch_refs=self._epoch_refs,
+        )
         self._smc_entries = entries
-        self._smc_entries_by_tag = {entry.cache_tag: entry for entry in entries}
+        self._smc_entries_by_tag = {
+            (entry.display_tag or entry.cache_tag): entry
+            for entry in entries
+        }
         current_cache = self._smc_cache_combo.currentText().strip() if self._smc_cache_combo.count() else ""
         self._smc_cache_combo.blockSignals(True)
         self._smc_cache_combo.clear()
         for entry in entries:
-            self._smc_cache_combo.addItem(entry.cache_tag, entry.cache_tag)
+            label = entry.display_tag or entry.cache_tag
+            self._smc_cache_combo.addItem(label, entry)
         self._smc_cache_combo.blockSignals(False)
         if not entries:
             self._smc_payload = None
@@ -2488,10 +2496,15 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if idx < 0:
             return
-        cache_tag = self._smc_cache_combo.currentText().strip()
-        if not cache_tag:
+        cache_label = self._smc_cache_combo.currentText().strip()
+        if not cache_label:
             return
-        data = self._smc_entries_by_tag.get(cache_tag)
+        combo_data = self._smc_cache_combo.currentData()
+        data: Optional[PgasCacheEntry]
+        if isinstance(combo_data, PgasCacheEntry):
+            data = combo_data
+        else:
+            data = self._smc_entries_by_tag.get(cache_label)
         if data is None:
             return
         data_dir_raw = self._data_dir_edit.text().strip()
