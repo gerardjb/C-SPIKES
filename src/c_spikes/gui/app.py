@@ -964,7 +964,7 @@ class MainWindow(QtWidgets.QMainWindow):
         left_layout.addWidget(left_scroll)
         layout.addWidget(left_box, 1)
 
-        right_box = QtWidgets.QGroupBox("Parameter Trace Trajectory", box)
+        right_box = QtWidgets.QGroupBox("Parameter Trace Plots", box)
         right_layout = QtWidgets.QVBoxLayout(right_box)
         right_scroll = QtWidgets.QScrollArea(right_box)
         right_scroll.setWidgetResizable(True)
