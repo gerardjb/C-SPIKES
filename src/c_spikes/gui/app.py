@@ -904,6 +904,9 @@ class MainWindow(QtWidgets.QMainWindow):
         import_row = QtWidgets.QHBoxLayout()
         self._smc_import_btn = QtWidgets.QPushButton("Import PGAS Cache...", box)
         self._smc_import_btn.clicked.connect(self._smc_import_cache)
+        self._smc_import_btn.setToolTip(
+            "Import from run root, inference_cache, pgas cache, or repo root containing results/."
+        )
         import_row.addWidget(self._smc_import_btn)
         layout.addLayout(import_row)
 
@@ -1166,6 +1169,18 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self._smc_refresh_run_tags(Path(data_dir_raw))
 
+    def _default_smc_import_source_dir(self, data_dir: Path) -> Path:
+        candidates = [
+            REPO_ROOT / "results",
+            data_dir / "spike_inference",
+            data_dir,
+            REPO_ROOT,
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return data_dir
+
     def _smc_import_cache(self) -> None:
         if self._smc_import_worker and self._smc_import_worker.isRunning():
             self._log("[BiophysSMC viz] Import already in progress.")
@@ -1175,11 +1190,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log("[BiophysSMC viz] Select a dataset directory first.")
             return
         data_dir = Path(data_dir_raw)
+        source_start_dir = self._default_smc_import_source_dir(data_dir)
 
         source_dir = QtWidgets.QFileDialog.getExistingDirectory(
             self,
             "Select Source Run/Cache Directory",
-            str(data_dir),
+            str(source_start_dir),
         )
         if not source_dir:
             return
