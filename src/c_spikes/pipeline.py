@@ -44,6 +44,7 @@ class RunConfig:
     neuron_type: str = "Exc"
     use_cache: bool = False
     first_trial_only: bool = False
+    trial_selection_path: Optional[Path] = None
     bm_sigma_spike_gap: float = 0.15
     corr_sigma_ms: float = 50.0
     pgas_constants: Path = Path("parameter_files/constants_GCaMP8_soma.json")
@@ -137,6 +138,40 @@ def _count_samples(discrete_spikes: object) -> int:
     return int(total)
 
 
+def _load_trial_selection(path: Path) -> Dict[str, List[int]]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Trial selection JSON must be an object: {dataset_stem: [trial_idx, ...]}.")
+    out: Dict[str, List[int]] = {}
+    for key, value in payload.items():
+        dataset = str(key).strip()
+        if not dataset:
+            continue
+        if not isinstance(value, list):
+            raise ValueError(
+                f"Trial selection for '{dataset}' must be a list of non-negative integers."
+            )
+        indices: List[int] = []
+        seen: set[int] = set()
+        for item in value:
+            try:
+                idx = int(item)
+            except Exception as exc:
+                raise ValueError(
+                    f"Invalid trial index '{item}' for dataset '{dataset}'."
+                ) from exc
+            if idx < 0:
+                raise ValueError(
+                    f"Trial index must be non-negative for dataset '{dataset}': {idx}."
+                )
+            if idx in seen:
+                continue
+            seen.add(idx)
+            indices.append(idx)
+        out[dataset] = sorted(indices)
+    return out
+
+
 def run_batch(cfg: RunConfig) -> List[Path]:
     """
     Run the selected methods across datasets/smoothing levels and emit summaries.
@@ -155,9 +190,22 @@ def run_batch(cfg: RunConfig) -> List[Path]:
     if cfg.edges_path.exists():
         edges_lookup = np.load(cfg.edges_path, allow_pickle=True).item()
 
+    trial_selection_lookup: Optional[Dict[str, List[int]]] = None
+    if cfg.trial_selection_path is not None:
+        if not cfg.trial_selection_path.exists():
+            raise FileNotFoundError(cfg.trial_selection_path)
+        trial_selection_lookup = _load_trial_selection(cfg.trial_selection_path)
+
     summaries: List[Path] = []
     for dataset_path in dataset_paths:
         dataset_tag = dataset_path.stem
+        selected_trial_indices: Optional[List[int]] = None
+        selected_trial_set: Optional[set[int]] = None
+        if trial_selection_lookup is not None:
+            selected_trial_indices = trial_selection_lookup.get(dataset_tag)
+            if selected_trial_indices is None:
+                continue
+            selected_trial_set = set(selected_trial_indices)
         for label, target in smoothing_levels:
             selection = MethodSelection(
                 run_pgas=("pgas" in method_list),
@@ -194,6 +242,8 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 spike_times = np.asarray(spike_times, dtype=np.float64).ravel()
                 trials: List[TrialSeries] = []
                 for i in range(time_stamps.shape[0]):
+                    if selected_trial_set is not None and i not in selected_trial_set:
+                        continue
                     t = np.asarray(time_stamps[i], dtype=np.float64).ravel()
                     y = np.asarray(dff[i], dtype=np.float64).ravel()
                     m = np.isfinite(t) & np.isfinite(y)
@@ -215,7 +265,16 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                     continue
 
                 # Determine evaluation windows.
-                windows = [(float(s), float(e)) for s, e in edges] if edges is not None else None
+                if edges is not None and selected_trial_indices is not None:
+                    windows = [
+                        (float(edges[idx, 0]), float(edges[idx, 1]))
+                        for idx in selected_trial_indices
+                        if 0 <= int(idx) < edges.shape[0]
+                    ]
+                elif edges is not None:
+                    windows = [(float(s), float(e)) for s, e in edges]
+                else:
+                    windows = None
                 if windows is None:
                     # Fall back to windows recorded in summary, else use full trials.
                     existing = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -324,6 +383,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 cascade_discretize=bool(cfg.cascade_discretize),
                 cascade_model_name=str(cfg.cascade_model_name),
                 trialwise_correlations=bool(cfg.trialwise_correlations),
+                trial_indices=selected_trial_indices,
             )
             outputs = run_inference_for_dataset(
                 ds_cfg,

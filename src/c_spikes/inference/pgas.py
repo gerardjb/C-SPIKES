@@ -324,7 +324,7 @@ def run_pgas_inference(
             has_gtspikes=False,
             maxlen=int(trial.values.size),
             Gparam_file=str(config.gparam_file),
-            seed=2 + trial_idx,
+            seed=0, # should now pull from MCMC.seed in parameter_files
         )
         analyzer.run()
 

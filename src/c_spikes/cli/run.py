@@ -21,6 +21,7 @@ from c_spikes.tensorflow_env import preload_tensorflow_quietly
 
 preload_tensorflow_quietly()
 
+from c_spikes.inference.cache import set_cache_root
 from c_spikes.pipeline import RunConfig, run_batch
 from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
 
@@ -52,7 +53,17 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--smoothing-level", action="append", metavar="LEVEL", help="raw, 30Hz, 10Hz (repeatable).")
     parser.add_argument("--method", action="append", metavar="NAME", help="Methods to run: pgas, ens2, cascade. Default: all.")
     parser.add_argument("--output-root", type=Path, default=Path("results/full_evaluation"), help="Where to write summaries/manifests.")
+    parser.add_argument(
+        "--cache-root",
+        type=Path,
+        help="Inference cache root (defaults to results/inference_cache).",
+    )
     parser.add_argument("--edges-path", type=Path, default=Path("results/excitatory_time_stamp_edges.npy"))
+    parser.add_argument(
+        "--trial-selection-path",
+        type=Path,
+        help="JSON mapping dataset stem -> trial indices to process (e.g. GUI Batch Selection export).",
+    )
     parser.add_argument("--neuron-type", type=str, default="Exc", help="ENS2 neuron type (Exc or Inh).")
     parser.add_argument(
         "--ens2-pretrained-root",
@@ -154,6 +165,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
     args = parse_args(argv)
+    if args.cache_root is not None:
+        set_cache_root(args.cache_root)
 
     dataset_stems: Optional[List[str]] = None
     if args.dataset or args.dataset_list:
@@ -179,6 +192,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         smoothing_levels=args.smoothing_level,
         output_root=args.output_root,
         edges_path=args.edges_path,
+        trial_selection_path=args.trial_selection_path,
         methods=methods,
         neuron_type=args.neuron_type,
         use_cache=bool(args.use_cache),
