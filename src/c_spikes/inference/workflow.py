@@ -67,6 +67,37 @@ class DatasetRunConfig:
     cascade_discretize: bool = True
     cascade_model_name: str = "universal_p_cascade_exc_30"
     trialwise_correlations: bool = False
+    trial_indices: Optional[List[int]] = None
+
+
+def _resolve_edges_for_trials(
+    dataset_tag: str,
+    trials: Sequence[TrialSeries],
+    edges: np.ndarray,
+) -> np.ndarray:
+    arr = np.asarray(edges, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[1] != 2 or arr.shape[0] != len(trials):
+        raise ValueError(
+            f"Expected edges with shape (n_trials, 2); got {arr.shape} for {len(trials)} trials."
+        )
+    resolved = arr.copy()
+    replaced = 0
+    for idx, trial in enumerate(trials):
+        start = float(resolved[idx, 0])
+        end = float(resolved[idx, 1])
+        if not np.isfinite(start) or not np.isfinite(end):
+            resolved[idx, 0] = float(trial.times[0])
+            resolved[idx, 1] = float(trial.times[-1])
+            replaced += 1
+            continue
+        if end <= start:
+            raise ValueError(f"Window end must exceed start for trial {idx}: ({start}, {end}).")
+    if replaced:
+        print(
+            f"[edges] {dataset_tag}: {replaced} trial(s) had non-finite bounds; "
+            "falling back to full-trial windows."
+        )
+    return resolved
 
 
 def run_inference_for_dataset(
@@ -99,12 +130,36 @@ def run_inference_for_dataset(
     if not trials_native:
         raise RuntimeError(f"No valid trials for dataset {dataset_tag}.")
 
-    if cfg.edges is not None:
-        if cfg.edges.shape[0] != len(trials_native):
+    trial_count_full = len(trials_native)
+    selected_indices: Optional[List[int]] = None
+    if cfg.trial_indices is not None:
+        selected_indices = sorted({int(idx) for idx in cfg.trial_indices})
+        if not selected_indices:
+            raise ValueError(f"No trial indices provided for dataset {dataset_tag}.")
+        invalid = [idx for idx in selected_indices if idx < 0 or idx >= trial_count_full]
+        if invalid:
             raise ValueError(
-                f"Edges shape {cfg.edges.shape} does not match {len(trials_native)} trials after slicing."
+                f"Trial indices out of range for dataset {dataset_tag}: {invalid} "
+                f"(available: 0..{trial_count_full - 1})."
             )
-        trials_trimmed = trim_trials_by_edges(trials_native, cfg.edges)
+        trials_native = [trials_native[idx] for idx in selected_indices]
+        if spike_times.size:
+            spike_mask = np.zeros(spike_times.shape, dtype=bool)
+            for trial in trials_native:
+                spike_mask |= (spike_times >= float(trial.times[0])) & (spike_times <= float(trial.times[-1]))
+            spike_times = spike_times[spike_mask]
+
+    edges_effective: Optional[np.ndarray] = None
+    if cfg.edges is not None:
+        edges_arr = np.asarray(cfg.edges, dtype=np.float64)
+        if edges_arr.ndim != 2 or edges_arr.shape[1] != 2 or edges_arr.shape[0] != trial_count_full:
+            raise ValueError(
+                f"Edges shape {edges_arr.shape} does not match {trial_count_full} loaded trials."
+            )
+        if selected_indices is not None:
+            edges_arr = edges_arr[selected_indices]
+        edges_effective = _resolve_edges_for_trials(dataset_tag, trials_native, edges_arr)
+        trials_trimmed = trim_trials_by_edges(trials_native, edges_effective)
     else:
         trials_trimmed = trials_native
 
@@ -164,7 +219,7 @@ def run_inference_for_dataset(
             maxspikes=None,
             bm_sigma=cfg.pgas_fixed_bm_sigma,
             bm_sigma_gap_s=cfg.bm_sigma_gap_s,
-            edges=cfg.edges,
+            edges=edges_effective,
             use_cache=cfg.use_cache,
         )
         pgas_result = run_pgas_inference(
@@ -242,15 +297,15 @@ def run_inference_for_dataset(
     )
 
     windows: Optional[List[Tuple[float, float]]] = None
-    if cfg.edges is not None:
-        windows = [(float(s), float(e)) for s, e in cfg.edges]
+    if edges_effective is not None:
+        windows = [(float(s), float(e)) for s, e in edges_effective]
     elif pgas_result is not None:
         windows = pgas_windows_from_result(pgas_result)
 
     trial_windows: Optional[List[Tuple[float, float]]] = None
     if cfg.trialwise_correlations:
-        if cfg.edges is not None:
-            trial_windows = [(float(s), float(e)) for s, e in cfg.edges]
+        if edges_effective is not None:
+            trial_windows = [(float(s), float(e)) for s, e in edges_effective]
         else:
             trial_windows = [(float(tr.times[0]), float(tr.times[-1])) for tr in trials_trimmed]
 

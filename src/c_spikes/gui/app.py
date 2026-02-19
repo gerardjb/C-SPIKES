@@ -2116,16 +2116,50 @@ class MainWindow(QtWidgets.QMainWindow):
             raise ValueError("Slurm profile must be a JSON object.")
         return normalize_slurm_profile(payload)
 
-    def _selected_dataset_stems_for_batch(self, epochs: List[EpochRef]) -> List[str]:
-        stems: List[str] = []
-        seen: set[str] = set()
+    def _selected_trial_indices_for_batch(self, epochs: List[EpochRef]) -> Dict[str, List[int]]:
+        by_dataset: Dict[str, List[int]] = {}
         for epoch in epochs:
             stem = str(epoch.file_path.stem).strip()
-            if not stem or stem in seen:
+            if not stem:
                 continue
-            seen.add(stem)
-            stems.append(stem)
-        return stems
+            bucket = by_dataset.setdefault(stem, [])
+            idx = int(epoch.epoch_index)
+            if idx not in bucket:
+                bucket.append(idx)
+        for stem in list(by_dataset.keys()):
+            by_dataset[stem] = sorted(by_dataset[stem])
+        return by_dataset
+
+    def _epochs_missing_edges_for_batch(self, epochs: List[EpochRef]) -> List[EpochRef]:
+        missing: List[EpochRef] = []
+        for epoch in epochs:
+            if self._edges_map is None:
+                missing.append(epoch)
+                continue
+            arr = self._edges_map.get(epoch.file_path.stem)
+            if arr is None:
+                missing.append(epoch)
+                continue
+            edges = np.asarray(arr, dtype=float)
+            if edges.ndim != 2 or edges.shape[1] != 2:
+                missing.append(epoch)
+                continue
+            if epoch.epoch_index < 0 or epoch.epoch_index >= edges.shape[0]:
+                missing.append(epoch)
+                continue
+            row = np.asarray(edges[epoch.epoch_index], dtype=float).ravel()
+            if row.size != 2 or not np.all(np.isfinite(row)):
+                missing.append(epoch)
+        return missing
+
+    def _selected_epoch_warning_lines(self, epochs: List[EpochRef]) -> List[str]:
+        lines: List[str] = []
+        for epoch in epochs:
+            lines.append(
+                f"Epoch {epoch.epoch_id} does not have edges selected: "
+                "inference will be run on full epoch"
+            )
+        return lines
 
     def _pgas_cli_command_for_sbatch(
         self,
@@ -2134,6 +2168,7 @@ class MainWindow(QtWidgets.QMainWindow):
         constants_path: Path,
         gparam_path: Path,
         dataset_stems: List[str],
+        trial_selection_path: Path,
     ) -> str:
         args: List[str] = [
             "python",
@@ -2157,6 +2192,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ]
         for stem in dataset_stems:
             args.extend(["--dataset", stem])
+        args.extend(["--trial-selection-path", str(trial_selection_path)])
         if self._use_cache_check.isChecked():
             args.append("--use-cache")
         if self._edges_enabled and self._edges_path is not None and self._edges_path.exists():
@@ -2204,10 +2240,22 @@ class MainWindow(QtWidgets.QMainWindow):
         if not epochs:
             self._log("No epochs selected for sbatch generation.")
             return
-        dataset_stems = self._selected_dataset_stems_for_batch(epochs)
+        selected_trials_by_dataset = self._selected_trial_indices_for_batch(epochs)
+        dataset_stems = list(selected_trials_by_dataset.keys())
         if not dataset_stems:
             self._log("Could not resolve dataset stems from selected epochs.")
             return
+        if self._edges_enabled:
+            missing_edges_epochs = self._epochs_missing_edges_for_batch(epochs)
+            if missing_edges_epochs:
+                warning_lines = self._selected_epoch_warning_lines(missing_edges_epochs)
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Missing Edges",
+                    "\n".join(warning_lines),
+                )
+                for line in warning_lines:
+                    self._log(f"[sbatch] {line}")
 
         profile_path = self._ensure_slurm_profile(self._run_context)
         try:
@@ -2218,11 +2266,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         profile_path.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
 
+        trial_selection_path = self._slurm_dir(self._run_context) / "trial_selection.json"
         command = self._pgas_cli_command_for_sbatch(
             context=self._run_context,
             constants_path=constants_path,
             gparam_path=gparam_path,
             dataset_stems=dataset_stems,
+            trial_selection_path=trial_selection_path,
         )
         try:
             job_name, script_text = render_sbatch_script(
@@ -2261,6 +2311,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         slurm_dir = self._slurm_dir(self._run_context)
         slurm_dir.mkdir(parents=True, exist_ok=True)
+        trial_selection_path.write_text(
+            json.dumps(selected_trials_by_dataset, indent=2) + "\n",
+            encoding="utf-8",
+        )
         sbatch_path = slurm_dir / f"{job_name}.sbatch"
         if sbatch_path.exists():
             overwrite = QtWidgets.QMessageBox.question(
@@ -2286,6 +2340,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._log(f"[sbatch] Wrote script: {sbatch_path}")
         self._log(f"[sbatch] Profile: {profile_path}")
+        self._log(f"[sbatch] Trial selection: {trial_selection_path}")
         self._log(f"[sbatch] Datasets: {', '.join(dataset_stems)}")
 
     def _bio_edit_pgas_constants(self) -> None:

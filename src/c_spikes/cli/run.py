@@ -53,6 +53,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--method", action="append", metavar="NAME", help="Methods to run: pgas, ens2, cascade. Default: all.")
     parser.add_argument("--output-root", type=Path, default=Path("results/full_evaluation"), help="Where to write summaries/manifests.")
     parser.add_argument("--edges-path", type=Path, default=Path("results/excitatory_time_stamp_edges.npy"))
+    parser.add_argument(
+        "--trial-selection-path",
+        type=Path,
+        help="JSON mapping dataset stem -> trial indices to process (e.g. GUI Batch Selection export).",
+    )
     parser.add_argument("--neuron-type", type=str, default="Exc", help="ENS2 neuron type (Exc or Inh).")
     parser.add_argument(
         "--ens2-pretrained-root",
@@ -179,6 +184,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         smoothing_levels=args.smoothing_level,
         output_root=args.output_root,
         edges_path=args.edges_path,
+        trial_selection_path=args.trial_selection_path,
         methods=methods,
         neuron_type=args.neuron_type,
         use_cache=bool(args.use_cache),
