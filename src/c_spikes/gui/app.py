@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import colorsys
+import hashlib
 import json
 import os
 import shlex
@@ -7,7 +9,7 @@ import subprocess
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt
@@ -53,6 +55,7 @@ from c_spikes.gui.slurm import default_slurm_profile, normalize_slurm_profile, r
 from c_spikes.gui.smc_viz import (
     BiophysSmcPayload,
     PgasCacheEntry,
+    cache_tag_to_epoch_id,
     list_pgas_cache_entries,
     list_spike_inference_runs,
     load_biophys_smc_payload,
@@ -439,7 +442,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bio_ens2_cfg_text: str = json.dumps(default_ens2_train_config(), indent=2)
         self._bio_cascade_cfg_text: str = json.dumps(default_cascade_train_config(), indent=2)
         self._smc_entries: List[PgasCacheEntry] = []
+        self._smc_entries_by_run: Dict[str, List[PgasCacheEntry]] = {}
+        self._smc_entries_by_run_and_label: Dict[str, Dict[str, PgasCacheEntry]] = {}
         self._smc_entries_by_tag: Dict[str, PgasCacheEntry] = {}
+        self._smc_payloads_by_run: Dict[str, BiophysSmcPayload] = {}
+        self._smc_overlay_warnings: List[str] = []
+        self._smc_updating_run_selection = False
         self._smc_payload: Optional[BiophysSmcPayload] = None
         self._smc_left_checkboxes: Dict[str, QtWidgets.QCheckBox] = {}
         self._smc_right_checkboxes: Dict[str, QtWidgets.QCheckBox] = {}
@@ -923,6 +931,23 @@ class MainWindow(QtWidgets.QMainWindow):
         run_row.addWidget(run_refresh)
         layout.addLayout(run_row)
 
+        layout.addWidget(QtWidgets.QLabel("Run overlays (multi-select)", box))
+        self._smc_run_list = QtWidgets.QListWidget(box)
+        self._configure_list_for_long_text(self._smc_run_list)
+        self._smc_run_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self._smc_run_list.setMaximumHeight(120)
+        self._smc_run_list.itemSelectionChanged.connect(self._on_smc_run_overlay_selection_changed)
+        layout.addWidget(self._smc_run_list)
+
+        overlay_row = QtWidgets.QHBoxLayout()
+        overlay_select_all = QtWidgets.QPushButton("Select All Runs", box)
+        overlay_select_all.clicked.connect(self._smc_select_all_runs)
+        overlay_row.addWidget(overlay_select_all)
+        overlay_primary_only = QtWidgets.QPushButton("Primary Only", box)
+        overlay_primary_only.clicked.connect(self._smc_select_primary_run_only)
+        overlay_row.addWidget(overlay_primary_only)
+        layout.addLayout(overlay_row)
+
         cache_row = QtWidgets.QHBoxLayout()
         cache_row.addWidget(QtWidgets.QLabel("Cached inference", box))
         self._smc_cache_combo = QtWidgets.QComboBox(box)
@@ -1365,7 +1390,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bio_param_samples_by_epoch = {}
         self._bio_bundles = []
         self._smc_entries = []
+        self._smc_entries_by_run = {}
+        self._smc_entries_by_run_and_label = {}
         self._smc_entries_by_tag = {}
+        self._smc_payloads_by_run = {}
+        self._smc_overlay_warnings = []
         self._smc_payload = None
 
         self._data_dir_edit.setText(str(directory))
@@ -1375,6 +1404,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._bio_data_dir_edit.setText(str(directory))
         if hasattr(self, "_smc_data_dir_edit"):
             self._smc_data_dir_edit.setText(str(directory))
+        if hasattr(self, "_smc_run_list"):
+            self._smc_run_list.clear()
         self._refresh_run_context_hints()
 
         self._reset_edges_state()
@@ -2426,13 +2457,32 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         runs = list_spike_inference_runs(data_dir)
         current = self._smc_run_combo.currentText().strip()
+        selected_runs = set(self._smc_selected_run_tags())
+        self._smc_entries_by_run = {}
+        self._smc_entries_by_run_and_label = {}
         self._smc_run_combo.blockSignals(True)
         self._smc_run_combo.clear()
         for run in runs:
             self._smc_run_combo.addItem(run)
         self._smc_run_combo.blockSignals(False)
+        if hasattr(self, "_smc_run_list"):
+            self._smc_updating_run_selection = True
+            self._smc_run_list.blockSignals(True)
+            self._smc_run_list.clear()
+            for run in runs:
+                item = QtWidgets.QListWidgetItem(run)
+                item.setData(Qt.UserRole, run)
+                self._smc_run_list.addItem(item)
+                if run in selected_runs or (not selected_runs and run == current):
+                    item.setSelected(True)
+            self._smc_run_list.blockSignals(False)
+            self._smc_updating_run_selection = False
         if not runs:
             self._smc_entries = []
+            self._smc_entries_by_run = {}
+            self._smc_entries_by_run_and_label = {}
+            self._smc_payloads_by_run = {}
+            self._smc_overlay_warnings = []
             self._smc_payload = None
             self._smc_cache_combo.clear()
             self._smc_build_filter_checkboxes(None)
@@ -2444,6 +2494,172 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._smc_run_combo.setCurrentIndex(0)
         self._on_smc_run_changed(self._smc_run_combo.currentIndex())
+
+    def _smc_selected_run_tags(self) -> List[str]:
+        selected: List[str] = []
+        if hasattr(self, "_smc_run_list"):
+            for item in self._smc_run_list.selectedItems():
+                data = item.data(Qt.UserRole)
+                token = str(data if data is not None else item.text()).strip()
+                if token and token not in selected:
+                    selected.append(token)
+        primary = self._smc_run_combo.currentText().strip() if hasattr(self, "_smc_run_combo") else ""
+        if primary and primary not in selected:
+            selected.insert(0, primary)
+        return selected
+
+    def _smc_set_selected_runs(self, run_tags: Sequence[str]) -> None:
+        if not hasattr(self, "_smc_run_list"):
+            return
+        wanted = {str(tag).strip() for tag in run_tags if str(tag).strip()}
+        primary = self._smc_run_combo.currentText().strip()
+        if primary:
+            wanted.add(primary)
+        self._smc_updating_run_selection = True
+        self._smc_run_list.blockSignals(True)
+        for i in range(self._smc_run_list.count()):
+            item = self._smc_run_list.item(i)
+            data = item.data(Qt.UserRole)
+            token = str(data if data is not None else item.text()).strip()
+            item.setSelected(token in wanted)
+        self._smc_run_list.blockSignals(False)
+        self._smc_updating_run_selection = False
+
+    def _smc_select_all_runs(self) -> None:
+        if not hasattr(self, "_smc_run_list"):
+            return
+        tags = []
+        for i in range(self._smc_run_list.count()):
+            item = self._smc_run_list.item(i)
+            data = item.data(Qt.UserRole)
+            token = str(data if data is not None else item.text()).strip()
+            if token:
+                tags.append(token)
+        self._smc_set_selected_runs(tags)
+        if self._smc_cache_combo.count():
+            self._on_smc_cache_changed(self._smc_cache_combo.currentIndex())
+
+    def _smc_select_primary_run_only(self) -> None:
+        primary = self._smc_run_combo.currentText().strip()
+        if not primary:
+            return
+        self._smc_set_selected_runs([primary])
+
+    def _on_smc_run_overlay_selection_changed(self) -> None:
+        if self._loading_dataset or self._smc_updating_run_selection:
+            return
+        primary = self._smc_run_combo.currentText().strip()
+        if primary and primary not in self._smc_selected_run_tags():
+            existing = [tag for tag in self._smc_selected_run_tags() if tag != primary]
+            self._smc_set_selected_runs([primary, *existing])
+        if self._smc_cache_combo.count():
+            self._on_smc_cache_changed(self._smc_cache_combo.currentIndex())
+
+    def _smc_entries_for_run(self, data_dir: Path, run_tag: str) -> List[PgasCacheEntry]:
+        cached = self._smc_entries_by_run.get(run_tag)
+        if cached is not None:
+            return cached
+        entries = list_pgas_cache_entries(
+            data_dir,
+            run_tag,
+            epoch_refs=self._epoch_refs,
+        )
+        self._smc_entries_by_run[run_tag] = entries
+        self._smc_entries_by_run_and_label[run_tag] = {
+            (entry.display_tag or entry.cache_tag): entry
+            for entry in entries
+        }
+        return entries
+
+    def _smc_match_overlay_entry(
+        self,
+        *,
+        data_dir: Path,
+        run_tag: str,
+        primary_entry: PgasCacheEntry,
+        cache_label: str,
+    ) -> Optional[PgasCacheEntry]:
+        by_label = self._smc_entries_by_run_and_label.get(run_tag)
+        if by_label is None:
+            self._smc_entries_for_run(data_dir, run_tag)
+            by_label = self._smc_entries_by_run_and_label.get(run_tag, {})
+        match = by_label.get(cache_label)
+        if match is not None:
+            return match
+        for entry in self._smc_entries_by_run.get(run_tag, []):
+            if (
+                entry.cache_tag == primary_entry.cache_tag
+                and entry.trial_index == primary_entry.trial_index
+                and entry.epoch_id_hint == primary_entry.epoch_id_hint
+            ):
+                return entry
+        primary_epoch = str(
+            primary_entry.epoch_id_hint or cache_tag_to_epoch_id(primary_entry.cache_tag)
+        ).strip()
+        if primary_epoch:
+            epoch_matches: List[PgasCacheEntry] = []
+            for entry in self._smc_entries_by_run.get(run_tag, []):
+                entry_epoch = str(
+                    entry.epoch_id_hint or cache_tag_to_epoch_id(entry.cache_tag)
+                ).strip()
+                if entry_epoch == primary_epoch:
+                    epoch_matches.append(entry)
+            if len(epoch_matches) == 1:
+                return epoch_matches[0]
+            if epoch_matches:
+                return sorted(
+                    epoch_matches,
+                    key=lambda item: (item.display_tag or item.cache_tag),
+                )[0]
+        return None
+
+    def _smc_alignment_warnings(self, payloads: Dict[str, BiophysSmcPayload]) -> List[str]:
+        if len(payloads) <= 1:
+            return []
+        warnings: List[str] = []
+        shared = self._smc_shared_time_window(list(payloads.values()))
+        if shared is None:
+            warnings.append("No shared time window across selected runs; state overlays may be incomparable.")
+        else:
+            start, end = shared
+            clipped = False
+            for payload in payloads.values():
+                t = np.asarray(payload.run_time, dtype=np.float64).ravel()
+                t = t[np.isfinite(t)]
+                if t.size == 0:
+                    continue
+                if float(np.min(t)) < start or float(np.max(t)) > end:
+                    clipped = True
+                    break
+            if clipped:
+                warnings.append(
+                    f"State overlays aligned to shared time window [{start:.3f}, {end:.3f}] s."
+                )
+        iter_lengths = [
+            int(payload.param_values.shape[0])
+            for payload in payloads.values()
+            if payload.param_values.ndim == 2 and payload.param_values.shape[0] > 0
+        ]
+        if len(iter_lengths) >= 2 and len(set(iter_lengths)) > 1:
+            warnings.append(
+                f"Parameter overlays aligned to shared iteration range (1..{min(iter_lengths)})."
+            )
+        param_sets = [set(payload.param_names) for payload in payloads.values() if payload.param_names]
+        if len(param_sets) >= 2 and len(set.intersection(*param_sets)) == 0:
+            warnings.append("Selected runs do not share parameter names; right panel overlays are sparse.")
+        return warnings
+
+    def _smc_update_info_label(self, payload: BiophysSmcPayload) -> None:
+        count = len(self._smc_payloads_by_run) if self._smc_payloads_by_run else 1
+        text = (
+            f"{payload.run_tag} | {payload.cache_tag} | {payload.epoch_id} | "
+            f"samples={payload.n_samples}, burnin={payload.burnin}"
+        )
+        if count > 1:
+            text += f" | overlays={count}"
+        if self._smc_overlay_warnings:
+            text += "\n" + "\n".join(f"Warning: {msg}" for msg in self._smc_overlay_warnings)
+        self._smc_info_label.setText(text)
 
     def _on_smc_run_changed(self, idx: int) -> None:
         if self._loading_dataset:
@@ -2457,11 +2673,9 @@ class MainWindow(QtWidgets.QMainWindow):
         run_tag = self._smc_run_combo.currentText().strip()
         if not run_tag:
             return
-        entries = list_pgas_cache_entries(
-            data_dir,
-            run_tag,
-            epoch_refs=self._epoch_refs,
-        )
+        prior_selected = [tag for tag in self._smc_selected_run_tags() if tag != run_tag]
+        self._smc_set_selected_runs([run_tag, *prior_selected])
+        entries = self._smc_entries_for_run(data_dir, run_tag)
         self._smc_entries = entries
         self._smc_entries_by_tag = {
             (entry.display_tag or entry.cache_tag): entry
@@ -2475,6 +2689,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._smc_cache_combo.addItem(label, entry)
         self._smc_cache_combo.blockSignals(False)
         if not entries:
+            self._smc_payloads_by_run = {}
+            self._smc_overlay_warnings = []
             self._smc_payload = None
             self._smc_build_filter_checkboxes(None)
             self._render_smc_plots()
@@ -2510,27 +2726,68 @@ class MainWindow(QtWidgets.QMainWindow):
         data_dir_raw = self._data_dir_edit.text().strip()
         if not data_dir_raw:
             return
-        try:
-            payload = load_biophys_smc_payload(
-                data_dir=Path(data_dir_raw),
-                entry=data,
-                data_manager=self._data_manager,
-                epoch_refs=self._epoch_refs,
+        data_dir = Path(data_dir_raw)
+        primary_run = self._smc_run_combo.currentText().strip()
+        selected_runs = self._smc_selected_run_tags()
+        if primary_run and primary_run not in selected_runs:
+            selected_runs.insert(0, primary_run)
+        payloads: Dict[str, BiophysSmcPayload] = {}
+        warnings: List[str] = []
+        if not selected_runs:
+            selected_runs = [primary_run] if primary_run else []
+        for run_tag in selected_runs:
+            target_entry = data if run_tag == primary_run else self._smc_match_overlay_entry(
+                data_dir=data_dir,
+                run_tag=run_tag,
+                primary_entry=data,
+                cache_label=cache_label,
             )
-        except Exception as exc:
+            if target_entry is None:
+                warnings.append(f"{run_tag}: selected cache entry not found.")
+                continue
+            try:
+                payload = load_biophys_smc_payload(
+                    data_dir=data_dir,
+                    entry=target_entry,
+                    data_manager=self._data_manager,
+                    epoch_refs=self._epoch_refs,
+                )
+            except Exception as exc:
+                if run_tag == primary_run:
+                    self._smc_payloads_by_run = {}
+                    self._smc_overlay_warnings = []
+                    self._smc_payload = None
+                    self._smc_build_filter_checkboxes(None)
+                    self._render_smc_plots()
+                    self._smc_info_label.setText(f"Failed to load cache: {exc}")
+                    self._log(f"[BiophysSMC viz] {exc}")
+                    return
+                warnings.append(f"{run_tag}: failed to load ({exc})")
+                continue
+            payloads[run_tag] = payload
+        if not payloads:
+            self._smc_payloads_by_run = {}
+            self._smc_overlay_warnings = warnings
             self._smc_payload = None
             self._smc_build_filter_checkboxes(None)
             self._render_smc_plots()
-            self._smc_info_label.setText(f"Failed to load cache: {exc}")
-            self._log(f"[BiophysSMC viz] {exc}")
+            self._smc_info_label.setText("Failed to load selected overlays.")
+            for msg in warnings:
+                self._log(f"[BiophysSMC viz] {msg}")
             return
-        self._smc_payload = payload
-        self._smc_build_filter_checkboxes(payload)
+        for msg in warnings:
+            self._log(f"[BiophysSMC viz] {msg}")
+        self._smc_payloads_by_run = payloads
+        self._smc_payload = payloads.get(primary_run)
+        if self._smc_payload is None:
+            first_run = next(iter(payloads.keys()))
+            self._smc_payload = payloads[first_run]
+            warnings.append(f"{primary_run}: missing payload, using {first_run} as primary.")
+        self._smc_overlay_warnings = [*warnings, *self._smc_alignment_warnings(payloads)]
+        assert self._smc_payload is not None
+        self._smc_build_filter_checkboxes(self._smc_payload)
         self._render_smc_plots()
-        self._smc_info_label.setText(
-            f"{payload.run_tag} | {payload.cache_tag} | {payload.epoch_id} | "
-            f"samples={payload.n_samples}, burnin={payload.burnin}"
-        )
+        self._smc_update_info_label(self._smc_payload)
 
     def _smc_left_rows(self) -> List[str]:
         return ["DFF/B+C", "B", "C", "burst", "S", "GT smooth"]
@@ -2589,6 +2846,73 @@ class MainWindow(QtWidgets.QMainWindow):
                 out.append(name)
         return out
 
+    def _smc_overlay_payload_items(self) -> List[Tuple[str, BiophysSmcPayload]]:
+        if self._smc_payloads_by_run:
+            out: List[Tuple[str, BiophysSmcPayload]] = []
+            for run_tag in self._smc_selected_run_tags():
+                payload = self._smc_payloads_by_run.get(run_tag)
+                if payload is not None:
+                    out.append((run_tag, payload))
+            for run_tag, payload in self._smc_payloads_by_run.items():
+                if not any(run_tag == seen for seen, _ in out):
+                    out.append((run_tag, payload))
+            return out
+        if self._smc_payload is None:
+            return []
+        return [(self._smc_payload.run_tag, self._smc_payload)]
+
+    def _smc_run_color(self, run_tag: str) -> str:
+        digest = hashlib.sha1(str(run_tag).encode("utf-8")).hexdigest()
+        h = int(digest[:8], 16) / 0xFFFFFFFF
+        s = 0.55 + (int(digest[8:10], 16) / 255.0) * 0.25
+        v = 0.70 + (int(digest[10:12], 16) / 255.0) * 0.20
+        r, g, b = colorsys.hsv_to_rgb(h, s, v)
+        return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
+
+    def _smc_shared_time_window(
+        self,
+        payloads: Sequence[BiophysSmcPayload],
+    ) -> Optional[Tuple[float, float]]:
+        starts: List[float] = []
+        ends: List[float] = []
+        for payload in payloads:
+            t = np.asarray(payload.run_time, dtype=np.float64).ravel()
+            t = t[np.isfinite(t)]
+            if t.size == 0:
+                continue
+            starts.append(float(np.min(t)))
+            ends.append(float(np.max(t)))
+        if len(starts) < 2:
+            return None
+        start = max(starts)
+        end = min(ends)
+        if end <= start:
+            return None
+        return start, end
+
+    def _smc_trim_time_series(
+        self,
+        time: np.ndarray,
+        *series: np.ndarray,
+        window: Optional[Tuple[float, float]],
+    ) -> Tuple[np.ndarray, List[np.ndarray]]:
+        t = np.asarray(time, dtype=np.float64).ravel()
+        arrays = [np.asarray(arr, dtype=np.float64).ravel() for arr in series]
+        if arrays:
+            n = min([t.size, *[arr.size for arr in arrays]])
+        else:
+            n = t.size
+        if n <= 0:
+            return np.zeros(0, dtype=np.float64), [np.zeros(0, dtype=np.float64) for _ in arrays]
+        t = t[:n]
+        arrays = [arr[:n] for arr in arrays]
+        if window is not None:
+            start, end = window
+            mask = np.isfinite(t) & (t >= start) & (t <= end)
+            t = t[mask]
+            arrays = [arr[mask] for arr in arrays]
+        return t, arrays
+
     def _render_smc_plots(self) -> None:
         self._render_smc_left_plot()
         self._render_smc_right_plot()
@@ -2596,11 +2920,56 @@ class MainWindow(QtWidgets.QMainWindow):
     def _render_smc_left_plot(self) -> None:
         fig = self._smc_left_figure
         fig.clear()
-        payload = self._smc_payload
-        if payload is None:
+        payload_items = self._smc_overlay_payload_items()
+        if not payload_items:
             ax = fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, "Select a cached inference.", ha="center", va="center", transform=ax.transAxes)
             ax.set_axis_off()
+            self._smc_left_canvas.draw()
+            return
+        if len(payload_items) == 1:
+            payload = payload_items[0][1]
+            rows = self._smc_selected_left_rows()
+            if not rows:
+                ax = fig.add_subplot(1, 1, 1)
+                ax.text(0.5, 0.5, "Select one or more state plots.", ha="center", va="center", transform=ax.transAxes)
+                ax.set_axis_off()
+                self._smc_left_canvas.draw()
+                return
+            try:
+                fig.set_layout_engine("constrained")
+            except Exception:
+                pass
+            axes = []
+            for i, row in enumerate(rows):
+                ax = fig.add_subplot(len(rows), 1, i + 1, sharex=axes[0] if axes else None)
+                axes.append(ax)
+                if row == "DFF/B+C":
+                    ax.plot(payload.full_time, payload.full_dff, color="black", linewidth=1.0)
+                    ax.plot(payload.run_time, payload.bc_mean, color="#009E73", linewidth=1.0)
+                    self._plot_smc_spikes(ax, payload.full_time, payload.full_spikes)
+                    ax.set_ylabel("DFF/B+C")
+                    ax.set_title("State Trajectory Plots")
+                elif row == "B":
+                    self._plot_mean_std(ax, payload.run_time, payload.b_mean, payload.b_std, color="#4C78A8")
+                    ax.set_ylabel("B")
+                elif row == "C":
+                    self._plot_mean_std(ax, payload.run_time, payload.c_mean, payload.c_std, color="#F58518")
+                    ax.set_ylabel("C")
+                elif row == "burst":
+                    self._plot_mean_std(ax, payload.run_time, payload.burst_mean, payload.burst_std, color="#54A24B")
+                    ax.set_ylabel("burst")
+                elif row == "S":
+                    self._plot_mean_std(ax, payload.run_time, payload.s_mean, payload.s_std, color="#B279A2")
+                    ax.set_ylabel("S")
+                elif row == "GT smooth":
+                    ax.plot(payload.gt_smooth_time, payload.gt_smooth, color="#666666", linewidth=1.0)
+                    self._plot_smc_spikes(ax, payload.gt_smooth_time, payload.full_spikes)
+                    ax.set_ylabel("GT smooth")
+                ax.grid(True, alpha=0.2)
+            for ax in axes[:-1]:
+                ax.tick_params(axis="x", which="both", labelbottom=False)
+            axes[-1].set_xlabel("Time (s)")
             self._smc_left_canvas.draw()
             return
         rows = self._smc_selected_left_rows()
@@ -2614,32 +2983,100 @@ class MainWindow(QtWidgets.QMainWindow):
             fig.set_layout_engine("constrained")
         except Exception:
             pass
+        shared_window = self._smc_shared_time_window([payload for _, payload in payload_items])
         axes = []
+        primary_payload = payload_items[0][1]
         for i, row in enumerate(rows):
             ax = fig.add_subplot(len(rows), 1, i + 1, sharex=axes[0] if axes else None)
             axes.append(ax)
             if row == "DFF/B+C":
-                ax.plot(payload.full_time, payload.full_dff, color="black", linewidth=1.0)
-                ax.plot(payload.run_time, payload.bc_mean, color="#009E73", linewidth=1.0)
-                self._plot_smc_spikes(ax, payload.full_time, payload.full_spikes)
+                t_dff, [y_dff] = self._smc_trim_time_series(
+                    primary_payload.full_time,
+                    primary_payload.full_dff,
+                    window=shared_window,
+                )
+                if t_dff.size > 0:
+                    ax.plot(t_dff, y_dff, color="black", linewidth=1.0, alpha=0.75, label="DFF")
+                    self._plot_smc_spikes(ax, t_dff, primary_payload.full_spikes)
+                for run_tag, payload in payload_items:
+                    t, [bc] = self._smc_trim_time_series(
+                        payload.run_time,
+                        payload.bc_mean,
+                        window=shared_window,
+                    )
+                    if t.size == 0:
+                        continue
+                    ax.plot(
+                        t,
+                        bc,
+                        color=self._smc_run_color(run_tag),
+                        linewidth=1.0,
+                        label=run_tag,
+                    )
                 ax.set_ylabel("DFF/B+C")
                 ax.set_title("State Trajectory Plots")
             elif row == "B":
-                self._plot_mean_std(ax, payload.run_time, payload.b_mean, payload.b_std, color="#4C78A8")
+                for run_tag, payload in payload_items:
+                    t, arrays = self._smc_trim_time_series(
+                        payload.run_time,
+                        payload.b_mean,
+                        payload.b_std,
+                        window=shared_window,
+                    )
+                    if t.size == 0:
+                        continue
+                    self._plot_mean_std(ax, t, arrays[0], arrays[1], color=self._smc_run_color(run_tag))
                 ax.set_ylabel("B")
             elif row == "C":
-                self._plot_mean_std(ax, payload.run_time, payload.c_mean, payload.c_std, color="#F58518")
+                for run_tag, payload in payload_items:
+                    t, arrays = self._smc_trim_time_series(
+                        payload.run_time,
+                        payload.c_mean,
+                        payload.c_std,
+                        window=shared_window,
+                    )
+                    if t.size == 0:
+                        continue
+                    self._plot_mean_std(ax, t, arrays[0], arrays[1], color=self._smc_run_color(run_tag))
                 ax.set_ylabel("C")
             elif row == "burst":
-                self._plot_mean_std(ax, payload.run_time, payload.burst_mean, payload.burst_std, color="#54A24B")
+                for run_tag, payload in payload_items:
+                    t, arrays = self._smc_trim_time_series(
+                        payload.run_time,
+                        payload.burst_mean,
+                        payload.burst_std,
+                        window=shared_window,
+                    )
+                    if t.size == 0:
+                        continue
+                    self._plot_mean_std(ax, t, arrays[0], arrays[1], color=self._smc_run_color(run_tag))
                 ax.set_ylabel("burst")
             elif row == "S":
-                self._plot_mean_std(ax, payload.run_time, payload.s_mean, payload.s_std, color="#B279A2")
+                for run_tag, payload in payload_items:
+                    t, arrays = self._smc_trim_time_series(
+                        payload.run_time,
+                        payload.s_mean,
+                        payload.s_std,
+                        window=shared_window,
+                    )
+                    if t.size == 0:
+                        continue
+                    self._plot_mean_std(ax, t, arrays[0], arrays[1], color=self._smc_run_color(run_tag))
                 ax.set_ylabel("S")
             elif row == "GT smooth":
-                ax.plot(payload.gt_smooth_time, payload.gt_smooth, color="#666666", linewidth=1.0)
-                self._plot_smc_spikes(ax, payload.gt_smooth_time, payload.full_spikes)
+                t_gt, [y_gt] = self._smc_trim_time_series(
+                    primary_payload.gt_smooth_time,
+                    primary_payload.gt_smooth,
+                    window=shared_window,
+                )
+                if t_gt.size > 0:
+                    ax.plot(t_gt, y_gt, color="#666666", linewidth=1.0)
+                    self._plot_smc_spikes(ax, t_gt, primary_payload.full_spikes)
                 ax.set_ylabel("GT smooth")
+            if row != "GT smooth":
+                handles, labels = ax.get_legend_handles_labels()
+                if handles and labels:
+                    ax.legend(loc="upper right", fontsize=8, ncols=min(3, len(labels)))
             ax.grid(True, alpha=0.2)
         for ax in axes[:-1]:
             ax.tick_params(axis="x", which="both", labelbottom=False)
@@ -2649,11 +3086,60 @@ class MainWindow(QtWidgets.QMainWindow):
     def _render_smc_right_plot(self) -> None:
         fig = self._smc_right_figure
         fig.clear()
-        payload = self._smc_payload
-        if payload is None:
+        payload_items = self._smc_overlay_payload_items()
+        if not payload_items:
             ax = fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, "Select a cached inference.", ha="center", va="center", transform=ax.transAxes)
             ax.set_axis_off()
+            self._smc_right_canvas.draw()
+            return
+        if len(payload_items) == 1:
+            payload = payload_items[0][1]
+            selected = self._smc_selected_params()
+            if not selected:
+                ax = fig.add_subplot(1, 1, 1)
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Select one or more parameter traces.",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                )
+                ax.set_axis_off()
+                self._smc_right_canvas.draw()
+                return
+            if payload.param_values.size == 0:
+                ax = fig.add_subplot(1, 1, 1)
+                ax.text(0.5, 0.5, "No parameter samples found.", ha="center", va="center", transform=ax.transAxes)
+                ax.set_axis_off()
+                self._smc_right_canvas.draw()
+                return
+            try:
+                fig.set_layout_engine("constrained")
+            except Exception:
+                pass
+            name_to_col = {name: i for i, name in enumerate(payload.param_names)}
+            n_iter = int(payload.param_values.shape[0])
+            x = np.arange(1, n_iter + 1, dtype=np.int64)
+            axes = []
+            for i, name in enumerate(selected):
+                col = name_to_col.get(name)
+                if col is None:
+                    continue
+                ax = fig.add_subplot(len(selected), 1, i + 1, sharex=axes[0] if axes else None)
+                axes.append(ax)
+                ax.plot(x, payload.param_values[:, col], color="#444444", linewidth=0.9)
+                if payload.burnin > 0:
+                    ax.axvline(payload.burnin + 1, color="#999999", linestyle="--", linewidth=0.8)
+                ax.set_ylabel(name)
+                ax.grid(True, alpha=0.2)
+                if i == 0:
+                    ax.set_title("Parameter Trace Trajectory")
+            if axes:
+                for ax in axes[:-1]:
+                    ax.tick_params(axis="x", which="both", labelbottom=False)
+                axes[-1].set_xlabel("Iteration")
             self._smc_right_canvas.draw()
             return
         selected = self._smc_selected_params()
@@ -2663,37 +3149,62 @@ class MainWindow(QtWidgets.QMainWindow):
             ax.set_axis_off()
             self._smc_right_canvas.draw()
             return
-        if payload.param_values.size == 0:
-            ax = fig.add_subplot(1, 1, 1)
-            ax.text(0.5, 0.5, "No parameter samples found.", ha="center", va="center", transform=ax.transAxes)
-            ax.set_axis_off()
-            self._smc_right_canvas.draw()
-            return
         try:
             fig.set_layout_engine("constrained")
         except Exception:
             pass
-        name_to_col = {name: i for i, name in enumerate(payload.param_names)}
-        n_iter = int(payload.param_values.shape[0])
-        x = np.arange(1, n_iter + 1, dtype=np.int64)
         axes = []
         for i, name in enumerate(selected):
-            col = name_to_col.get(name)
-            if col is None:
-                continue
             ax = fig.add_subplot(len(selected), 1, i + 1, sharex=axes[0] if axes else None)
+            run_series: List[Tuple[str, np.ndarray, int]] = []
+            for run_tag, payload in payload_items:
+                if payload.param_values.ndim != 2 or payload.param_values.size == 0:
+                    continue
+                name_to_col = {param: idx for idx, param in enumerate(payload.param_names)}
+                col = name_to_col.get(name)
+                if col is None:
+                    continue
+                values = np.asarray(payload.param_values[:, col], dtype=np.float64).ravel()
+                if values.size == 0:
+                    continue
+                run_series.append((run_tag, values, int(payload.burnin)))
+            if not run_series:
+                ax.text(0.5, 0.5, "No overlapping parameter data.", ha="center", va="center", transform=ax.transAxes)
+                ax.set_axis_off()
+                continue
+            shared_n = min(series.size for _, series, _ in run_series)
+            if shared_n <= 0:
+                ax.text(0.5, 0.5, "No overlapping parameter data.", ha="center", va="center", transform=ax.transAxes)
+                ax.set_axis_off()
+                continue
             axes.append(ax)
-            ax.plot(x, payload.param_values[:, col], color="#444444", linewidth=0.9)
-            if payload.burnin > 0:
-                ax.axvline(payload.burnin + 1, color="#999999", linestyle="--", linewidth=0.8)
+            x = np.arange(1, shared_n + 1, dtype=np.int64)
+            for run_tag, values, _burnin in run_series:
+                ax.plot(
+                    x,
+                    values[:shared_n],
+                    color=self._smc_run_color(run_tag),
+                    linewidth=0.9,
+                    label=run_tag,
+                )
+            primary_payload = payload_items[0][1]
+            if primary_payload.burnin > 0 and primary_payload.burnin < shared_n:
+                ax.axvline(primary_payload.burnin + 1, color="#999999", linestyle="--", linewidth=0.8)
             ax.set_ylabel(name)
             ax.grid(True, alpha=0.2)
             if i == 0:
                 ax.set_title("Parameter Trace Trajectory")
+                handles, labels = ax.get_legend_handles_labels()
+                if handles and labels:
+                    ax.legend(loc="upper right", fontsize=8, ncols=min(3, len(labels)))
         if axes:
             for ax in axes[:-1]:
                 ax.tick_params(axis="x", which="both", labelbottom=False)
             axes[-1].set_xlabel("Iteration")
+        else:
+            ax = fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, "No overlapping parameter data.", ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
         self._smc_right_canvas.draw()
 
     def _plot_mean_std(
