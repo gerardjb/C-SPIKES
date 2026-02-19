@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import subprocess
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -47,6 +49,7 @@ from c_spikes.gui.models import (
     list_ens2_model_dirs,
 )
 from c_spikes.gui.plotting import METHOD_ORDER, plot_epoch
+from c_spikes.gui.slurm import default_slurm_profile, normalize_slurm_profile, render_sbatch_script
 from c_spikes.gui.smc_viz import (
     BiophysSmcPayload,
     PgasCacheEntry,
@@ -359,6 +362,36 @@ class ConfigEditorDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Invalid JSON", str(exc))
                 return
         self.accept()
+
+
+class ScriptPreviewDialog(QtWidgets.QDialog):
+    def __init__(
+        self,
+        *,
+        title: str,
+        text: str,
+        accept_label: str,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(880, 650)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        self._editor = QtWidgets.QPlainTextEdit(self)
+        self._editor.setReadOnly(True)
+        self._editor.setPlainText(text)
+        layout.addWidget(self._editor)
+
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addStretch(1)
+        write_btn = QtWidgets.QPushButton(accept_label, self)
+        cancel_btn = QtWidgets.QPushButton("Cancel", self)
+        write_btn.clicked.connect(self.accept)
+        cancel_btn.clicked.connect(self.reject)
+        button_row.addWidget(write_btn)
+        button_row.addWidget(cancel_btn)
+        layout.addLayout(button_row)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -1079,6 +1112,15 @@ class MainWindow(QtWidgets.QMainWindow):
         edit_btn = QtWidgets.QPushButton("Edit config", box)
         edit_btn.clicked.connect(self._edit_pgas_constants)
         layout.addWidget(edit_btn)
+
+        slurm_row = QtWidgets.QHBoxLayout()
+        self._slurm_profile_btn = QtWidgets.QPushButton("Edit Slurm Profile...", box)
+        self._slurm_profile_btn.clicked.connect(self._edit_slurm_profile)
+        self._slurm_generate_btn = QtWidgets.QPushButton("Generate sbatch...", box)
+        self._slurm_generate_btn.clicked.connect(self._generate_pgas_sbatch)
+        slurm_row.addWidget(self._slurm_profile_btn)
+        slurm_row.addWidget(self._slurm_generate_btn)
+        layout.addLayout(slurm_row)
 
         return box
 
@@ -2049,6 +2091,202 @@ class MainWindow(QtWidgets.QMainWindow):
         self._pgas_constants_combo.addItem(label, temp_path)
         self._pgas_constants_combo.setCurrentIndex(self._pgas_constants_combo.count() - 1)
         self._log(f"Saved edited constants to {temp_path}")
+
+    def _slurm_dir(self, context: RunContext) -> Path:
+        return context.run_root / "slurm"
+
+    def _slurm_profile_path(self, context: RunContext) -> Path:
+        return self._slurm_dir(context) / "slurm_profile.json"
+
+    def _ensure_slurm_profile(self, context: RunContext) -> Path:
+        slurm_dir = self._slurm_dir(context)
+        slurm_dir.mkdir(parents=True, exist_ok=True)
+        profile_path = self._slurm_profile_path(context)
+        if not profile_path.exists():
+            profile = default_slurm_profile()
+            profile_path.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
+        return profile_path
+
+    def _load_slurm_profile(self, profile_path: Path) -> Dict[str, object]:
+        try:
+            payload = json.loads(profile_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ValueError(f"Failed to parse Slurm profile JSON: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("Slurm profile must be a JSON object.")
+        return normalize_slurm_profile(payload)
+
+    def _selected_dataset_stems_for_batch(self, epochs: List[EpochRef]) -> List[str]:
+        stems: List[str] = []
+        seen: set[str] = set()
+        for epoch in epochs:
+            stem = str(epoch.file_path.stem).strip()
+            if not stem or stem in seen:
+                continue
+            seen.add(stem)
+            stems.append(stem)
+        return stems
+
+    def _pgas_cli_command_for_sbatch(
+        self,
+        *,
+        context: RunContext,
+        constants_path: Path,
+        gparam_path: Path,
+        dataset_stems: List[str],
+    ) -> str:
+        args: List[str] = [
+            "python",
+            str(REPO_ROOT / "run_pipeline.py"),
+            "--data-root",
+            str(context.data_dir),
+            "--method",
+            "pgas",
+            "--smoothing-level",
+            "raw",
+            "--pgas-constants",
+            str(constants_path),
+            "--pgas-gparam",
+            str(gparam_path),
+            "--pgas-output-root",
+            str(context.pgas_output_root),
+            "--output-root",
+            str(context.run_root / "cli_evaluation"),
+            "--run-tag",
+            context.run_tag,
+        ]
+        for stem in dataset_stems:
+            args.extend(["--dataset", stem])
+        if self._use_cache_check.isChecked():
+            args.append("--use-cache")
+        if self._edges_enabled and self._edges_path is not None and self._edges_path.exists():
+            args.extend(["--edges-path", str(self._edges_path)])
+        else:
+            args.extend(["--edges-path", str(self._slurm_dir(context) / "edges_disabled.npy")])
+        return " ".join(shlex.quote(arg) for arg in args)
+
+    def _edit_slurm_profile(self) -> None:
+        if not self._ensure_run_context():
+            return
+        assert self._run_context is not None
+        ensure_run_dirs(self._run_context)
+        profile_path = self._ensure_slurm_profile(self._run_context)
+        dialog = ConfigEditorDialog(profile_path, self)
+        if dialog.exec() != QtWidgets.QDialog.Accepted:
+            return
+        try:
+            payload = json.loads(dialog.text())
+            if not isinstance(payload, dict):
+                raise ValueError("Slurm profile must be a JSON object.")
+            normalized = normalize_slurm_profile(payload)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Invalid Slurm Profile", str(exc))
+            return
+        profile_path.write_text(json.dumps(normalized, indent=2) + "\n", encoding="utf-8")
+        self._log(f"Saved Slurm profile to {profile_path}")
+
+    def _generate_pgas_sbatch(self) -> None:
+        if not self._ensure_run_context():
+            return
+        assert self._run_context is not None
+        ensure_run_dirs(self._run_context)
+
+        constants_path = self._current_pgas_constants_path()
+        gparam_path = self._current_pgas_gparam_path()
+        if constants_path is None or not constants_path.exists():
+            self._log("Select a valid PGAS constants file before generating sbatch.")
+            return
+        if gparam_path is None or not gparam_path.exists():
+            self._log("Select a valid PGAS gparam file before generating sbatch.")
+            return
+
+        epochs = self._collect_epoch_selection()
+        if not epochs:
+            self._log("No epochs selected for sbatch generation.")
+            return
+        dataset_stems = self._selected_dataset_stems_for_batch(epochs)
+        if not dataset_stems:
+            self._log("Could not resolve dataset stems from selected epochs.")
+            return
+
+        profile_path = self._ensure_slurm_profile(self._run_context)
+        try:
+            profile = self._load_slurm_profile(profile_path)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Slurm Profile Error", str(exc))
+            self._log(f"[sbatch] {exc}")
+            return
+        profile_path.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
+
+        command = self._pgas_cli_command_for_sbatch(
+            context=self._run_context,
+            constants_path=constants_path,
+            gparam_path=gparam_path,
+            dataset_stems=dataset_stems,
+        )
+        try:
+            job_name, script_text = render_sbatch_script(
+                profile=profile,
+                command=command,
+                run_root=self._run_context.run_root,
+                data_dir=self._run_context.data_dir,
+                run_tag=self._run_context.run_tag,
+            )
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Slurm Render Error", str(exc))
+            self._log(f"[sbatch] {exc}")
+            return
+
+        syntax_check = subprocess.run(
+            ["bash", "-n"],
+            input=script_text,
+            text=True,
+            capture_output=True,
+        )
+        if syntax_check.returncode != 0:
+            details = (syntax_check.stderr or syntax_check.stdout or "bash -n failed").strip()
+            QtWidgets.QMessageBox.warning(self, "Invalid sbatch Script", details)
+            self._log(f"[sbatch] bash -n failed: {details}")
+            return
+
+        preview = ScriptPreviewDialog(
+            title=f"Preview sbatch: {job_name}.sbatch",
+            text=script_text,
+            accept_label="Write sbatch",
+            parent=self,
+        )
+        if preview.exec() != QtWidgets.QDialog.Accepted:
+            self._log("[sbatch] Generation canceled.")
+            return
+
+        slurm_dir = self._slurm_dir(self._run_context)
+        slurm_dir.mkdir(parents=True, exist_ok=True)
+        sbatch_path = slurm_dir / f"{job_name}.sbatch"
+        if sbatch_path.exists():
+            overwrite = QtWidgets.QMessageBox.question(
+                self,
+                "Overwrite Existing sbatch",
+                f"{sbatch_path} already exists.\n\nOverwrite?",
+            )
+            if overwrite != QtWidgets.QMessageBox.Yes:
+                self._log("[sbatch] Existing sbatch kept; no changes written.")
+                return
+
+        sbatch_path.write_text(script_text, encoding="utf-8")
+        file_check = subprocess.run(
+            ["bash", "-n", str(sbatch_path)],
+            text=True,
+            capture_output=True,
+        )
+        if file_check.returncode != 0:
+            details = (file_check.stderr or file_check.stdout or "bash -n failed").strip()
+            QtWidgets.QMessageBox.warning(self, "Invalid sbatch Script", details)
+            self._log(f"[sbatch] Wrote {sbatch_path}, but bash -n failed: {details}")
+            return
+
+        self._log(f"[sbatch] Wrote script: {sbatch_path}")
+        self._log(f"[sbatch] Profile: {profile_path}")
+        self._log(f"[sbatch] Datasets: {', '.join(dataset_stems)}")
 
     def _bio_edit_pgas_constants(self) -> None:
         path = self._bio_current_pgas_constants_path()
