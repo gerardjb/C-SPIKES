@@ -349,7 +349,7 @@ void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, 
         int idx = utils::gsl_ran_discrete_from_uniform(rdisc, u_noise);
 
         part.burst = idx;
-        part.B     = z[0]*parent.B+z[1]*(y-parent.C(0)) + g_noise;
+        part.B     = z[0]*parent.B+z[1]*(y-ct) + g_noise;
 
         gsl_ran_discrete_free(rdisc);
     }
