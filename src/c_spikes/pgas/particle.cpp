@@ -6,6 +6,7 @@
 #include<fstream>
 #include<string>
 #include<ctime>
+#include<stdexcept>
 #include"include/GCaMP_model.h"
 #include<iomanip>
 
@@ -153,7 +154,10 @@ SMC::SMC(string filename, int index, constpar& cst, bool has_header, int seed, u
     } else {
         tracemat.load(filename);
     }
-    if(maxlen>0 && maxlen<tracemat.n_rows) tracemat = tracemat.rows(0,maxlen);
+    if(maxlen>0 && maxlen<tracemat.n_rows) tracemat = tracemat.rows(0,maxlen-1);
+    if (tracemat.n_rows < 2) {
+        throw std::invalid_argument("SMC input trace must contain at least 2 samples.");
+    }
 
     data_time  = tracemat.col(0);
     data_y    = tracemat.col(index);
@@ -209,7 +213,10 @@ SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_head
 
     // The time units here are assumed to be seconds
     data_time = time;
-    constants->sampling_frequency = 1.0 / (data_time(2)-data_time(1));
+    if (data_time.n_elem < 2 || data.n_elem < 2) {
+        throw std::invalid_argument("SMC time/data vectors must contain at least 2 samples.");
+    }
+    constants->sampling_frequency = 1.0 / (data_time(1)-data_time(0));
     cout << "setting sampling frequency to: "<<constants->sampling_frequency << endl;
     constants->set_time_scales();
     data_y = data;
