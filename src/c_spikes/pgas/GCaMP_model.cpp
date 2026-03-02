@@ -1,4 +1,5 @@
 #include"include/GCaMP_model.h"
+#include <stdexcept>
 
 using namespace std;
 
@@ -288,8 +289,10 @@ void GCaMP::evolve(double deltat, int ns){
 void GCaMP::evolve_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out, double & dff_out){
     switch(TSMode){
         case FIXED:
-            fixedStep(deltat,ns);
-            break;
+            throw std::logic_error(
+                "GCaMP::evolve_threadsafe does not support TSMode=FIXED. "
+                "Use TSMode=FIXEDLA or implement a threadsafe FIXED path."
+            );
         case FIXEDLA:
             dff_out = fixedStep_LA_threadsafe(deltat,ns,state_in,state_out);
             break;
