@@ -486,19 +486,33 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
     //double gam_in_test  = pin.gam_in  + var_selec[4]*gsl_ran_gaussian(rng,constants->gam_in_prop_sd);
     //double gam_out_test = pin.gam_out + var_selec[5]*gsl_ran_gaussian(rng,constants->gam_out_prop_sd);
 
-    // Sampling parameters using gamma multiplicative proposals
-    
-    double proposal_factors[6] = {1,1,1,1,1,1};
-    for(unsigned int i=0; i<6; i++){
-        proposal_factors[i] = gsl_ran_gamma(rng,1000,0.001);
-    }
+    // Sampling parameters with a symmetric random walk in log-space:
+    //   log(theta') = log(theta) + N(0, s^2)
+    // This keeps positivity and avoids asymmetric proposal corrections.
+    const double eps_pos = 1e-12;
+    auto safe_pos = [eps_pos](double x) -> double { return (x > eps_pos) ? x : eps_pos; };
+    auto choose_log_sd = [](double cur, double natural_sd) -> double {
+        double log_sd = 0.03;  // fallback: ~3% multiplicative step
+        if (natural_sd > 0.0 && cur > 0.0) {
+            log_sd = natural_sd / cur;  // approximate old additive scale near current value
+        }
+        if (log_sd < 1e-3) log_sd = 1e-3;
+        if (log_sd > 0.5) log_sd = 0.5;
+        return log_sd;
+    };
+    auto propose_log_rw = [&](double current, double natural_sd) -> double {
+        double cur = safe_pos(current);
+        double log_cur = log(cur);
+        double step = gsl_ran_gaussian(rng, choose_log_sd(cur, natural_sd));
+        return exp(log_cur + step);
+    };
 
-    double G_tot_test = pin.G_tot*((1-var_selec[0])+var_selec[0]*proposal_factors[0]);
-    double gamma_test = pin.gamma*((1-var_selec[1])+var_selec[1]*proposal_factors[1]);
-    double DCaT_test  = pin.DCaT*((1-var_selec[2])+var_selec[2]*proposal_factors[2]);
-    double Rf_test    = pin.Rf *((1-var_selec[3])+var_selec[3]*proposal_factors[3]);
-    double gam_in_test  = pin.gam_in *((1-var_selec[4])+var_selec[4]*proposal_factors[4]);
-    double gam_out_test = pin.gam_out*((1-var_selec[5])+var_selec[5]*proposal_factors[5]);
+    double G_tot_test = (var_selec[0] == 1) ? propose_log_rw(pin.G_tot, constants->G_tot_prop_sd) : pin.G_tot;
+    double gamma_test = (var_selec[1] == 1) ? propose_log_rw(pin.gamma, constants->gamma_prop_sd) : pin.gamma;
+    double DCaT_test = (var_selec[2] == 1) ? propose_log_rw(pin.DCaT, constants->DCaT_prop_sd) : pin.DCaT;
+    double Rf_test = (var_selec[3] == 1) ? propose_log_rw(pin.Rf, constants->Rf_prop_sd) : pin.Rf;
+    double gam_in_test = (var_selec[4] == 1) ? propose_log_rw(pin.gam_in, constants->gam_in_prop_sd) : pin.gam_in;
+    double gam_out_test = (var_selec[5] == 1) ? propose_log_rw(pin.gam_out, constants->gam_out_prop_sd) : pin.gam_out;
     
     arma::vec partest={G_tot_test,gamma_test,DCaT_test,Rf_test,gam_in_test,gam_out_test};
     string parnames[] = {"G_tot", "gamma","DCaT","Rf","gam_in","gam_out"};
@@ -524,10 +538,14 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
                           -0.5*pow((gam_out_test-constants->gam_out_mean)/constants->gam_out_sd,2)+ 0.5*pow((pin.gam_out-constants->gam_out_mean)/constants->gam_out_sd,2) 
                           -0.5*(res_test)/pout.sigma2 + 0.5*(res/pout.sigma2);
 
-    // add proposal factors
-    for (unsigned int i=0; i<6;i++){
-        //log_alpha_MH += stats::gsl_gamma_logpdf(1.0/proposal_factors[i],100,0.01) - stats::gsl_gamma_logpdf(proposal_factors[i],100,0.01);
-    }
+    // Jacobian/proposal correction for symmetric RW in log-space when target density
+    // is evaluated in parameter space.
+    if (var_selec[0] == 1) log_alpha_MH += log(safe_pos(G_tot_test)) - log(safe_pos(pin.G_tot));
+    if (var_selec[1] == 1) log_alpha_MH += log(safe_pos(gamma_test)) - log(safe_pos(pin.gamma));
+    if (var_selec[2] == 1) log_alpha_MH += log(safe_pos(DCaT_test)) - log(safe_pos(pin.DCaT));
+    if (var_selec[3] == 1) log_alpha_MH += log(safe_pos(Rf_test)) - log(safe_pos(pin.Rf));
+    if (var_selec[4] == 1) log_alpha_MH += log(safe_pos(gam_in_test)) - log(safe_pos(pin.gam_in));
+    if (var_selec[5] == 1) log_alpha_MH += log(safe_pos(gam_out_test)) - log(safe_pos(pin.gam_out));
 
     // cout<<"var: "<<setw(6)<<parnames[sampled_variable]<<' '
     //    <<"value: "<<setw(15)<<partest(sampled_variable)<<' '
