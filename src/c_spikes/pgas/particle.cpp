@@ -301,7 +301,7 @@ double SMC::logf(const Particle &pin, const Particle &pout, const param &par){
 
 
     lf += log(W[pin.burst][pout.burst]) +
-        pout.S*log(rate[pout.burst])-rate[pout.burst] - log(gsl_sf_gamma(pout.S+1)) +
+        pout.S*log(rate[pout.burst])-rate[pout.burst] - log(tgamma(pout.S+1)) +
         -0.5*pow((pout.B-pin.B)/(constants->bm_sigma*sqrt(dt)),2);
 
     return(lf);
@@ -332,10 +332,10 @@ void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, 
     model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
     
     log_probs[0] = log(W[parent.burst][0]);
-    log_probs[0] += ns*log(rate[0]) - log(gsl_sf_gamma(ns+1)) -rate[0];
+    log_probs[0] += ns*log(rate[0]) - log(tgamma(ns+1)) -rate[0];
     log_probs[0] += -0.5/(par.sigma2+dt*pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2);
     log_probs[1] = log(W[parent.burst][1]);
-    log_probs[1] += ns*log(rate[1]) - log(gsl_sf_gamma(ns+1)) -rate[1];
+    log_probs[1] += ns*log(rate[1]) - log(tgamma(ns+1)) -rate[1];
     log_probs[1] += -0.5/(par.sigma2+dt*pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2);
 
     utils::w_from_logW(log_probs,probs,2);
