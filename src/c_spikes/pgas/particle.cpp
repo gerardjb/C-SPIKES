@@ -405,13 +405,13 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
         part.burst = floor(idx/maxspikes);
         part.S     = idx%maxspikes;
 
-        //part.B     = z[0]*parent.B+z[1]*(y-model->getDFF(parent.C)) + gsl_ran_gaussian(rng,sigma_B_posterior);
-        part.B     = parent.B + g_noise;
-
         gsl_ran_discrete_free(rdisc);
     }
     
     model->evolve_threadsafe(dt, part.S, parent.C, state_out, ct);
+    if(!set){
+        part.B = z[0]*parent.B + z[1]*(y-ct) + g_noise;
+    }
     part.C     = state_out;
 
 }

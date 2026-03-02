@@ -542,12 +542,7 @@ void ParticleArray::move_and_weight(
 
                         Scalar ct = fixedStep_LA_kernel(dt, S(part_idx, t), state_in, state_out, params, true);
                         const Scalar parent_B = B(a, t-1);
-                        if (known_spikes) {
-                            B(part_idx, t) = z0*parent_B + z1*(y(t) - ct) + generator.normal(0.0, sigma_B_posterior);
-                        } else {
-                            // B(part_idx, t) = B(a, t-1) + g_noise(part_idx);
-                            B(part_idx, t) = parent_B + generator.normal(0.0, sigma_B_posterior);
-                        }
+                        B(part_idx, t) = z0*parent_B + z1*(y(t) - ct) + generator.normal(0.0, sigma_B_posterior);
 
 	                    // do not forget to release the state of the engine
 	                    random_pool.free_state(generator);
