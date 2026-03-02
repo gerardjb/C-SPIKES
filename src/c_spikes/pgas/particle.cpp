@@ -333,10 +333,10 @@ void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, 
     
     log_probs[0] = log(W[parent.burst][0]);
     log_probs[0] += ns*log(rate[0]) - log(gsl_sf_gamma(ns+1)) -rate[0];
-    log_probs[0] += -0.5/(par.sigma2+pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2);
+    log_probs[0] += -0.5/(par.sigma2+dt*pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2);
     log_probs[1] = log(W[parent.burst][1]);
     log_probs[1] += ns*log(rate[1]) - log(gsl_sf_gamma(ns+1)) -rate[1];
-    log_probs[1] += -0.5/(par.sigma2+pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2);
+    log_probs[1] += -0.5/(par.sigma2+dt*pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2);
 
     utils::w_from_logW(log_probs,probs,2);
     Z=utils::Z_from_logW(log_probs,2);
@@ -388,7 +388,7 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
         
         log_probs[i] = log(W[parent.burst][burst]);
         log_probs[i] += ns*log(rate[burst]) - log(tgamma(ns+1)) -rate[burst];
-        log_probs[i] += -0.5/(par.sigma2+pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2); 
+        log_probs[i] += -0.5/(par.sigma2+dt*pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2); 
         
     } 
 

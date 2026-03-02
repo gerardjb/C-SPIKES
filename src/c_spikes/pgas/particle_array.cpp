@@ -469,7 +469,7 @@ void ParticleArray::move_and_weight(
 
                 Scalar log_prob_tmp = log(W[parent_b][b]);
                 log_prob_tmp += ns*log(rate[b]) - log(tgamma(ns+1)) - rate[b];
-                log_prob_tmp += -0.5/(par.sigma2+pow(bm_sigma,2))*pow(y(t)-ct-parent_B,2);
+                log_prob_tmp += -0.5/(par.sigma2+dt*pow(bm_sigma,2))*pow(y(t)-ct-parent_B,2);
                 log_probs(particle_idx, spike_idx) = log_prob_tmp;
 
             });
