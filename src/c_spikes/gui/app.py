@@ -60,6 +60,10 @@ from c_spikes.gui.smc_viz import (
     list_spike_inference_runs,
     load_biophys_smc_payload,
 )
+from c_spikes.inference.pgas import (
+    PGAS_BM_SIGMA_DEFAULT,
+    PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -2202,6 +2206,12 @@ class MainWindow(QtWidgets.QMainWindow):
         gparam_path: Path,
         dataset_stems: List[str],
         trial_selection_path: Path,
+        pgas_bm_sigma: Optional[float] = PGAS_BM_SIGMA_DEFAULT,
+        pgas_bm_sigma_gap_s: float = 0.15,
+        pgas_bm_sigma_use_low_activity_mask: bool = False,
+        pgas_sigma2_target: Optional[float] = None,
+        pgas_sigma2_alpha: Optional[float] = None,
+        pgas_sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
     ) -> str:
         args: List[str] = [
             "python",
@@ -2225,6 +2235,24 @@ class MainWindow(QtWidgets.QMainWindow):
             "--run-tag",
             context.run_tag,
         ]
+        if pgas_bm_sigma is None:
+            args.extend(["--pgas-bm-sigma", "auto"])
+        else:
+            args.extend(["--pgas-bm-sigma", str(float(pgas_bm_sigma))])
+        args.extend(["--bm-sigma-spike-gap", str(float(pgas_bm_sigma_gap_s))])
+        if pgas_bm_sigma_use_low_activity_mask:
+            args.append("--pgas-bm-sigma-use-low-activity-mask")
+        if pgas_sigma2_target is not None:
+            args.extend(["--pgas-sigma2-target", str(float(pgas_sigma2_target))])
+        if pgas_sigma2_alpha is not None:
+            args.extend(["--pgas-sigma2-alpha", str(float(pgas_sigma2_alpha))])
+        if pgas_sigma2_target is not None:
+            args.extend(
+                [
+                    "--pgas-sigma2-prior-strength",
+                    str(float(pgas_sigma2_prior_strength)),
+                ]
+            )
         for stem in dataset_stems:
             args.extend(["--dataset", stem])
         args.extend(["--trial-selection-path", str(trial_selection_path)])
@@ -2308,6 +2336,12 @@ class MainWindow(QtWidgets.QMainWindow):
             gparam_path=gparam_path,
             dataset_stems=dataset_stems,
             trial_selection_path=trial_selection_path,
+            pgas_bm_sigma=PGAS_BM_SIGMA_DEFAULT,
+            pgas_bm_sigma_gap_s=0.15,
+            pgas_bm_sigma_use_low_activity_mask=False,
+            pgas_sigma2_target=None,
+            pgas_sigma2_alpha=None,
+            pgas_sigma2_prior_strength=PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
         )
         try:
             job_name, script_text = render_sbatch_script(
@@ -3611,6 +3645,24 @@ class MainWindow(QtWidgets.QMainWindow):
             "pgas": {
                 "constants_file": str(settings.pgas_constants_file),
                 "gparam_file": str(settings.pgas_gparam_file),
+                "bm_sigma": (
+                    None
+                    if settings.pgas_fixed_bm_sigma is None
+                    else float(settings.pgas_fixed_bm_sigma)
+                ),
+                "bm_sigma_gap_s": float(settings.pgas_bm_sigma_gap_s),
+                "bm_sigma_use_low_activity_mask": bool(settings.pgas_bm_sigma_use_low_activity_mask),
+                "sigma2_target": (
+                    None
+                    if settings.pgas_sigma2_target is None
+                    else float(settings.pgas_sigma2_target)
+                ),
+                "sigma2_alpha": (
+                    None
+                    if settings.pgas_sigma2_alpha is None
+                    else float(settings.pgas_sigma2_alpha)
+                ),
+                "sigma2_prior_strength": float(settings.pgas_sigma2_prior_strength),
             },
             "edges": {
                 "enabled": bool(self._edges_enabled),

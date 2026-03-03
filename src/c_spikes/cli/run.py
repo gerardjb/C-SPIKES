@@ -23,7 +23,10 @@ preload_tensorflow_quietly()
 
 from c_spikes.inference.cache import set_cache_root
 from c_spikes.pipeline import RunConfig, run_batch
-from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
+from c_spikes.inference.pgas import (
+    PGAS_BM_SIGMA_DEFAULT,
+    PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+)
 
 
 def _parse_dataset_list(path: Path) -> List[str]:
@@ -128,6 +131,38 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=str(PGAS_BM_SIGMA_DEFAULT),
         help="Fixed PGAS bm_sigma value, or 'auto' to estimate from data (default: fixed).",
     )
+    parser.add_argument(
+        "--pgas-bm-sigma-use-low-activity-mask",
+        action="store_true",
+        help="When auto-calibrating bm_sigma, estimate from low-activity regions masked around spikes.",
+    )
+    parser.add_argument(
+        "--pgas-sigma2-target",
+        type=str,
+        default=None,
+        help=(
+            "Optional sigma2 mean target used to deterministically set inverse-gamma prior "
+            "(beta = target * (alpha + 1)). Use 'none' to disable."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-sigma2-alpha",
+        type=str,
+        default=None,
+        help=(
+            "Optional inverse-gamma alpha for sigma2 prior. If omitted and --pgas-sigma2-target "
+            "is set, alpha is derived from --pgas-sigma2-prior-strength."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-sigma2-prior-strength",
+        type=float,
+        default=PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+        help=(
+            "Strength knob used when mapping sigma2 target to IG prior alpha "
+            "(alpha = 2 + strength) if --pgas-sigma2-alpha is not set."
+        ),
+    )
     parser.add_argument("--pgas-resample-fs", type=float, help="PGAS resample frequency (Hz). (deprecated, kept for compatibility)")
     parser.add_argument(
         "--cascade-resample-fs",
@@ -211,6 +246,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         cascade_model_name=str(args.cascade_model_name),
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+        pgas_bm_sigma_use_low_activity_mask=bool(args.pgas_bm_sigma_use_low_activity_mask),
+        pgas_sigma2_target=_parse_optional_float(args.pgas_sigma2_target),
+        pgas_sigma2_alpha=_parse_optional_float(args.pgas_sigma2_alpha),
+        pgas_sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),
         run_tag=args.run_tag,
         trialwise_correlations=bool(args.trialwise_correlations),

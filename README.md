@@ -98,6 +98,19 @@ This tab contains panels that allow selection of which methods (i.e., BiophysSMC
   `slurm_profile.json` controls shell flags (`eo_pipefail` default, `euo_pipefail`,
   or `off`).
 
+#### Tester notes: what's new in GUI behavior
+- **Sbatch generation is now run-scoped and reproducible**:
+  - generated jobs include explicit `--cache-root` and `--trial-selection-path` under the selected run directory.
+  - generated jobs include explicit PGAS calibration arguments so behavior is deterministic across machines.
+- **PGAS calibration settings are now recorded in GUI run manifests**:
+  - `data_dir/spike_inference/<run_tag>/manifest.json` now records `bm_sigma`, `bm_sigma_gap_s`,
+    `bm_sigma_use_low_activity_mask`, `sigma2_target`, `sigma2_alpha`, and `sigma2_prior_strength`.
+  - this makes it easier to audit or compare multiple alpha-test runs.
+- **No new PGAS calibration widgets yet**:
+  - the GUI currently does not expose direct fields for `sigma2_target`/`sigma2_alpha`/`sigma2_prior_strength`.
+  - current GUI default behavior remains fixed-workflow-safe: `bm_sigma=0.02`, no sigma2 override.
+  - if you want auto `bm_sigma` or custom sigma2 priors right now, use CLI (`python -m c_spikes.cli.run`) or edit the generated sbatch command before submission.
+
 ### Biophys ML tab
 - **Run tag**: outputs are organized under `data_dir/biophys_ml/<run_tag>/`.
 - **Use cache**: PGAS cell-parameter inference can reuse cache under `data_dir/biophys_ml/<run_tag>/inference_cache/`.
@@ -181,7 +194,14 @@ Where outputs go:
 CLI behavior (`scripts/demo_compare_methods.py` and `python -m c_spikes.cli.run`):
 - `--pgas-bm-sigma auto` (or `none`) enables automatic noise calibration from data.
 - `--pgas-bm-sigma <value>` uses a fixed/manual `bm_sigma`.
-- CLI currently exposes `bm_sigma` directly; `sigma2` control is via Python API (`PgasConfig`).
+- Optional sigma2 controls are exposed via:
+  - `--pgas-sigma2-target <value>`
+  - `--pgas-sigma2-alpha <value>`
+  - `--pgas-sigma2-prior-strength <value>`
+- `--pgas-bm-sigma-use-low-activity-mask` only affects auto-calibration mode.
+- Defaults preserve fixed workflows across CLI/pipeline/GUI:
+  - fixed `bm_sigma=0.02`
+  - no sigma2 prior override unless explicitly requested.
 
 Python API behavior (`c_spikes.inference.pgas.PgasConfig`):
 - `bm_sigma=None`:

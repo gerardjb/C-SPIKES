@@ -19,8 +19,10 @@ from .eval import (
 )
 from .pgas import (
     PGAS_RESAMPLE_FS,
+    PGAS_BM_SIGMA_DEFAULT,
     PGAS_BURNIN,
     PGAS_NITER,
+    PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
     PgasConfig,
     run_pgas_inference,
     pgas_windows_from_result,
@@ -63,7 +65,11 @@ class DatasetRunConfig:
     corr_sigma_ms: float = 50.0
     pgas_resample_fs: Optional[float] = None  # None => use raw/native
     cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
-    pgas_fixed_bm_sigma: Optional[float] = None  # Optional fixed bm_sigma (skip tuning)
+    pgas_fixed_bm_sigma: Optional[float] = PGAS_BM_SIGMA_DEFAULT  # Optional fixed bm_sigma (skip tuning)
+    pgas_bm_sigma_use_low_activity_mask: bool = False
+    pgas_sigma2_target: Optional[float] = None
+    pgas_sigma2_alpha: Optional[float] = None
+    pgas_sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
     cascade_discretize: bool = True
     cascade_model_name: str = "universal_p_cascade_exc_30"
     trialwise_correlations: bool = False
@@ -219,6 +225,10 @@ def run_inference_for_dataset(
             maxspikes=None,
             bm_sigma=cfg.pgas_fixed_bm_sigma,
             bm_sigma_gap_s=cfg.bm_sigma_gap_s,
+            bm_sigma_use_low_activity_mask=cfg.pgas_bm_sigma_use_low_activity_mask,
+            sigma2_target=cfg.pgas_sigma2_target,
+            sigma2_alpha=cfg.pgas_sigma2_alpha,
+            sigma2_prior_strength=cfg.pgas_sigma2_prior_strength,
             edges=edges_effective,
             use_cache=cfg.use_cache,
         )

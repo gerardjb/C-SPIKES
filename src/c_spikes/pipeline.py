@@ -17,7 +17,10 @@ from typing import Dict, Iterable, List, Optional, Sequence
 import numpy as np
 
 from c_spikes.inference.cascade import CASCADE_RESAMPLE_FS
-from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
+from c_spikes.inference.pgas import (
+    PGAS_BM_SIGMA_DEFAULT,
+    PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+)
 from c_spikes.inference.smoothing import resolve_smoothing_levels
 from c_spikes.inference.types import MethodResult, ensure_serializable
 from c_spikes.inference.workflow import (
@@ -58,6 +61,10 @@ class RunConfig:
     cascade_model_name: str = "universal_p_cascade_exc_30"
     pgas_maxspikes: Optional[int] = None
     pgas_fixed_bm_sigma: Optional[float] = PGAS_BM_SIGMA_DEFAULT
+    pgas_bm_sigma_use_low_activity_mask: bool = False
+    pgas_sigma2_target: Optional[float] = None
+    pgas_sigma2_alpha: Optional[float] = None
+    pgas_sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
     run_tag: Optional[str] = None  # optional override
     pgas_c0_first_y: bool = False
     trialwise_correlations: bool = False
@@ -380,6 +387,10 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 pgas_resample_fs=cfg.pgas_resample_fs,
                 cascade_resample_fs=cfg.cascade_resample_fs,
                 pgas_fixed_bm_sigma=cfg.pgas_fixed_bm_sigma,
+                pgas_bm_sigma_use_low_activity_mask=cfg.pgas_bm_sigma_use_low_activity_mask,
+                pgas_sigma2_target=cfg.pgas_sigma2_target,
+                pgas_sigma2_alpha=cfg.pgas_sigma2_alpha,
+                pgas_sigma2_prior_strength=cfg.pgas_sigma2_prior_strength,
                 cascade_discretize=bool(cfg.cascade_discretize),
                 cascade_model_name=str(cfg.cascade_model_name),
                 trialwise_correlations=bool(cfg.trialwise_correlations),
