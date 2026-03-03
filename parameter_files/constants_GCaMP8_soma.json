@@ -36,7 +36,9 @@
         "G_tot prop sd":0.5e-5,
         "gamma prop sd":40,
         "DCaT prop sd":2e-6,
-        "Rf prop sd":1
+        "Rf prop sd":1,
+        "gam_in prop sd":1,
+        "gam_out prop sd":1
     },
 
     "MCMC":{
