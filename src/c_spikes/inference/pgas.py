@@ -31,6 +31,7 @@ PGAS_BM_SIGMA_MIN: float = 5e-4
 PGAS_BM_SIGMA_MAX: float = 5e-2
 PGAS_SIGMA2_TARGET_MIN: float = 5e-6
 PGAS_SIGMA2_TARGET_MAX: float = 5e-2
+PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT: float = 4.0
 
 
 @dataclass
@@ -50,6 +51,7 @@ class PgasConfig:
     bm_sigma_use_low_activity_mask: bool = False
     sigma2_target: Optional[float] = None
     sigma2_alpha: Optional[float] = None
+    sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
     edges: Optional[np.ndarray] = None
     use_cache: bool = True
 
@@ -235,6 +237,28 @@ def format_tag_token(value: str) -> str:
     return value.replace(" ", "_").replace(".", "p")
 
 
+def map_sigma2_target_to_ig_params(
+    sigma2_target: float,
+    *,
+    sigma2_alpha: Optional[float] = None,
+    sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+) -> Tuple[float, float, float]:
+    sigma2_target_clipped = float(
+        np.clip(float(sigma2_target), PGAS_SIGMA2_TARGET_MIN, PGAS_SIGMA2_TARGET_MAX)
+    )
+    if sigma2_alpha is not None:
+        alpha = float(sigma2_alpha)
+    else:
+        strength = float(sigma2_prior_strength)
+        if not np.isfinite(strength) or strength <= 0:
+            strength = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+        alpha = 2.0 + strength
+    if not np.isfinite(alpha) or alpha <= 0:
+        alpha = 2.0 + PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+    beta = float(sigma2_target_clipped * (alpha + 1.0))
+    return sigma2_target_clipped, float(alpha), beta
+
+
 def prepare_constants_with_params(
     base_constants: Path,
     *,
@@ -242,6 +266,7 @@ def prepare_constants_with_params(
     bm_sigma: Optional[float] = None,
     sigma2_target: Optional[float] = None,
     sigma2_alpha: Optional[float] = None,
+    sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
 ) -> Path:
     base_constants = Path(base_constants)
     tokens = [f"ms{maxspikes}"]
@@ -251,6 +276,8 @@ def prepare_constants_with_params(
         tokens.append(f"s2{format_tag_token(f'{sigma2_target:.4g}')}")
     if sigma2_alpha is not None:
         tokens.append(f"a2{format_tag_token(f'{sigma2_alpha:.4g}')}")
+    elif sigma2_target is not None:
+        tokens.append(f"p2{format_tag_token(f'{sigma2_prior_strength:.4g}')}")
     target_path = build_constants_cache_path(base_constants, tokens)
     if target_path.exists():
         return target_path
@@ -261,22 +288,21 @@ def prepare_constants_with_params(
     data.setdefault("MCMC", {})["maxspikes"] = int(maxspikes)
     if bm_sigma is not None:
         data.setdefault("BM", {})["bm_sigma"] = float(bm_sigma)
-    if sigma2_target is not None or sigma2_alpha is not None:
+    if sigma2_target is not None:
         priors = data.setdefault("priors", {})
-        alpha = (
-            float(sigma2_alpha)
-            if sigma2_alpha is not None
-            else float(priors.get("alpha sigma2", 2.0))
+        sigma2_target_clipped, alpha, beta = map_sigma2_target_to_ig_params(
+            sigma2_target,
+            sigma2_alpha=sigma2_alpha,
+            sigma2_prior_strength=sigma2_prior_strength,
         )
+        priors["alpha sigma2"] = float(alpha)
+        priors["beta sigma2"] = float(beta)
+    elif sigma2_alpha is not None:
+        priors = data.setdefault("priors", {})
+        alpha = float(sigma2_alpha)
         if not np.isfinite(alpha) or alpha <= 0:
-            alpha = 2.0
-        if sigma2_alpha is not None:
-            priors["alpha sigma2"] = float(alpha)
-        if sigma2_target is not None:
-            sigma2_target_clipped = float(
-                np.clip(float(sigma2_target), PGAS_SIGMA2_TARGET_MIN, PGAS_SIGMA2_TARGET_MAX)
-            )
-            priors["beta sigma2"] = float(sigma2_target_clipped * (alpha + 1.0))
+            alpha = 2.0 + PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+        priors["alpha sigma2"] = float(alpha)
     with target_path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
     return target_path
@@ -382,6 +408,7 @@ def run_pgas_inference(
         bm_sigma=bm_sigma,
         sigma2_target=sigma2_target,
         sigma2_alpha=config.sigma2_alpha,
+        sigma2_prior_strength=config.sigma2_prior_strength,
     )
     label_token = format_tag_token(config.downsample_label)
     pgas_resample_token = "raw" if config.resample_fs is None else format_tag_token(f"{config.resample_fs:g}")
@@ -390,6 +417,12 @@ def run_pgas_inference(
     if sigma2_target is not None:
         s2_token = format_tag_token(f"{sigma2_target:.3g}")
         run_tag = f"{run_tag}_s2{s2_token}"
+        if config.sigma2_alpha is not None:
+            a2_token = format_tag_token(f"{config.sigma2_alpha:.3g}")
+            run_tag = f"{run_tag}_a2{a2_token}"
+        else:
+            p2_token = format_tag_token(f"{config.sigma2_prior_strength:.3g}")
+            run_tag = f"{run_tag}_p2{p2_token}"
     cfg_dict = {
         "niter": config.niter,
         "burnin": config.burnin,
@@ -404,6 +437,8 @@ def run_pgas_inference(
         cfg_dict["sigma2_target"] = float(sigma2_target)
     if config.sigma2_alpha is not None:
         cfg_dict["sigma2_alpha"] = float(config.sigma2_alpha)
+    if sigma2_target is not None:
+        cfg_dict["sigma2_prior_strength"] = float(config.sigma2_prior_strength)
     if calibration is not None:
         cfg_dict["noise_calibration"] = {
             "method": "two_timescale_robust_diff",

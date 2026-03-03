@@ -175,6 +175,42 @@ Where outputs go:
 
 `<tag>` is the per-trial PGAS tag and typically ends in `_trial0`, `_trial1`, … (and also includes smoothing/resample/bm_sigma tokens).
 
+### PGAS noise calibration modes (`bm_sigma` and `sigma2`)
+`bm_sigma` and `sigma2` can be driven automatically from data, or set manually.
+
+CLI behavior (`scripts/demo_compare_methods.py` and `python -m c_spikes.cli.run`):
+- `--pgas-bm-sigma auto` (or `none`) enables automatic noise calibration from data.
+- `--pgas-bm-sigma <value>` uses a fixed/manual `bm_sigma`.
+- CLI currently exposes `bm_sigma` directly; `sigma2` control is via Python API (`PgasConfig`).
+
+Python API behavior (`c_spikes.inference.pgas.PgasConfig`):
+- `bm_sigma=None`:
+  - Auto-calibrate both `bm_sigma` and `sigma2_target` from the trace.
+- `bm_sigma=<float>, sigma2_target=None`:
+  - Use manual `bm_sigma`; do not auto-derive `sigma2_target`.
+- `sigma2_target=<float>`:
+  - Set inverse-gamma prior deterministically from this target.
+  - Mapping is `beta_sigma2 = sigma2_target * (alpha_sigma2 + 1)`.
+  - If `sigma2_alpha` is omitted, `alpha_sigma2 = 2 + sigma2_prior_strength` (default `4.0`).
+  - If `sigma2_alpha` is provided, it overrides the strength-derived alpha.
+
+Examples:
+```python
+from c_spikes.inference.pgas import PgasConfig
+
+# 1) Fully automatic calibration
+cfg_auto = PgasConfig(..., bm_sigma=None, sigma2_target=None)
+
+# 2) Manual bm_sigma, no sigma2 override
+cfg_manual_bm = PgasConfig(..., bm_sigma=0.02, sigma2_target=None)
+
+# 3) Manual sigma2 target with deterministic prior strength
+cfg_sigma2_strength = PgasConfig(..., bm_sigma=0.02, sigma2_target=2e-4, sigma2_prior_strength=4.0)
+
+# 4) Manual sigma2 target + fully manual inverse-gamma alpha
+cfg_sigma2_alpha = PgasConfig(..., bm_sigma=0.02, sigma2_target=2e-4, sigma2_alpha=8.0)
+```
+
 ### Example: batch PGAS on jGCaMP8m
 If you have jGCaMP8m-formatted datasets under `data/janelia_8m/excitatory/`, you can run PGAS across the whole directory via the batch CLI:
 ```bash
