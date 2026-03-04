@@ -1,0 +1,71 @@
+{
+  "description": "Commit/run-tag matrix for PGAS comparison sweeps (main baseline + calibrate_bm_s2 commits).",
+  "baseline_main_commit": "b6e7d799f564d567e1273b61ad624c473c5a8fca",
+  "builds": [
+    {
+      "run_tag": "m00_main_base",
+      "commit": "b6e7d799f564d567e1273b61ad624c473c5a8fca",
+      "label": "main baseline before calibrate_bm_s2"
+    },
+    {
+      "run_tag": "b01_lik_dt",
+      "commit": "4cf9e6931bd43f465d34f74157fcb663f5b3e0e4",
+      "label": "add dt in likelihood term"
+    },
+    {
+      "run_tag": "b02_kalman_b",
+      "commit": "5aba209bbb12f44aee0dc1381a59ab8f27a309c7",
+      "label": "restore implied Kalman baseline update"
+    },
+    {
+      "run_tag": "b03_bupd_ct",
+      "commit": "56f77cf76c2ced1597c0969978fded26d5f2da4d",
+      "label": "use ct for B update"
+    },
+    {
+      "run_tag": "b04_cpu_math",
+      "commit": "7871ebcebc91e2d8a9ae6892e3e785a3fe265032",
+      "label": "align CPU weighting math with array path"
+    },
+    {
+      "run_tag": "b05_la_guard",
+      "commit": "da5cb9b87a891b10ff9e7dd2e2a7e0ddc0d504f7",
+      "label": "error on non-LA GCaMP evolve path"
+    },
+    {
+      "run_tag": "b06_trim_oob",
+      "commit": "7dcb0f866c104597de55714607c66b02132b592c",
+      "label": "trim/oob/error handling fixes"
+    },
+    {
+      "run_tag": "b07_auto_calib",
+      "commit": "2192e3ce920007e01b3ed355a49e8d0023b085e9",
+      "label": "robust bm/sigma2 auto-calibration"
+    },
+    {
+      "run_tag": "b08_mh_logrw",
+      "commit": "f0263bb712892a2d44c8c9922a3d285b489acbfd",
+      "label": "symmetric MH proposals in log space"
+    },
+    {
+      "run_tag": "b09_gam_io_sd",
+      "commit": "c7236dc497997bc7ba4a26b8472acbdccb2bdf85",
+      "label": "proposal sd for gam_in/gam_out"
+    },
+    {
+      "run_tag": "b10_s2_ig_map",
+      "commit": "8b29e6721c63c99523a92f264121679ad0f65202",
+      "label": "sigma2_target to inverse-gamma mapping"
+    },
+    {
+      "run_tag": "b11_entry_wire",
+      "commit": "3fd5ea61926f399f34fbef5f1baae5dfab9770c2",
+      "label": "CLI/GUI/pipeline wiring updates"
+    },
+    {
+      "run_tag": "b12_provenance",
+      "commit": "4ee748ceed10c0707ed9d8d85f4143985f7476af",
+      "label": "calibration provenance metadata schema"
+    }
+  ]
+}
