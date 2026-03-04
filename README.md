@@ -202,6 +202,10 @@ CLI behavior (`scripts/demo_compare_methods.py` and `python -m c_spikes.cli.run`
 - Defaults preserve fixed workflows across CLI/pipeline/GUI:
   - fixed `bm_sigma=0.02`
   - no sigma2 prior override unless explicitly requested.
+- PGAS cache metadata now persists audit fields for provenance:
+  - `calibration_schema_version`
+  - `calibration_provenance`
+  - `constants_provenance`
 
 Python API behavior (`c_spikes.inference.pgas.PgasConfig`):
 - `bm_sigma=None`:
