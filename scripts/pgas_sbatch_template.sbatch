@@ -175,11 +175,11 @@ if [[ "$USE_CACHE" == "1" ]]; then
   CMD+=(--use-cache)
 fi
 
-if [[ -n "${TRIAL_SELECTION_PATH}" && "${TRIAL_SELECTION_PATH}" != "<your_path_to_trial_selection_json_or_leave_empty>" ]]; then
+if [[ -n "${TRIAL_SELECTION_PATH}" ]]; then
   CMD+=(--trial-selection-path "$TRIAL_SELECTION_PATH")
 fi
 
-if [[ -n "${EDGES_PATH}" && "${EDGES_PATH}" != "<your_path_to_edges_npy_or_leave_empty>" ]]; then
+if [[ -n "${EDGES_PATH}" ]]; then
   CMD+=(--edges-path "$EDGES_PATH")
 fi
 
