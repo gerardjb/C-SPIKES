@@ -14,9 +14,9 @@ The goal is to run inference for each target commit into distinct run tags so re
      - `$1`: run tag
      - `$2`: commit hash
    - For each job, it:
-     - creates a conda env named from run tag
+     - clones a pre-existing base conda env into a run-specific env
      - checks out the requested commit into a detached worktree
-     - performs a non-editable install (`pip install <worktree>`)
+     - performs a non-editable install (`pip install --no-deps --no-build-isolation <worktree>`)
      - runs PGAS inference into run-scoped output/cache directories
 
 2. `pgas_commit_builds.json`
@@ -42,11 +42,50 @@ Edit `scripts/pgas_sbatch_template.sbatch` and replace placeholder paths with yo
 Also check:
 - `PGAS_CONSTANTS`, `PGAS_GPARAM`
 - `BM_SIGMA`, `BM_SIGMA_GAP_S`
-- `PYTHON_VERSION`
+- `CONDA_BASE_ENV`
+- `CONDA_OFFLINE_MODE`
 
 Important:
 - The template removes an existing conda env with the same name and clears an existing build dir for that run tag.
 - Use unique run-tag prefixes for different sweeps.
+- On clusters without outbound internet from compute nodes, keep `CONDA_OFFLINE_MODE=1` and set `CONDA_BASE_ENV` to an already-provisioned local env.
+
+### HPC localization checklist
+
+1. **Slurm resources and logs**
+   - Update `#SBATCH` resources (`--partition`, `--gres`, `--cpus-per-task`, etc.) for your cluster policy.
+   - Ensure directories referenced by `#SBATCH --output` and `#SBATCH --error` already exist before submission.
+
+2. **Module stack**
+   - Replace `module load ...` lines with locally available module names/versions.
+   - Verify the job environment has `python`, `g++`, `gfortran`, and `cmake` on `PATH`.
+
+3. **Offline build requirements**
+   - `vcpkg` must exist at: `REPO_ROOT/vcpkg/scripts/buildsystems/vcpkg.cmake`.
+   - `kokkos-src` must exist locally under `REPO_ROOT/build/...` or be set explicitly via `KOKKOS_SOURCE_OVERRIDE`.
+   - The template links `vcpkg` into each detached worktree and forces local Kokkos source use so compute nodes do not clone from GitHub.
+
+4. **Conda strategy**
+   - The template clones `CONDA_BASE_ENV` into a per-run env (`<run_tag>_build`).
+   - For offline compute nodes, keep `CONDA_OFFLINE_MODE=1`.
+   - Base env must already contain build backend tooling (for example `scikit-build-core`).
+
+5. **Execution path**
+   - Keep the command as `python -m c_spikes.cli.run`.
+   - Do not swap back to `<worktree>/run_pipeline.py` for sweep jobs; that launcher prepends source paths and can bypass compiled backend modules from the installed build.
+
+### Quick preflight checks (login node)
+
+```bash
+# Template syntax
+bash -n scripts/pgas_sbatch_template.sbatch
+
+# Confirm hashes are available locally
+git cat-file -e <commit_hash>^{commit}
+
+# Preview submissions only
+python scripts/submit_pgas_commit_builds.py --dry-run
+```
 
 ## 3. Ensure commits are available in the submitting clone
 
@@ -86,7 +125,7 @@ python scripts/submit_pgas_commit_builds.py --include-run-tag b07_auto_calib --i
 python scripts/submit_pgas_commit_builds.py --exclude-run-tag m00_main_base --run-tag-prefix <subset_excludes_>
 
 # Add cluster-specific sbatch options
-python scripts/submit_pgas_commit_builds.py --run-tag-prefix cmp_ --sbatch-arg=--account=<account> --sbatch-arg=--partition=<partition>
+python scripts/submit_pgas_commit_builds.py --run-tag-prefix <informative_prefix> --sbatch-arg=--account=<account> --sbatch-arg=--partition=<partition>
 
 # Throttle submissions
 python scripts/submit_pgas_commit_builds.py --run-tag-prefix <informative_prefix> --sleep-seconds 1.0
@@ -106,7 +145,7 @@ with:
 
 To compare in GUI:
 
-1. Launch GUI from main build (though in theory all of the gui renderings from the worktree commits should not have cache collision issues).
+1. Launch GUI from your current main build.
 2. Set dataset directory to the same `DATA_ROOT` parent used in the jobs.
 3. In **BiophysSMC viz**, refresh run tags and select sweep run tags (for example `cmp_*`).
 4. Compare trajectories/parameter traces across runs.
@@ -116,5 +155,4 @@ To compare in GUI:
 1. Use a consistent run-tag prefix per sweep batch.
 2. Keep constants/gparam/edges/trial-selection fixed across commits.
 3. Archive Slurm stdout/stderr with the run.
-4. Avoid modifying the template mid-sweep (unless you're an asshole).
-
+4. Avoid modifying the template mid-sweep.
