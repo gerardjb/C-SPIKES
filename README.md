@@ -8,6 +8,7 @@ PGAS is a compiled C++/pybind extension. The quickest path on Linux/HPC is:
 1. Install C++ deps via vcpkg (see `kokkos_install.md` for the exact commands/pins used in this repo).
 2. Install the Python package in editable mode (builds the extension):
    ```bash
+   conda create -n c_spikes python=3.11
    pip install -e .
    ```
 
