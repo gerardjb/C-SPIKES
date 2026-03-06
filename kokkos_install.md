@@ -4,9 +4,6 @@ Vcpkg is used to grab the c++ dependecies. However, I was running into issues wi
 cd /scratch/gpfs/<username>/C-SPIKES
 git clone https://github.com/microsoft/vcpkg
 ./vcpkg/bootstrap-vcpkg.sh
-cd vcpkg
-git checkout tags/2025.04.09
-cd ..
 ./vcpkg/vcpkg install gsl Armadillo jsoncpp boost-circular-buffer
 ./vcpkg/vcpkg integrate install
 ```
