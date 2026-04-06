@@ -1,3 +1,27 @@
+## Nature Methods software availability details (for submission)
+
+### 1) Dependencies, operating systems, tested versions, and hardware requirements
+- **Primary software dependencies**:
+  - Python `>=3.8` (recommended/tested path in this repo: Python `3.10` to `3.11`)
+  - NumPy, SciPy, Matplotlib, PySide6, h5py, ruamel.yaml
+  - PyTorch `>=2.0`
+  - TensorFlow (CPU and GPU-capable installs are supported where available)
+  - PGAS build stack: `scikit-build-core`, `pybind11`, CMake toolchain, and a C++ compiler
+  - For GPU PGAS builds: Kokkos with CUDA enabled (see `kokkos_install.md`)
+- **Operating systems supported**:
+  - Linux (`x86_64`) and Windows (`x86_64`) are supported for installation and CPU workflows.
+  - **GPU backends are currently available on Linux only**.
+- **Versions tested for this release**:
+  - Linux: Ubuntu `22.04`/`24.04` (CPU; GPU path tested on Ubuntu `22.04` with CUDA-enabled Kokkos)
+  - Windows: Windows `11` (CPU workflows)
+- **Non-standard hardware requirements**:
+  - No non-standard hardware is required for CPU workflows.
+  - For GPU acceleration, an NVIDIA GPU with a compatible CUDA driver/toolchain is required (Linux only).
+
+### 2) Typical installation time on a "normal" desktop computer
+- **CPU-only install** (`conda create` + `pip install -e .`): typically **~10-25 minutes**.
+- **GPU-enabled install** (including Kokkos/CUDA toolchain setup and PGAS GPU build): typically **~30-90 minutes**, depending on compiler/cache state and local CUDA setup.
+
 # C-SPIKES usage guide
 
 The C-SPIKES (**C**alcium **S**pike **P**rocessing using **I**ntegrated **K**inetic **E**stimation and **S**imulation) repository bundles multiple spike-inference backends (PGAS, ENS2, CASCADE) and a Python API for running and comparing them on your own calcium imaging data.
