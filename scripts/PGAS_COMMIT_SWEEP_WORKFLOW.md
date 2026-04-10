@@ -4,6 +4,7 @@ This describes how to run commit-by-commit PGAS comparisons using:
 - `scripts/pgas_sbatch_template.sbatch`
 - `scripts/pgas_commit_builds.json`
 - `scripts/submit_pgas_commit_builds.py`
+- `scripts/PGAS_BUILD_CONTRACT.md` (environment/build invariants)
 
 The goal is to run inference for each target commit into distinct run tags so results can be compared in GUI visualizations.
 
@@ -44,6 +45,8 @@ Also check:
 - `BM_SIGMA`, `BM_SIGMA_GAP_S`
 - `CONDA_BASE_ENV`
 - `CONDA_OFFLINE_MODE`
+
+Finally, ensure modules used for conda/c++ are availble (`Environment + build setup` section)
 
 Important:
 - The template removes an existing conda env with the same name and clears an existing build dir for that run tag.
