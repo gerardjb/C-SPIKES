@@ -31,6 +31,7 @@ PGAS_CONSTANTS="$REPO_ROOT/parameter_files/constants_GCaMP8_soma.json"
 PGAS_GPARAM="$REPO_ROOT/src/c_spikes/pgas/20230525_gold.dat"
 EDGES_PATH="/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/sample_data/janelia_8f/excitatory/edges/edges.npy"
 TRIAL_SELECTION_PATH="/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/sample_data/janelia_8f/excitatory/spike_inference/run_3/slurm/trial_selection.json"
+# If empty, datasets are inferred from TRIAL_SELECTION_PATH keys (when provided).
 DATASET_TAGS=("jGCaMP8f_ANM471993_cell01" "jGCaMP8f_ANM471993_cell02")
 USE_CACHE=1
 BM_SIGMA="0.02"
@@ -152,6 +153,34 @@ PGAS_OUTPUT_ROOT="$RUN_ROOT/pgas_output"
 EVAL_ROOT="$RUN_ROOT/cli_evaluation"
 mkdir -p "$RUN_ROOT" "$CACHE_ROOT" "$PGAS_OUTPUT_ROOT" "$RUN_ROOT/slurm"
 
+RESOLVED_DATASET_TAGS=("${DATASET_TAGS[@]}")
+if [[ ${#RESOLVED_DATASET_TAGS[@]} -eq 0 && -n "${TRIAL_SELECTION_PATH}" ]]; then
+  if [[ ! -f "$TRIAL_SELECTION_PATH" ]]; then
+    echo "[error] TRIAL_SELECTION_PATH not found: $TRIAL_SELECTION_PATH" >&2
+    exit 7
+  fi
+  mapfile -t RESOLVED_DATASET_TAGS < <(
+    python - "$TRIAL_SELECTION_PATH" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+if not isinstance(payload, dict):
+    raise SystemExit("Trial selection JSON must be an object: {dataset_stem: [trial_idx, ...]}")
+keys = sorted(k.strip() for k in payload.keys() if str(k).strip())
+for key in keys:
+    print(key)
+PY
+  )
+  if [[ ${#RESOLVED_DATASET_TAGS[@]} -eq 0 ]]; then
+    echo "[error] No dataset keys found in trial selection file: $TRIAL_SELECTION_PATH" >&2
+    exit 8
+  fi
+  echo "[setup] Resolved ${#RESOLVED_DATASET_TAGS[@]} dataset tag(s) from trial selection: $TRIAL_SELECTION_PATH"
+fi
+
 CMD=(
   python -m c_spikes.cli.run
   --data-root "$DATA_ROOT"
@@ -167,7 +196,7 @@ CMD=(
   --bm-sigma-spike-gap "$BM_SIGMA_GAP_S"
 )
 
-for dataset_tag in "${DATASET_TAGS[@]}"; do
+for dataset_tag in "${RESOLVED_DATASET_TAGS[@]}"; do
   CMD+=(--dataset "$dataset_tag")
 done
 
