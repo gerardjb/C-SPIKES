@@ -36,8 +36,8 @@ Edit `scripts/pgas_sbatch_template.sbatch` and replace placeholder paths with yo
 - `DATA_ROOT`
 - `RESULTS_PARENT`
 - `SLURM_LOG_DIR`
-- `EDGES_PATH` (or leave placeholder to skip)
-- `TRIAL_SELECTION_PATH` (or leave placeholder to skip)
+- `EDGES_PATH` (or leave empty (i.e., "") to skip)
+- `TRIAL_SELECTION_PATH` (or leave empty (i.e., "") to skip)
 - `DATASET_TAGS` (array of dataset stems)
 
 Also check:
