@@ -11,7 +11,7 @@ Usage:
 Stages:
   setup        Write a run manifest and create standard output directories.
   quickcheck   Run lightweight import checks for required Python backends.
-  inference    Run the manuscript inference parity demo. (hook; implemented next)
+  inference    Run the manuscript inference parity demo.
   biophys-ml   Run the BiophysML regeneration/checksum demo. (hook; implemented next)
   downsample   Run the downsampled-inference parity demo. (hook; implemented next)
   all          Expand to: setup quickcheck inference biophys-ml downsample
