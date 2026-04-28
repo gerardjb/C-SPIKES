@@ -17,7 +17,6 @@ __pycache__
 
 # Data
 Ground_truth/*
-data/
 
 # Gui output dirs
 spike_inference/
