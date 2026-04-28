@@ -1,7 +1,11 @@
 import numpy as np
 import c_spikes.pgas.pgas_bound as pgas
 from c_spikes.utils import load_Janelia_data, spike_times_2_binary
-import os
+from pathlib import Path
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
 
 
 def test_pgas_single_iteration(tmp_path):
@@ -9,9 +13,13 @@ def test_pgas_single_iteration(tmp_path):
     Test PGAS with a single iteration using a sample dataset.
     This test checks if the PGAS runs correctly and produces expected output files
     """
+    repo_root = _repo_root()
+    data_root = repo_root / "data"
+
     # Load sample data matching the demo configuration
     time, data, spike_times = load_Janelia_data(
-        os.path.join('gt_data', 'jGCaMP8f_ANM471993_cell03.mat'))
+        data_root / "sample_data" / "janelia_8f" / "excitatory" / "jGCaMP8f_ANM471993_cell03.mat"
+    )
 
     time1 = np.float64(time[0, 1000:2000]).copy()
     data1 = np.float64(data[0, 1000:2000]).copy()
@@ -20,7 +28,7 @@ def test_pgas_single_iteration(tmp_path):
     analyzer = pgas.Analyzer(
         time=time1,
         data=data1,
-        constants_file=os.path.join('parameter_files', 'constants_GCaMP8_soma.json'),
+        constants_file=str(data_root / "parameter_files" / "constants_GCaMP8_soma.json"),
         output_folder=str(tmp_path),
         column=1,
         tag='unit',
@@ -30,7 +38,7 @@ def test_pgas_single_iteration(tmp_path):
         gtSpikes=binary_spikes,
         has_gtspikes=True,
         maxlen=1000,
-        Gparam_file=os.path.join('src', 'c_spikes', 'pgas', '20230525_gold.dat'),
+        Gparam_file=str(data_root / "pgas_parameters" / "20230525_gold.dat"),
         seed=2,
     )
     analyzer.run()

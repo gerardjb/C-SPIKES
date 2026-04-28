@@ -23,6 +23,8 @@ def _import_tensorflow():
         warnings.filterwarnings("ignore", category=FutureWarning)
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         import tensorflow as tf  # type: ignore
+    if os.environ.get("C_SPIKES_TEST_TF_GPU") != "1":
+        tf.config.set_visible_devices([], "GPU")
     return tf
 
 
@@ -58,6 +60,6 @@ def test_tensorflow_import_and_cascade_module():
         pytest.fail(f"CASCADE module import failed: {exc}")
 
     assert hasattr(cascade_module, "predict")
-    gpus = tf.config.list_physical_devices("GPU")
+    gpus = tf.config.get_visible_devices("GPU")
     gpu_names = [gpu.name for gpu in gpus]
     logger.info("TensorFlow version=%s GPUs=%s", tf.__version__, gpu_names)

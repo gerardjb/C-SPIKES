@@ -23,7 +23,9 @@ fi
 
 "${VCPKG_ROOT}/vcpkg" install \
     --triplet "${VCPKG_DEFAULT_TRIPLET}" \
+    --recurse \
     --clean-after-build \
+    "openblas[dynamic-arch]" \
     armadillo \
     boost-circular-buffer \
     gsl \

@@ -1,4 +1,5 @@
 import logging
+import os
 import warnings
 from pathlib import Path
 
@@ -13,19 +14,22 @@ logger = logging.getLogger(__name__)
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.slow
 @pytest.mark.requires_tensorflow
 def test_cascade_inference_smoke(tmp_path, monkeypatch):
+    if os.environ.get("C_SPIKES_TEST_TF_GPU") != "1":
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "-1")
+
     repo_root = _repo_root()
-    model_dir = repo_root / "Pretrained_models"
-    model_path = model_dir / "Cascade_Universal_30Hz"
+    model_dir = repo_root / "data" / "Pretrained_models" / "CASCADE"
+    model_path = model_dir / "universal_p_cascade_exc_30"
     assert model_path.exists(), f"Missing CASCADE model folder: {model_path}"
 
     rng = np.random.default_rng(0)
-    n_samples = 128
+    n_samples = 256
     fs = 30.0
     times = np.arange(n_samples, dtype=np.float64) / fs
     values = rng.normal(0.0, 0.05, size=n_samples).astype(np.float64)
@@ -34,7 +38,7 @@ def test_cascade_inference_smoke(tmp_path, monkeypatch):
     config = CascadeConfig(
         dataset_tag="pytest_synth",
         model_folder=model_dir,
-        model_name="Cascade_Universal_30Hz",
+        model_name="universal_p_cascade_exc_30",
         resample_fs=fs,
         downsample_label="raw",
         use_cache=False,
@@ -59,7 +63,7 @@ def test_cascade_inference_smoke(tmp_path, monkeypatch):
 @pytest.mark.requires_torch
 def test_ens2_inference_smoke(tmp_path, monkeypatch):
     repo_root = _repo_root()
-    pretrained_dir = repo_root / "Pretrained_models" / "ens2_published"
+    pretrained_dir = repo_root / "data" / "Pretrained_models" / "ENS2" / "ens2_published"
     assert pretrained_dir.exists(), f"Missing ENS2 pretrained dir: {pretrained_dir}"
 
     rng = np.random.default_rng(1)
