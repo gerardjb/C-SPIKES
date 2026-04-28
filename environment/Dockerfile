@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.5.1-cudnn-devel-ubuntu22.04
+FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG MINIFORGE_VERSION=24.11.3-0
@@ -29,7 +29,7 @@ ENV CONDA_DIR=/opt/conda \
     PIP_NO_CACHE_DIR=1 \
     VCPKG_DISABLE_METRICS=1
 
-ENV NVIDIA_PYTHON_LIBS=/opt/conda/lib/python3.11/site-packages/nvidia/cublas/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cuda_cupti/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cufft/lib:/opt/conda/lib/python3.11/site-packages/nvidia/curand/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cusolver/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cusparse/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nccl/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nvjitlink/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nvtx/lib
+ENV NVIDIA_PYTHON_LIBS=/opt/conda/lib/python3.11/site-packages/nvidia/cublas/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cuda_cupti/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cufft/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cufile/lib:/opt/conda/lib/python3.11/site-packages/nvidia/curand/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cusolver/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cusparse/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cusparselt/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nccl/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nvjitlink/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nvshmem/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nvtx/lib
 ENV LD_LIBRARY_PATH=/opt/vcpkg/installed/x64-linux/lib:${NVIDIA_PYTHON_LIBS}:/usr/local/cuda/lib64
 ENV PATH=${CONDA_DIR}/bin:${CUDA_HOME}/bin:${PATH}
 
