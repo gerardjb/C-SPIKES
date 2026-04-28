@@ -27,6 +27,7 @@ edges/
 vcpkg/
 .vscode/
 src/c_spikes/_version.py
+code/src/c_spikes/_version.py
 profiles/
 results/
 gt_noise_dir/
@@ -34,6 +35,7 @@ gt_data/
 logs/
 tmp/
 core*
+scratch/
 
 # kokkos tools
 kokkos-tools/
