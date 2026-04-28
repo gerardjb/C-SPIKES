@@ -3,6 +3,35 @@ cmake_minimum_required(VERSION 3.15...3.26)
 project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION} LANGUAGES CXX Fortran)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(_vcpkg_triplet "x64-linux")
+if(DEFINED ENV{VCPKG_DEFAULT_TRIPLET})
+    set(_vcpkg_triplet "$ENV{VCPKG_DEFAULT_TRIPLET}")
+endif()
+
+set(_vcpkg_roots)
+if(DEFINED ENV{VCPKG_ROOT})
+    list(APPEND _vcpkg_roots "$ENV{VCPKG_ROOT}")
+endif()
+if(EXISTS "${CMAKE_SOURCE_DIR}/vcpkg")
+    list(APPEND _vcpkg_roots "${CMAKE_SOURCE_DIR}/vcpkg")
+endif()
+
+foreach(_vcpkg_root IN LISTS _vcpkg_roots)
+    if(EXISTS "${_vcpkg_root}/installed/${_vcpkg_triplet}")
+        list(APPEND CMAKE_PREFIX_PATH "${_vcpkg_root}/installed/${_vcpkg_triplet}")
+        list(APPEND _vcpkg_lib_dirs "${_vcpkg_root}/installed/${_vcpkg_triplet}/lib")
+    endif()
+endforeach()
+
+if(_vcpkg_lib_dirs)
+    list(JOIN _vcpkg_lib_dirs ";" _vcpkg_rpath)
+    set(CMAKE_BUILD_RPATH "${_vcpkg_rpath}")
+    set(CMAKE_INSTALL_RPATH "${_vcpkg_rpath}")
+    set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+endif()
 
 add_subdirectory(dependencies)
 
@@ -17,15 +46,6 @@ file(GLOB PGAS_SRCS CONFIGURE_DEPENDS src/c_spikes/pgas/*.cpp)
 list(REMOVE_ITEM PGAS_SRCS "${CMAKE_SOURCE_DIR}/src/c_spikes/pgas/bindings.cpp")
 
 #set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -G -lineinfo") # for debugging CUDA code
-
-# Tell CMake where vcpkg lives
-set(CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/vcpkg" CACHE STRING "")
-
-# Force both build- and install-RPATH to point at your vcpkg libs dir
-set(_vpkglib "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-linux/lib")
-set(CMAKE_BUILD_RPATH "${_vpkglib}")
-set(CMAKE_INSTALL_RPATH "${_vpkglib}")
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 set(PGAS_BUILD_GPU "AUTO" CACHE STRING "Build PGAS GPU backend (AUTO, ON, OFF).")
 set_property(CACHE PGAS_BUILD_GPU PROPERTY STRINGS AUTO ON OFF)

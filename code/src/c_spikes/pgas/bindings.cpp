@@ -46,7 +46,7 @@ PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
         Kokkos::initialize();
 
 	// bindings for Analyzer.cpp
-		py::class_<Analyzer>(m, "Analyzer")
+		py::class_<Analyzer>(m, "Analyzer", py::module_local())
         .def(py::init<const arma::vec&, const arma::vec&, const std::string&, const std::string&, unsigned int, const std::string&, unsigned int,
                       const std::string&, bool, unsigned int, bool, const arma::vec&, bool, bool, unsigned int, const std::string&, int>(),
              py::arg("time"), py::arg("data"), py::arg("constants_file"), py::arg("output_folder"), py::arg("column"), py::arg("tag"),
@@ -60,7 +60,7 @@ PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
 	
 				
 	// bindings for GCaMP_model.cpp			
-		py::class_<GCaMP>(m, "GCaMP")
+		py::class_<GCaMP>(m, "GCaMP", py::module_local())
         .def(py::init<double, double, double, double, double, double, std::string>())
 				.def(py::init<std::string, std::string>(), py::arg("Gparam_file"), py::arg("Cparam_file"))
 				.def(py::init<const arma::vec,const arma::vec>(), py::arg("Gparams_in"), py::arg("Cparams_in"))

@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${VCPKG_ROOT:=/opt/vcpkg}"
+: "${VCPKG_DEFAULT_TRIPLET:=x64-linux}"
+: "${VCPKG_REF:=2026.03.18}"
+: "${KOKKOS_SOURCE_DIR:=/opt/kokkos-src}"
+: "${KOKKOS_REF:=4.3.01}"
+: "${CUDA_HOME:=/usr/local/cuda}"
+: "${NVCC_WRAPPER_DEFAULT_COMPILER:=/usr/bin/g++}"
+
+export VCPKG_DISABLE_METRICS=1
+
+rm -rf "${VCPKG_ROOT}"
+git clone --depth 1 --branch "${VCPKG_REF}" https://github.com/microsoft/vcpkg "${VCPKG_ROOT}"
+"${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
+"${VCPKG_ROOT}/vcpkg" install \
+    --triplet "${VCPKG_DEFAULT_TRIPLET}" \
+    --clean-after-build \
+    armadillo \
+    boost-circular-buffer \
+    gsl \
+    jsoncpp
+
+rm -rf "${KOKKOS_SOURCE_DIR}"
+git clone --depth 1 --branch "${KOKKOS_REF}" https://github.com/kokkos/kokkos.git "${KOKKOS_SOURCE_DIR}"
+
+python_nvidia_libs="$(python - <<'PY'
+import glob
+import site
+
+print(":".join(sorted(glob.glob(site.getsitepackages()[0] + "/nvidia/*/lib"))))
+PY
+)"
+
+cat >/etc/profile.d/c_spikes_build.sh <<EOF
+export VCPKG_ROOT=${VCPKG_ROOT}
+export VCPKG_DEFAULT_TRIPLET=${VCPKG_DEFAULT_TRIPLET}
+export KOKKOS_SOURCE_DIR=${KOKKOS_SOURCE_DIR}
+export FETCHCONTENT_SOURCE_DIR_KOKKOS=${KOKKOS_SOURCE_DIR}
+export CUDA_HOME=${CUDA_HOME}
+export CUDACXX=${CUDA_HOME}/bin/nvcc
+export CXX=${KOKKOS_SOURCE_DIR}/bin/nvcc_wrapper
+export NVCC_WRAPPER_DEFAULT_COMPILER=${NVCC_WRAPPER_DEFAULT_COMPILER}
+export CMAKE_PREFIX_PATH=${VCPKG_ROOT}/installed/${VCPKG_DEFAULT_TRIPLET}\${CMAKE_PREFIX_PATH:+:\${CMAKE_PREFIX_PATH}}
+export LD_LIBRARY_PATH=${VCPKG_ROOT}/installed/${VCPKG_DEFAULT_TRIPLET}/lib${python_nvidia_libs:+:${python_nvidia_libs}}:${CUDA_HOME}/lib64\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}
+export CMAKE_BUILD_PARALLEL_LEVEL=\${CMAKE_BUILD_PARALLEL_LEVEL:-4}
+export OMP_NUM_THREADS=\${OMP_NUM_THREADS:-2}
+export OMP_PROC_BIND=\${OMP_PROC_BIND:-spread}
+export OMP_PLACES=\${OMP_PLACES:-threads}
+export OPENBLAS_NUM_THREADS=\${OPENBLAS_NUM_THREADS:-2}
+export MKL_NUM_THREADS=\${MKL_NUM_THREADS:-2}
+export MPLBACKEND=\${MPLBACKEND:-Agg}
+export QT_QPA_PLATFORM=\${QT_QPA_PLATFORM:-offscreen}
+EOF
+
+chmod 0644 /etc/profile.d/c_spikes_build.sh
