@@ -1,0 +1,39 @@
+{
+  "model_name": "ens2_synth_comparison_k1_r12_s2p0_d0p45_sb11000",
+  "created": "2025-12-12T14:50:14.457775",
+  "updated": "2025-12-12T14:50:14.469225",
+  "synthetic_entries": [
+    {
+      "timestamp": "2025-12-12T14:50:14.457803",
+      "run_tag": "k1_r12_s2p0_d0p45_sb11000",
+      "param_samples_path": "results/pgas_output/comparison/param_samples_jGCaMP8f_ANM478349_cell04_ms2_trial1.dat",
+      "param_samples_sha256": "c5090c5045232d4181e1ddbe57c5a1aa0da5f91900df119b750487fcaaf37064",
+      "gparam_path": "src/c_spikes/pgas/20230525_gold.dat",
+      "gparam_sha256": "1280692b5bc842d0d0f8effa17dcd6bdf5eb9cfa856d2c41aab85337a1cb3883",
+      "burnin": 100,
+      "cparams_mean": [
+        5.452543800000001e-05,
+        699.8766300000002,
+        1.2447694000000003e-05,
+        5.0854805999999995,
+        5.034559800000002,
+        5.473298299999998
+      ],
+      "cparams_hash": "a5d5575234116e1f6c161533229eae73f1cee4013e15d55f8f50f01e6db0b08b",
+      "syn_gen": {
+        "tag": "jGCaMP8f_ANM478349_cell04_ms2_trial1__k1_r12_s2p0_d0p45_sb11000",
+        "spike_rate": 12.0,
+        "spike_params": [
+          2.0,
+          0.45
+        ],
+        "noise_dir": "/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/src/c_spikes/syn_gen/gt_noise_dir",
+        "noise_fraction": 1.0,
+        "noise_seed": 11000,
+        "output_dir": "results/Ground_truth/synth_jGCaMP8f_ANM478349_cell04_ms2_trial1__k1_r12_s2p0_d0p45_sb11000"
+      },
+      "synth_dir_hash": "025cd5729a6606b820dca516c2ee3c0b56a356ab210f7adb041c527fbd92cffc"
+    }
+  ],
+  "training": {}
+}
