@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
@@ -17,6 +18,33 @@ class Ens2Config:
     neuron_type: str = "Exc"
     downsample_label: str = "raw"
     use_cache: bool = True
+
+
+def _cache_token(value: str) -> str:
+    token = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value).strip())
+    return token.strip("_") or "unknown"
+
+
+def _model_cache_namespace(pretrained_dir: Path) -> str:
+    path = pretrained_dir.expanduser()
+    model_name = _cache_token(path.name)
+    parts = {part.lower() for part in path.parts}
+    if model_name == "ens2_published":
+        return "ens2_published"
+    if "biophysml" in parts:
+        return f"biophys_ml/{model_name}"
+    return f"custom/{model_name}"
+
+
+def _ens2_cache_tag(config: Ens2Config) -> str:
+    return f"{_model_cache_namespace(config.pretrained_dir)}/{_cache_token(config.dataset_tag)}"
+
+
+def _attach_cache_metadata(result: MethodResult, *, cache_tag: str, namespace: str) -> MethodResult:
+    result.metadata = dict(result.metadata or {})
+    result.metadata["cache_tag"] = cache_tag
+    result.metadata["cache_namespace"] = namespace
+    return result
 
 
 def _segment_indices(times: np.ndarray, fs_est: float, gap_factor: float = 4.0) -> list[slice]:
@@ -128,21 +156,47 @@ def run_ens2_inference(
     valid_lengths: Optional[Sequence[int]] = None,
 ) -> MethodResult:
     trace_hash = hash_series(raw_time_stamps.ravel(), raw_traces.ravel())
+    cache_namespace = _model_cache_namespace(config.pretrained_dir)
+    cache_tag = _ens2_cache_tag(config)
     cfg_dict: Dict[str, Any] = {
         "neuron_type": config.neuron_type,
         "pretrained_dir": str(config.pretrained_dir),
         "downsample_target": config.downsample_label,
     }
     if config.use_cache:
-        cached = load_method_cache("ens2", config.dataset_tag, cfg_dict, trace_hash)
+        cached = load_method_cache("ens2", config.dataset_tag, cfg_dict, trace_hash, cache_tag=cache_tag)
+        if cached is None:
+            cached = load_method_cache("ens2", config.dataset_tag, cfg_dict, trace_hash)
+            if cached is not None:
+                _attach_cache_metadata(cached, cache_tag=cache_tag, namespace=cache_namespace)
+                try:
+                    save_method_cache(
+                        "ens2",
+                        config.dataset_tag,
+                        cached,
+                        cfg_dict,
+                        trace_hash,
+                        cache_tag=cache_tag,
+                    )
+                except OSError:
+                    pass
         if cached:
+            _attach_cache_metadata(cached, cache_tag=cache_tag, namespace=cache_namespace)
             remapped = _remap_result_timebase_to_raw(cached, raw_time_stamps, valid_lengths=valid_lengths)
+            _attach_cache_metadata(remapped, cache_tag=cache_tag, namespace=cache_namespace)
             if remapped is cached:
                 return cached
             # Best-effort persist the corrected timebase so subsequent runs don't repeatedly remap.
             # (May fail in read-only/shared environments.)
             try:
-                save_method_cache("ens2", config.dataset_tag, remapped, cfg_dict, trace_hash)
+                save_method_cache(
+                    "ens2",
+                    config.dataset_tag,
+                    remapped,
+                    cfg_dict,
+                    trace_hash,
+                    cache_tag=cache_tag,
+                )
             except OSError:
                 pass
             return remapped
@@ -254,11 +308,13 @@ def run_ens2_inference(
             "frame_rates": frame_rates,
             "timebase": "raw_time_stamps_interp",
             "config": ensure_serializable(cfg_dict),
+            "cache_tag": cache_tag,
+            "cache_namespace": cache_namespace,
         },
         discrete_spikes=discrete,
     )
     try:
-        save_method_cache("ens2", config.dataset_tag, result, cfg_dict, trace_hash)
+        save_method_cache("ens2", config.dataset_tag, result, cfg_dict, trace_hash, cache_tag=cache_tag)
     except OSError:
         pass
     return result

@@ -33,8 +33,9 @@ def get_cache_paths(
     config_hash: str,
     *,
     cache_root: Optional[Path] = None,
+    cache_tag: Optional[str] = None,
 ) -> Tuple[Path, Path]:
-    cache_dir = _resolve_cache_root(cache_root) / method / dataset_tag
+    cache_dir = _resolve_cache_root(cache_root) / method / (cache_tag or dataset_tag)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"{config_hash}.mat", cache_dir / f"{config_hash}.json"
 
@@ -47,9 +48,16 @@ def save_method_cache(
     trace_hash: str,
     *,
     cache_root: Optional[Path] = None,
+    cache_tag: Optional[str] = None,
 ) -> None:
     config_hash, config_ser = compute_config_signature(dict(config))
-    mat_path, meta_path = get_cache_paths(method, dataset_tag, config_hash, cache_root=cache_root)
+    mat_path, meta_path = get_cache_paths(
+        method,
+        dataset_tag,
+        config_hash,
+        cache_root=cache_root,
+        cache_tag=cache_tag,
+    )
     payload = {
         "time_stamps": np.asarray(result.time_stamps),
         "spike_prob": np.asarray(result.spike_prob),
@@ -59,14 +67,18 @@ def save_method_cache(
     if result.discrete_spikes is not None:
         payload["discrete_spikes"] = np.asarray(result.discrete_spikes)
     sio.savemat(mat_path, payload, do_compression=True)
+    metadata = ensure_serializable(result.metadata)
+    if cache_tag is not None and isinstance(metadata, dict):
+        metadata.setdefault("cache_tag", cache_tag)
     meta = {
         "dataset": dataset_tag,
         "method": method,
         "config": config_ser,
         "trace_hash": trace_hash,
         "sampling_rate": float(result.sampling_rate),
-        "metadata": ensure_serializable(result.metadata),
+        "metadata": metadata,
         "cache_key": config_hash,
+        "cache_tag": cache_tag or dataset_tag,
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
     }
     with meta_path.open("w", encoding="utf-8") as fh:
@@ -80,10 +92,17 @@ def load_method_cache(
     trace_hash: str,
     *,
     cache_root: Optional[Path] = None,
+    cache_tag: Optional[str] = None,
     allow_mismatched_trace: bool = False,
 ) -> Optional[MethodResult]:
     config_hash, config_ser = compute_config_signature(dict(config))
-    mat_path, meta_path = get_cache_paths(method, dataset_tag, config_hash, cache_root=cache_root)
+    mat_path, meta_path = get_cache_paths(
+        method,
+        dataset_tag,
+        config_hash,
+        cache_root=cache_root,
+        cache_tag=cache_tag,
+    )
     candidates: list[Tuple[Path, Path]] = []
     if mat_path.exists() and meta_path.exists():
         candidates.append((mat_path, meta_path))
