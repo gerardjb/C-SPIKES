@@ -570,6 +570,8 @@ def _plot_trace_panel(
     start_s: float,
     duration_s: float,
     title: str,
+    series_colors: Mapping[str, str] | None = None,
+    series_labels: Mapping[str, str] | None = None,
 ) -> None:
     cmd: list[str] = [
         sys.executable,
@@ -601,6 +603,10 @@ def _plot_trace_panel(
     ]
     for method in methods:
         cmd.extend(["--method", method])
+    for key, color in (series_colors or {}).items():
+        cmd.extend(["--series-color", f"{key}={color}"])
+    for key, label in (series_labels or {}).items():
+        cmd.extend(["--series-label", f"{key}={label}"])
     _run(cmd, cwd=cwd, env=env, dry_run=dry_run)
 
 
@@ -852,7 +858,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             corr_sigma_ms=args.corr_sigma_ms,
             trial=notebook_trial_8f,
             start_s=465.0,
-            duration_s=7.0,
+            duration_s=9.0,
             title="jGCaMP8f inference parity",
         )
         _plot_trace_panel(
@@ -866,14 +872,19 @@ def main(argv: Sequence[str] | None = None) -> None:
             dataset=JG8F_NOTEBOOK_DATASET,
             out=plots_dir / "cell3_jG8f_parameter_trace_panel.png",
             methods=[
-                f"biophys_ml=pgas@{RUN_JG8F_BASE}",
-                f"pgas@{RUN_JG8F_PARAMS}",
+                f"biophys_smc=pgas@{RUN_JG8F_BASE}",
+                f"biophys_smc_J=pgas@{RUN_JG8F_PARAMS}",
             ],
+            series_colors={"biophys_smc_J": "#000000"},
+            series_labels={
+                "biophys_smc": "biophys_smc",
+                "biophys_smc_J": "biophys_smc_J",
+            },
             smoothing="raw",
             corr_sigma_ms=args.corr_sigma_ms,
             trial=notebook_trial_8f,
             start_s=465.0,
-            duration_s=7.0,
+            duration_s=9.0,
             title="jGCaMP8f PGAS parameter parity",
         )
         _plot_trace_panel(
@@ -896,7 +907,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             corr_sigma_ms=args.corr_sigma_ms,
             trial=notebook_trial_8m,
             start_s=219.0,
-            duration_s=7.0,
+            duration_s=9.0,
             title="jGCaMP8m inference parity",
         )
 

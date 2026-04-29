@@ -148,6 +148,20 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=0.0,
         help="Horizontal offset for left labels as a fraction of the snippet duration (default: 0.0).",
     )
+    p.add_argument(
+        "--series-color",
+        action="append",
+        default=None,
+        metavar="KEY=COLOR",
+        help="Override a method or series-key color. Repeatable.",
+    )
+    p.add_argument(
+        "--series-label",
+        action="append",
+        default=None,
+        metavar="KEY=LABEL",
+        help="Override a method or series-key display label. Repeatable.",
+    )
     p.add_argument("--scalebar-dff", type=float, default=0.5, help="ΔF/F scalebar size (used for display scaling).")
     p.add_argument("--title", type=str, default="Excitatory cell sample", help="Figure title.")
     p.add_argument("--out", type=Path, default=Path("results/trialwise_trace_panel.png"), help="Output PNG path.")
@@ -241,6 +255,24 @@ def _parse_run_by_method(items: Optional[Sequence[str]]) -> Dict[str, str]:
         if not method or not run:
             raise ValueError(f"Expected METHOD=RUN_TAG, got: {item!r}")
         mapping[method] = run
+    return mapping
+
+
+def _parse_key_value_items(items: Optional[Sequence[str]], *, item_name: str) -> Dict[str, str]:
+    mapping: Dict[str, str] = {}
+    if not items:
+        return mapping
+    for item in items:
+        if not item:
+            continue
+        if "=" not in item:
+            raise ValueError(f"Expected KEY=VALUE for {item_name}, got: {item!r}")
+        key, value = item.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            raise ValueError(f"Expected KEY=VALUE for {item_name}, got: {item!r}")
+        mapping[key] = value
     return mapping
 
 
@@ -383,6 +415,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         title=str(args.title),
         figsize=(float(args.figsize[0]), float(args.figsize[1])),
         dpi=int(args.dpi),
+        colors=_parse_key_value_items(args.series_color, item_name="--series-color"),
+        labels=_parse_key_value_items(args.series_label, item_name="--series-label"),
     )
     fig.savefig(out_path)
     print(f"[plot] Wrote {out_path}")
