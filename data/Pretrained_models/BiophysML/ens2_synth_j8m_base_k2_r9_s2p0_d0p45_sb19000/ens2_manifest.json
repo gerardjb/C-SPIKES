@@ -1,0 +1,72 @@
+{
+  "model_name": "ens2_synth_j8m_base_k2_r9_s2p0_d0p45_sb19000",
+  "created": "2025-12-24T18:12:36.549470",
+  "updated": "2025-12-24T18:13:12.156778",
+  "synthetic_entries": [
+    {
+      "timestamp": "2025-12-24T18:12:36.549502",
+      "run_tag": "k2_r9_s2p0_d0p45_sb19000",
+      "param_samples_path": "results/pgas_output/j8m_base/param_samples_jGCaMP8m_ANM472179_cell02_sraw_ms2_rsraw_bm0p05_trial0.dat",
+      "param_samples_sha256": "d92ade6892f9b24ec9cff6b75844b65da307bd855514da9594c830f45ff307f2",
+      "gparam_path": "src/c_spikes/pgas/20251207_jG8m_params.dat",
+      "gparam_sha256": "56e70aebdd607af824d5e0b8478825a8416ca0076adb6766b6e785e9095fa187",
+      "burnin": 100,
+      "cparams_mean": [
+        3.7246930000000006e-05,
+        956.1947699999998,
+        1.2416356000000003e-05,
+        9.401876499999984,
+        9.198978199999997,
+        2.9227173999999985
+      ],
+      "cparams_hash": "54c7cea2068416c22ac3146a6ec70b3b21593dc7cdfaac25f186b5da1ff0e5e8",
+      "syn_gen": {
+        "tag": "jGCaMP8m_ANM472179_cell02_sraw_ms2_rsraw_bm0p05_trial0__k2_r9_s2p0_d0p45_sb19000",
+        "spike_rate": 9.0,
+        "spike_params": [
+          2.0,
+          0.45
+        ],
+        "noise_dir": "/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/src/c_spikes/syn_gen/gt_noise_dir",
+        "noise_fraction": 0.5,
+        "noise_seed": 19000,
+        "seed_spikes": true,
+        "output_dir": "results/Ground_truth/synth_jGCaMP8m_ANM472179_cell02_sraw_ms2_rsraw_bm0p05_trial0__k2_r9_s2p0_d0p45_sb19000"
+      },
+      "synth_dir_hash": "cba956d315b1c5c797783c1915f8e43d6800d2e0385cfa7fe5277efadb6e4601"
+    },
+    {
+      "timestamp": "2025-12-24T18:13:12.145402",
+      "run_tag": "k2_r9_s2p0_d0p45_sb19000",
+      "param_samples_path": "results/pgas_output/j8m_base/param_samples_jGCaMP8m_ANM472180_cell03_sraw_ms2_rsraw_bm0p05_trial0.dat",
+      "param_samples_sha256": "e5567acaf33453d72c37e9fa68b7284898f1a235c7a0705dca78b6ff6a3cd5c4",
+      "gparam_path": "src/c_spikes/pgas/20251207_jG8m_params.dat",
+      "gparam_sha256": "56e70aebdd607af824d5e0b8478825a8416ca0076adb6766b6e785e9095fa187",
+      "burnin": 100,
+      "cparams_mean": [
+        3.1084519999999985e-05,
+        1251.7029000000002,
+        1.5560623999999997e-05,
+        8.761275700000004,
+        5.6789133000000005,
+        3.4604207999999996
+      ],
+      "cparams_hash": "69c4079a9a8e9b12785a554465b33d7b7e953299f479f1665e778dbc574dd204",
+      "syn_gen": {
+        "tag": "jGCaMP8m_ANM472180_cell03_sraw_ms2_rsraw_bm0p05_trial0__k2_r9_s2p0_d0p45_sb19000",
+        "spike_rate": 9.0,
+        "spike_params": [
+          2.0,
+          0.45
+        ],
+        "noise_dir": "/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/src/c_spikes/syn_gen/gt_noise_dir",
+        "noise_fraction": 0.5,
+        "noise_seed": 19001,
+        "seed_spikes": true,
+        "output_dir": "results/Ground_truth/synth_jGCaMP8m_ANM472180_cell03_sraw_ms2_rsraw_bm0p05_trial0__k2_r9_s2p0_d0p45_sb19000"
+      },
+      "synth_dir_hash": "b7c6afe96b5fb1c2476dda1648e34c16ca5aefe229370bb17e4b288d2a33a683"
+    }
+  ],
+  "training": {}
+}
