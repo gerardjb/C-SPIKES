@@ -151,6 +151,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--scalebar-dff", type=float, default=0.5, help="ΔF/F scalebar size (used for display scaling).")
     p.add_argument("--title", type=str, default="Excitatory cell sample", help="Figure title.")
     p.add_argument("--out", type=Path, default=Path("results/trialwise_trace_panel.png"), help="Output PNG path.")
+    p.add_argument(
+        "--trace-data-out",
+        type=Path,
+        default=None,
+        help="Optional output .npz with the displayed trace panel data.",
+    )
     p.add_argument("--figsize", type=float, nargs=2, default=(3.4, 5.2), help="Figure size in inches.")
     p.add_argument("--dpi", type=int, default=250, help="Output DPI.")
     return p.parse_args(argv)
@@ -383,9 +389,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         title=str(args.title),
         figsize=(float(args.figsize[0]), float(args.figsize[1])),
         dpi=int(args.dpi),
+        trace_data_path=args.trace_data_out,
     )
     fig.savefig(out_path)
     print(f"[plot] Wrote {out_path}")
+    if meta.get("trace_data_path"):
+        print(f"[plot] Wrote trace data {meta['trace_data_path']}")
     print(
         f"[plot] Selected trial={meta['trial']} window=({meta['window_start_s']:.3f},{meta['window_end_s']:.3f}) "
         f"run_by_method={meta['run_by_method']}"

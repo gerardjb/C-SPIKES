@@ -614,6 +614,27 @@ def _pearson(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.dot(x, y) / denom)
 
 
+def _interp_to_reference(times: np.ndarray, values: np.ndarray, ref_time: np.ndarray) -> np.ndarray:
+    times = np.asarray(times, dtype=np.float64).ravel()
+    values = np.asarray(values, dtype=np.float64).ravel()
+    ref_time = np.asarray(ref_time, dtype=np.float64).ravel()
+    mask = np.isfinite(times) & np.isfinite(values)
+    times = times[mask]
+    values = values[mask]
+    if times.size == 0:
+        return np.full(ref_time.shape, np.nan, dtype=np.float64)
+    if times.size == 1:
+        out = np.full(ref_time.shape, np.nan, dtype=np.float64)
+        out[np.isclose(ref_time, float(times[0]))] = float(values[0])
+        return out
+    order = np.argsort(times)
+    times = times[order]
+    values = values[order]
+    out = np.interp(ref_time, times, values)
+    out[(ref_time < float(times[0])) | (ref_time > float(times[-1]))] = np.nan
+    return out
+
+
 def _parse_run_by_method(items: Optional[Sequence[str]]) -> Dict[str, str]:
     mapping: Dict[str, str] = {}
     if not items:
@@ -821,6 +842,7 @@ def plot_trace_panel(
     dpi: int = 250,
     colors: Optional[Mapping[str, str]] = None,
     labels: Optional[Mapping[str, str]] = None,
+    trace_data_path: Optional[Pathish] = None,
     ax: Any = None,
 ) -> Tuple[Any, Any, Dict[str, Any]]:
     """
@@ -850,6 +872,11 @@ def plot_trace_panel(
 
     Axis limits:
       - Use `ymax` to override the upper y-limit (the lower limit is fixed for this panel layout).
+
+    Trace data export:
+      - Set `trace_data_path` to write a compact `.npz` with the displayed window, normalized GT and
+        method traces, method labels/colors/correlations, spike times, and scale bar settings.
+        The default (`None`) writes no trace data.
     """
     if methods is None:
         methods = ["pgas", "cascade", "ens2"]
@@ -1203,15 +1230,59 @@ def plot_trace_panel(
         label_counts_by_method.setdefault(spec.method, {})
         label_counts_by_method[spec.method][label0] = label_counts_by_method[spec.method].get(label0, 0) + 1
 
+    method_display_labels: Dict[str, str] = {}
+    method_display_colors: Dict[str, str] = {}
     for method in ranked_methods:
-        t_win, y_norm = method_snippets[method]
-        base = y_method_base[method]
         series_spec = spec_by_key[method]
         run_tag = series_run.get(method, "")
         color = colors_map.get(method, colors_map.get(series_spec.method, "#333333"))
         label = raw_label_by_key.get(method, labels_map.get(series_spec.method, series_spec.method))
         if label_counts_by_method.get(series_spec.method, {}).get(label, 0) > 1 and run_tag:
             label = f"{label} ({run_tag})"
+        method_display_labels[method] = label
+        method_display_colors[method] = color
+
+    if trace_data_path:
+        trace_out = _to_path(trace_data_path)
+        trace_out.parent.mkdir(parents=True, exist_ok=True)
+        method_traces = np.vstack([np.asarray(method_snippets[m][1], dtype=np.float64).ravel() for m in ranked_methods])
+        fluorescence = _interp_to_reference(t_f, y_f, ref_time)
+        fluorescence_plot = _interp_to_reference(t_f, y_f_scaled, ref_time)
+        with trace_out.open("wb") as fh:
+            np.savez_compressed(
+                fh,
+                dataset=np.asarray(dataset_stem),
+                trial=np.asarray(int(selected_trial), dtype=np.int64),
+                smoothing=np.asarray(str(smoothing)),
+                time=np.asarray(ref_time, dtype=np.float64).ravel(),
+                fluorescence=fluorescence,
+                ground_truth=np.asarray(ref_gt_for_plot, dtype=np.float64).ravel(),
+                spike_times=np.asarray(
+                    spike_times_trial[(spike_times_trial >= win_start) & (spike_times_trial <= win_end)],
+                    dtype=np.float64,
+                ).ravel(),
+                methods=np.asarray(ranked_methods, dtype=str),
+                method_labels=np.asarray([method_display_labels[m] for m in ranked_methods], dtype=str),
+                method_colors=np.asarray([method_display_colors[m] for m in ranked_methods], dtype=str),
+                method_traces=method_traces,
+                method_correlations=np.asarray(
+                    [float(trial_corrs.get(m, float("nan"))) for m in ranked_methods], dtype=np.float64
+                ),
+                scale_bar_time_s=np.asarray(min(float(scalebar_time_s), float(duration)), dtype=np.float64),
+                scale_bar_dff=np.asarray(float(scalebar_dff), dtype=np.float64),
+                fluorescence_plot=fluorescence_plot,
+                window_start_s=np.asarray(float(win_start), dtype=np.float64),
+                window_end_s=np.asarray(float(win_end), dtype=np.float64),
+                display_sigma_ms=np.asarray(float(display_sigma_ms), dtype=np.float64),
+                corr_sigma_ms=np.asarray(float(corr_sigma_ms), dtype=np.float64),
+                method_runs=np.asarray([series_run.get(m, "") for m in ranked_methods], dtype=str),
+            )
+
+    for method in ranked_methods:
+        t_win, y_norm = method_snippets[method]
+        base = y_method_base[method]
+        color = method_display_colors[method]
+        label = method_display_labels[method]
         ax.plot(t_win, base + y_norm, color=color, linewidth=1.6)
         if show_method_labels:
             ax.text(label_x, base + 0.50, label, color=color, ha="left", va="center", fontsize=12, fontweight="bold")
@@ -1279,6 +1350,7 @@ def plot_trace_panel(
         "window_end_s": float(win_end),
         "method_corrs": dict(trial_corrs),
         "snippet_corrs": dict(snippet_corrs) if show_snippet_corr else None,
+        "trace_data_path": str(_to_path(trace_data_path)) if trace_data_path else None,
         # Backwards-compatible-ish: previously this was method->run_tag; now it is series_key->run_tag.
         "run_by_method": {spec.key: series_run.get(spec.key) for spec in series},
         "series": [{"key": spec.key, "method": spec.method, "run_tag": series_run.get(spec.key)} for spec in series],
