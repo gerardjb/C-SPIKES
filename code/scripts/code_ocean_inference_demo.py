@@ -411,6 +411,32 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return [dict(row) for row in csv.DictReader(fh)]
 
 
+def _is_finite_number(value: Any) -> bool:
+    try:
+        return bool(np.isfinite(float(value)))
+    except (TypeError, ValueError):
+        return False
+
+
+def _write_rows_csv(path: Path, rows: Sequence[Mapping[str, Any]], fieldnames: Sequence[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=list(fieldnames))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _filter_finite_correlation_csv(path: Path) -> Path:
+    rows = _read_csv(path)
+    if not rows:
+        return path
+    fieldnames = list(rows[0].keys())
+    filtered = [row for row in rows if _is_finite_number(row.get("correlation"))]
+    _write_rows_csv(path, filtered, fieldnames)
+    print(f"[inference-demo] filtered {path}: kept {len(filtered)} of {len(rows)} finite rows")
+    return path
+
+
 def _csv_key(row: Mapping[str, str], *, run: str, method: str) -> tuple[str, str, str, str, str]:
     return (
         str(row.get("dataset", "")),
@@ -462,6 +488,8 @@ def _write_parity_tables(
             ref = ref_by_key.get(ref_key)
             gen_corr = float(gen.get("correlation", "nan"))
             ref_corr = float(ref.get("correlation", "nan")) if ref else float("nan")
+            if not np.isfinite(gen_corr) or not np.isfinite(ref_corr):
+                continue
             rows.append(
                 {
                     "context": mapping.context,
@@ -499,10 +527,7 @@ def _write_parity_tables(
         "delta",
         "matched_reference",
     ]
-    with out.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
+    _write_rows_csv(out, rows, fieldnames)
     return out
 
 
@@ -523,10 +548,7 @@ def _write_combined_csv(results_dir: Path) -> Path:
             all_rows.append(row)
     if not fieldnames:
         return out
-    with out.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(all_rows)
+    _write_rows_csv(out, all_rows, fieldnames)
     return out
 
 
@@ -667,6 +689,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     jg8m_data_root = data_dir / "sample_data" / "janelia_8m" / "excitatory"
     ens2_root = data_dir / "Pretrained_models" / "ENS2" / "ens2_published"
     biophys_ml_root = data_dir / "Pretrained_models" / "BiophysML" / "ens2_synth_comparison_k1_r12_s2p0_d0p45_sb11000"
+    biophys_ml_jg8m_root = data_dir / "Pretrained_models" / "BiophysML" / "ens2_synth_j8m_base_k2_r9_s2p0_d0p45_sb19000"
     cascade_root = data_dir / "Pretrained_models" / "CASCADE"
 
     base_8f_methods = ["ens2", "cascade"] if args.skip_pgas else ["pgas", "ens2", "cascade"]
@@ -766,7 +789,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8m_soma.json",
         pgas_gparam=data_dir / "pgas_parameters" / "20251207_jG8m_params.dat",
         pgas_output_root=pgas_output_root / RUN_JG8M_BIOPHYS_ML,
-        ens2_pretrained_root=biophys_ml_root,
+        ens2_pretrained_root=biophys_ml_jg8m_root,
         cascade_model_root=cascade_root,
     )
 
@@ -782,6 +805,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         datasets=[JG8F_NOTEBOOK_DATASET, JG8F_BIOPHYS_ML_SOURCE_DATASET],
         corr_sigma_ms=args.corr_sigma_ms,
     )
+    _filter_finite_correlation_csv(results_dir / "trialwise_correlations_jG8f_repro.csv")
     _trialwise_csv(
         cwd=capsule_root,
         env=env,
@@ -794,6 +818,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         datasets=[JG8M_NOTEBOOK_DATASET],
         corr_sigma_ms=args.corr_sigma_ms,
     )
+    _filter_finite_correlation_csv(results_dir / "trialwise_correlations_jG8m_repro.csv")
     combined_csv = _write_combined_csv(results_dir)
     print(f"[inference-demo] wrote {combined_csv}")
     parity_csv = _write_parity_tables(
