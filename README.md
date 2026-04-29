@@ -308,12 +308,12 @@ This repo now includes a small, notebook-friendly visualization module under `sr
 
 Two primary entrypoints live in `src/c_spikes/viz/trialwise_plots.py`:
 - `plot_corr_vs_sigma(...)`: Matlab-like “shaded error bar” (mean ± SEM) of correlation vs `corr_sigma_ms`.
-- `plot_trace_panel(...)`: stacked fluorescence + GT + normalized/offset method traces for a representative trial, with per-trace `r`.
+- `plot_trace_panel(...)`: stacked fluorescence + GT + normalized/offset method traces for a representative trial, with per-trace `r`. Pass `trace_data_path=...` to also export the displayed traces and metadata to `.npz`.
 
 CLI wrappers:
 ```bash
 python scripts/plot_trialwise_corr_vs_sigma.py --csv results/trialwise_correlations.csv --out results/trialwise_corr_vs_sigma.png
-python scripts/plot_trialwise_trace_panel.py --csv results/trialwise_correlations.csv --data-root data/janelia_8m/excitatory --dataset <dataset_stem> --out results/trialwise_trace_panel.png
+python scripts/plot_trialwise_trace_panel.py --csv results/trialwise_correlations.csv --data-root data/janelia_8m/excitatory --dataset <dataset_stem> --out results/trialwise_trace_panel.png --trace-data-out results/trialwise_trace_panel.npz
 ```
 
 Notebook template:
