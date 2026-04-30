@@ -1,4 +1,18 @@
-## Nature Methods software availability details (for submission)
+# C-SPIKES usage guide
+
+The C-SPIKES (**C**alcium **S**pike **P**rocessing using **I**ntegrated **K**inetic **E**stimation and **S**imulation) repository bundles multiple spike-inference backends (PGAS, ENS2, CASCADE) and a Python API for running and comparing them on your own calcium imaging data.
+
+## Nature Methods software availability details
+
+### Code Ocean smoke test
+For a minimal GPU/server validation run inside the capsule, use:
+```bash
+cd code
+./run.sh setup quickcheck smoke
+```
+The `smoke` stage records GPU/backend visibility in `results/smoke/gpu_environment.json`
+and runs PGAS, ENS2, and CASCADE on one selected jGCaMP8f epoch. Set
+`C_SPIKES_SMOKE_REQUIRE_GPU=0` to allow the smoke stage to proceed on CPU-only systems.
 
 ### 1) Dependencies, operating systems, tested versions, and hardware requirements
 - **Primary software dependencies**:
@@ -22,9 +36,6 @@
 - **CPU-only install** (`conda create` + `pip install -e .`): typically **~10-25 minutes**.
 - **GPU-enabled install** (including Kokkos/CUDA toolchain setup and PGAS GPU build): typically **~30-90 minutes**, depending on compiler/cache state and local CUDA setup.
 
-# C-SPIKES usage guide
-
-The C-SPIKES (**C**alcium **S**pike **P**rocessing using **I**ntegrated **K**inetic **E**stimation and **S**imulation) repository bundles multiple spike-inference backends (PGAS, ENS2, CASCADE) and a Python API for running and comparing them on your own calcium imaging data.
 
 ## Installation (build PGAS + deps)
 PGAS is a compiled C++/pybind extension. The quickest path on Linux/HPC is:

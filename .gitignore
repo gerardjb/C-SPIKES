@@ -22,6 +22,8 @@ Ground_truth/*
 spike_inference/
 biophys_ml/
 edges/
+!data/reference_inputs/biophys_ml/
+!data/reference_inputs/biophys_ml/**
 
 # Misc in codebase
 vcpkg/
