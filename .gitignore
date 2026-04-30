@@ -22,8 +22,14 @@ Ground_truth/*
 spike_inference/
 biophys_ml/
 edges/
+
+# White listing inputs
 !data/reference_inputs/biophys_ml/
 !data/reference_inputs/biophys_ml/**
+!data/reference_inputs/synthetic_noise/
+!data/reference_inputs/synthetic_noise/**
+!data/reference_inputs/edges/
+!data/reference_inputs/edges/**
 
 # Misc in codebase
 vcpkg/
@@ -38,6 +44,16 @@ logs/
 tmp/
 core*
 scratch/
+
+# Keep Code Ocean reference inputs tracked even when generic output directory
+# names such as gt_noise_dir are ignored elsewhere.
+!data/reference_inputs/
+!data/reference_inputs/biophys_ml/
+!data/reference_inputs/biophys_ml/**
+!data/reference_inputs/synthetic_noise/
+!data/reference_inputs/synthetic_noise/**
+!data/reference_inputs/edges/
+!data/reference_inputs/edges/**
 
 # kokkos tools
 kokkos-tools/
