@@ -1,15 +1,11 @@
-FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04
+FROM registry.codeocean.com/codeocean/pytorch:2.4.0-cuda12.4.0-mambaforge24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG MINIFORGE_VERSION=24.11.3-0
+ARG KOKKOS_REF=4.3.01
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-USER 0:0
-
 ENV CONDA_DIR=/opt/conda \
-    VCPKG_ROOT=/opt/vcpkg \
-    VCPKG_DEFAULT_TRIPLET=x64-linux \
     KOKKOS_SOURCE_DIR=/opt/kokkos-src \
     FETCHCONTENT_SOURCE_DIR_KOKKOS=/opt/kokkos-src \
     PGAS_KOKKOS_ARCH=TURING75 \
@@ -18,7 +14,6 @@ ENV CONDA_DIR=/opt/conda \
     CUDACXX=/usr/local/cuda/bin/nvcc \
     CXX=/opt/kokkos-src/bin/nvcc_wrapper \
     NVCC_WRAPPER_DEFAULT_COMPILER=/usr/bin/g++ \
-    CMAKE_PREFIX_PATH=/opt/vcpkg/installed/x64-linux \
     CMAKE_BUILD_PARALLEL_LEVEL=4 \
     OMP_NUM_THREADS=2 \
     OPENBLAS_NUM_THREADS=2 \
@@ -26,11 +21,9 @@ ENV CONDA_DIR=/opt/conda \
     MPLBACKEND=Agg \
     QT_QPA_PLATFORM=offscreen \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    VCPKG_DISABLE_METRICS=1
+    PIP_NO_CACHE_DIR=1
 
-ENV NVIDIA_PYTHON_LIBS=/opt/conda/lib/python3.11/site-packages/nvidia/cublas/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cuda_cupti/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cufft/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cufile/lib:/opt/conda/lib/python3.11/site-packages/nvidia/curand/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cusolver/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cusparse/lib:/opt/conda/lib/python3.11/site-packages/nvidia/cusparselt/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nccl/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nvjitlink/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nvshmem/lib:/opt/conda/lib/python3.11/site-packages/nvidia/nvtx/lib
-ENV LD_LIBRARY_PATH=/opt/vcpkg/installed/x64-linux/lib:${NVIDIA_PYTHON_LIBS}:/usr/local/cuda/lib64
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
 ENV PATH=${CONDA_DIR}/bin:${CUDA_HOME}/bin:${PATH}
 
 RUN apt-get update \
@@ -54,7 +47,12 @@ RUN apt-get update \
         libgl1 \
         libglib2.0-0 \
         libgomp1 \
+        libarmadillo-dev \
+        libboost-dev \
         libice6 \
+        libgsl-dev \
+        libjsoncpp-dev \
+        libopenblas-dev \
         libsm6 \
         libtool \
         libx11-6 \
@@ -79,17 +77,13 @@ RUN apt-get update \
         zip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL "https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/Miniforge3-${MINIFORGE_VERSION}-Linux-x86_64.sh" -o /tmp/miniforge.sh \
-    && bash /tmp/miniforge.sh -b -p "${CONDA_DIR}" \
-    && rm /tmp/miniforge.sh \
-    && mamba install -y python=3.11 pip \
-    && mamba clean -afy
-
 COPY requirements.txt /tmp/c_spikes_requirements.txt
 RUN python -m pip install --upgrade pip setuptools wheel \
     && python -m pip install -r /tmp/c_spikes_requirements.txt \
     && rm /tmp/c_spikes_requirements.txt
 
+RUN rm -rf "${KOKKOS_SOURCE_DIR}" \
+    && git clone --depth 1 --branch "${KOKKOS_REF}" https://github.com/kokkos/kokkos.git "${KOKKOS_SOURCE_DIR}"
+
 COPY postInstall /postInstall
-RUN chmod +x /postInstall \
-    && /postInstall
+RUN bash /postInstall
