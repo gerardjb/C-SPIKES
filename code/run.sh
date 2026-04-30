@@ -11,10 +11,11 @@ Usage:
 Stages:
   setup        Write a run manifest and create standard output directories.
   quickcheck   Run lightweight import checks for required Python backends.
+  smoke        Check GPU/backend visibility and run one epoch of inference.
   inference    Run the manuscript inference parity demo.
   biophys-ml   Run the BiophysML regeneration/checksum demo.
   downsample   Run the downsampled-inference parity demo. (hook; implemented next)
-  all          Expand to: setup quickcheck inference biophys-ml downsample
+  all          Expand to: setup quickcheck smoke inference biophys-ml downsample
 
 Defaults:
   If no stage is supplied, C_SPIKES_RUN_STAGES is used.
@@ -25,6 +26,8 @@ Common environment overrides:
   C_SPIKES_RESULTS_DIR    Persisted output root. Default: ../results
   C_SPIKES_SCRATCH_DIR    Temporary working root. Default: ../scratch
   C_SPIKES_QUICKCHECK     Set to 0 to skip quickcheck inside all/default workflows.
+  C_SPIKES_SMOKE_REQUIRE_GPU
+                           Set to 0 to allow smoke tests without a visible GPU.
 EOF
 }
 
@@ -172,6 +175,13 @@ stage_quickcheck() {
     python -m pytest -q tests/test_dependency_imports.py
 }
 
+stage_smoke() {
+    run_python_stage \
+        "smoke" \
+        "scripts/code_ocean_smoke_test.py" \
+        "${C_SPIKES_RESULTS_DIR}/smoke"
+}
+
 run_python_stage() {
     local stage="$1"
     local script="$2"
@@ -220,12 +230,14 @@ run_stage() {
     case "${stage}" in
         setup) stage_setup ;;
         quickcheck) stage_quickcheck ;;
+        smoke) stage_smoke ;;
         inference) stage_inference ;;
         biophys-ml) stage_biophys_ml ;;
         downsample) stage_downsample ;;
         all)
             stage_setup
             stage_quickcheck
+            stage_smoke
             stage_inference
             stage_biophys_ml
             stage_downsample
