@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -211,7 +212,7 @@ def _run_inference(
     trial: int,
     methods: Sequence[str],
     plan_only: bool,
-) -> Path:
+) -> tuple[Path, float]:
     selection = results_dir / "smoke_trial_selection.json"
     _write_json(selection, {dataset: [int(trial)]})
 
@@ -269,9 +270,11 @@ def _run_inference(
     }
     _write_json(results_dir / "smoke_plan.json", plan)
     print("[smoke] " + " ".join(cmd), flush=True)
+    start = time.perf_counter()
     if not plan_only:
         subprocess.run(cmd, cwd=str(repo_root), env=dict(env), check=True)
-    return output_root / RUN_TAG / dataset / "raw" / "summary.json"
+    walltime_s = time.perf_counter() - start
+    return output_root / RUN_TAG / dataset / "raw" / "summary.json", walltime_s
 
 
 def _validate_summary(summary_path: Path, methods: Sequence[str], *, plan_only: bool) -> dict[str, Any]:
@@ -294,6 +297,7 @@ def _validate_summary(summary_path: Path, methods: Sequence[str], *, plan_only: 
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    smoke_start = time.perf_counter()
     args = parse_args(argv)
     repo_root = _repo_root()
     data_dir = args.data_dir.expanduser().resolve()
@@ -307,7 +311,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.require_gpu and "pgas" in methods:
         env["C_SPIKES_PGAS_BACKEND"] = "gpu"
 
+    probe_start = time.perf_counter()
     probe = _probe_hardware(env)
+    probe_walltime_s = time.perf_counter() - probe_start
     _write_json(results_dir / "gpu_environment.json", probe)
     if args.require_gpu and not _gpu_visible(probe):
         raise RuntimeError(
@@ -321,7 +327,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             f"See {results_dir / 'gpu_environment.json'}."
         )
 
-    summary_path = _run_inference(
+    summary_path, inference_walltime_s = _run_inference(
         repo_root=repo_root,
         data_dir=data_dir,
         results_dir=results_dir,
@@ -332,6 +338,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         plan_only=bool(args.plan_only),
     )
     result = _validate_summary(summary_path, methods, plan_only=bool(args.plan_only))
+    total_walltime_s = time.perf_counter() - smoke_start
     _write_json(
         results_dir / "smoke_summary.json",
         {
@@ -341,6 +348,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             "dataset": str(args.dataset),
             "trial": int(args.trial),
             "methods": list(methods),
+            "walltime_s": total_walltime_s,
+            "hardware_probe_walltime_s": probe_walltime_s,
+            "inference_walltime_s": inference_walltime_s,
             "result": result,
         },
     )
