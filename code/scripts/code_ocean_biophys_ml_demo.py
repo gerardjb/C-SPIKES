@@ -37,6 +37,8 @@ TRACE_DURATION_S = 7.0
 TRACE_CORR_SIGMA_MS = 30.0
 REFERENCE_TRACE_RUN = "code_ocean_biophys_ml_reference"
 RETRAINED_TRACE_RUN = "code_ocean_biophys_ml_retrained"
+MANUSCRIPT_FIGURE_BUILD = "Figure 4A"
+MANUSCRIPT_FIGURE_TRACE = "Figure 4B,D"
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -302,10 +304,10 @@ def _compare_state_dicts(reference: Path, candidate: Path) -> dict[str, Any]:
 
 
 def _write_checksum_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
-    fieldnames = ["component", "expected", "observed", "matched", "path", "note"]
+    fieldnames = ["component", "manuscript_figure", "expected", "observed", "matched", "path", "note"]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow({key: row.get(key, "") for key in fieldnames})
@@ -706,6 +708,7 @@ def _write_checksum_outputs(results_dir: Path, report: Mapping[str, Any]) -> Non
         rows.append(
             {
                 "component": name,
+                "manuscript_figure": MANUSCRIPT_FIGURE_BUILD,
                 "expected": check.get("expected_sha256"),
                 "observed": check.get("observed_sha256"),
                 "matched": check.get("sha256_match"),
@@ -717,6 +720,7 @@ def _write_checksum_outputs(results_dir: Path, report: Mapping[str, Any]) -> Non
     rows.append(
         {
             "component": "cparams_mean",
+            "manuscript_figure": MANUSCRIPT_FIGURE_BUILD,
             "expected": cparams.get("expected_hash"),
             "observed": cparams.get("observed_hash"),
             "matched": cparams.get("hash_match"),
@@ -729,6 +733,7 @@ def _write_checksum_outputs(results_dir: Path, report: Mapping[str, Any]) -> Non
         rows.append(
             {
                 "component": "reference_checkpoint_file",
+                "manuscript_figure": MANUSCRIPT_FIGURE_TRACE,
                 "expected": ref.get("expected_file_sha256"),
                 "observed": ref.get("observed_file_sha256"),
                 "matched": ref.get("file_sha256_match"),
@@ -739,6 +744,7 @@ def _write_checksum_outputs(results_dir: Path, report: Mapping[str, Any]) -> Non
         rows.append(
             {
                 "component": "reference_checkpoint_state_dict",
+                "manuscript_figure": MANUSCRIPT_FIGURE_TRACE,
                 "expected": ref.get("expected_state_dict_sha256"),
                 "observed": ref.get("observed_state_dict_sha256"),
                 "matched": ref.get("state_dict_sha256_match"),
@@ -757,6 +763,7 @@ def _write_checksum_outputs(results_dir: Path, report: Mapping[str, Any]) -> Non
         rows.append(
             {
                 "component": "synthetic_ground_truth",
+                "manuscript_figure": MANUSCRIPT_FIGURE_BUILD,
                 "expected": archived.get("sha256"),
                 "observed": generated.get("sha256"),
                 "matched": synth.get("semantic_sha256_match"),
@@ -772,6 +779,7 @@ def _write_checksum_outputs(results_dir: Path, report: Mapping[str, Any]) -> Non
         rows.append(
             {
                 "component": "archived_synthetic_training_input",
+                "manuscript_figure": MANUSCRIPT_FIGURE_BUILD,
                 "expected": archived.get("sha256"),
                 "observed": archived.get("sha256"),
                 "matched": True,
@@ -784,6 +792,7 @@ def _write_checksum_outputs(results_dir: Path, report: Mapping[str, Any]) -> Non
         rows.append(
             {
                 "component": "retrained_checkpoint_file",
+                "manuscript_figure": MANUSCRIPT_FIGURE_BUILD,
                 "expected": training.get("expected_file_sha256"),
                 "observed": training.get("file_sha256"),
                 "matched": training.get("file_sha256_match"),
@@ -794,6 +803,7 @@ def _write_checksum_outputs(results_dir: Path, report: Mapping[str, Any]) -> Non
         rows.append(
             {
                 "component": "retrained_checkpoint_state_dict",
+                "manuscript_figure": MANUSCRIPT_FIGURE_BUILD,
                 "expected": training.get("expected_state_dict_sha256"),
                 "observed": training.get("state_dict_sha256"),
                 "matched": training.get("state_dict_sha256_match"),
@@ -806,6 +816,7 @@ def _write_checksum_outputs(results_dir: Path, report: Mapping[str, Any]) -> Non
         rows.append(
             {
                 "component": "trace_prediction",
+                "manuscript_figure": MANUSCRIPT_FIGURE_TRACE,
                 "expected": trace.get("reference_prediction_sha256"),
                 "observed": trace.get("candidate_prediction_sha256"),
                 "matched": trace.get("prediction_sha256_match"),

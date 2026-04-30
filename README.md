@@ -5,6 +5,8 @@ The C-SPIKES (**C**alcium **S**pike **P**rocessing using **I**ntegrated **K**ine
 ## Nature Methods software availability details
 
 ### Code Ocean smoke test
+See `README_CodeOcean.md` for the capsule output-to-manuscript-figure crosswalk.
+
 For a minimal GPU/server validation run inside the capsule, use:
 ```bash
 cd code

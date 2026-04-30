@@ -36,6 +36,7 @@ RUN_JG8M_BIOPHYS_ML = "code_ocean_jg8m_biophys_ml"
 @dataclass(frozen=True)
 class ParityMap:
     context: str
+    manuscript_figure: str
     generated_csv: str
     reference_csv: str
     generated_run: str
@@ -48,6 +49,7 @@ class ParityMap:
 PARITY_MAPS: tuple[ParityMap, ...] = (
     ParityMap(
         "cell2_jg8f_full_dataset",
+        "Figure 4B,D; Supplementary Figure 12A,B",
         "trialwise_correlations_jG8f_repro.csv",
         "trialwise_correlations_jG8f.csv",
         RUN_JG8F_BASE,
@@ -58,6 +60,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
     ),
     ParityMap(
         "cell2_jg8f_full_dataset",
+        "Figure 4B,D; Supplementary Figure 12A,B",
         "trialwise_correlations_jG8f_repro.csv",
         "trialwise_correlations_jG8f.csv",
         RUN_JG8F_BASE,
@@ -68,6 +71,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
     ),
     ParityMap(
         "cell2_jg8f_full_dataset",
+        "Figure 4B,D; Supplementary Figure 12A,B",
         "trialwise_correlations_jG8f_repro.csv",
         "trialwise_correlations_jG8f.csv",
         RUN_JG8F_BASE,
@@ -78,6 +82,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
     ),
     ParityMap(
         "cell2_jg8f_full_dataset",
+        "Figure 4B,D; Supplementary Figure 12A,B",
         "trialwise_correlations_jG8f_repro.csv",
         "trialwise_correlations_jG8f.csv",
         RUN_JG8F_BIOPHYS_ML,
@@ -88,6 +93,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
     ),
     ParityMap(
         "cell3_jg8f_parameterization",
+        "Supplementary Figure 13C,D",
         "trialwise_correlations_jG8f_repro.csv",
         "trialwise_correlations_jG8f_param_comparison.csv",
         RUN_JG8F_BASE,
@@ -98,6 +104,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
     ),
     ParityMap(
         "cell3_jg8f_parameterization",
+        "Supplementary Figure 13C,D",
         "trialwise_correlations_jG8f_repro.csv",
         "trialwise_correlations_jG8f_param_comparison.csv",
         RUN_JG8F_PARAMS,
@@ -108,6 +115,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
     ),
     ParityMap(
         "cell4_jg8m_full_dataset",
+        "Supplementary Figure 14F,G",
         "trialwise_correlations_jG8m_repro.csv",
         "trialwise_correlations_jG8m.csv",
         RUN_JG8M_BASE,
@@ -118,6 +126,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
     ),
     ParityMap(
         "cell4_jg8m_full_dataset",
+        "Supplementary Figure 14F,G",
         "trialwise_correlations_jG8m_repro.csv",
         "trialwise_correlations_jG8m.csv",
         RUN_JG8M_BASE,
@@ -128,6 +137,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
     ),
     ParityMap(
         "cell4_jg8m_full_dataset",
+        "Supplementary Figure 14F,G",
         "trialwise_correlations_jG8m_repro.csv",
         "trialwise_correlations_jG8m.csv",
         RUN_JG8M_BASE,
@@ -138,6 +148,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
     ),
     ParityMap(
         "cell4_jg8m_full_dataset",
+        "Supplementary Figure 14F,G",
         "trialwise_correlations_jG8m_repro.csv",
         "trialwise_correlations_jG8m.csv",
         RUN_JG8M_BIOPHYS_ML,
@@ -421,7 +432,7 @@ def _is_finite_number(value: Any) -> bool:
 def _write_rows_csv(path: Path, rows: Sequence[Mapping[str, Any]], fieldnames: Sequence[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(fieldnames))
+        writer = csv.DictWriter(fh, fieldnames=list(fieldnames), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -493,6 +504,7 @@ def _write_parity_tables(
             rows.append(
                 {
                     "context": mapping.context,
+                    "manuscript_figure": mapping.manuscript_figure,
                     "dataset": dataset,
                     "smoothing": smoothing,
                     "trial": trial,
@@ -513,6 +525,7 @@ def _write_parity_tables(
     out.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "context",
+        "manuscript_figure",
         "dataset",
         "smoothing",
         "trial",

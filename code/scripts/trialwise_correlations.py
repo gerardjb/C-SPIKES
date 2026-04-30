@@ -42,6 +42,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=None,
         help="Gaussian sigma (ms) for correlation smoothing. Repeatable; defaults to 50 if omitted.",
     )
+    p.add_argument(
+        "--manuscript-figure",
+        default=None,
+        help=(
+            "Optional manuscript figure/panel label to write into every row. "
+            "If omitted, known Code Ocean/refbuild run tags are mapped automatically."
+        ),
+    )
     p.add_argument("--out-csv", type=Path, default=Path("results/trialwise_correlations.csv"), help="Output CSV path.")
     return p.parse_args(argv)
 
@@ -147,6 +155,24 @@ def _preprocess_prediction_for_correlation(method_name: str, values: np.ndarray)
     if method_name == "pgas" and y.size >= 2:
         return np.concatenate([y[1:], np.array([0.0], dtype=y.dtype)])
     return y
+
+
+def _manuscript_figure_for_row(run_tag: str, smoothing_label: str, override: Optional[str]) -> str:
+    if override is not None:
+        return str(override)
+    run = str(run_tag).lower()
+    smoothing = str(smoothing_label).lower()
+    if "jg8f_janelia_params" in run or "jg8f_params" in run:
+        return "Supplementary Figure 13C,D"
+    if "jg8m" in run:
+        return "Supplementary Figure 14F,G"
+    if "biophys_ml_trace" in run:
+        return "Figure 4B,D"
+    if "jg8f" in run:
+        if smoothing in {"30hz", "10hz"}:
+            return "Supplementary Figure 12A,B"
+        return "Figure 4B,D"
+    return ""
 
 
 def _select_segment_for_trial(
@@ -371,6 +397,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                                     "start_s": float(start),
                                     "end_s": float(end),
                                     "correlation": float(corr_val) if np.isfinite(corr_val) else float("nan"),
+                                    "manuscript_figure": _manuscript_figure_for_row(
+                                        run_tag,
+                                        smoothing_label,
+                                        args.manuscript_figure,
+                                    ),
                                 }
                             )
 
@@ -390,7 +421,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 "start_s",
                 "end_s",
                 "correlation",
+                "manuscript_figure",
             ],
+            lineterminator="\n",
         )
         writer.writeheader()
         writer.writerows(rows)
