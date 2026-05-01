@@ -6,25 +6,31 @@ usage() {
 C-SPIKES Code Ocean capsule entry point.
 
 Usage:
-  ./run.sh [stage ...]
+  ./run.sh [--dataset-percent PERCENT] [stage ...]
 
 Stages:
   setup        Write a run manifest and create standard output directories.
   quickcheck   Run lightweight import checks for required Python backends.
   smoke        Check GPU/backend visibility and run one epoch of inference.
-  inference    Run the manuscript inference parity demo.
+  inference    Run the reviewer-facing manuscript inference workflow.
   biophys-ml   Run the BiophysML regeneration/checksum demo.
-  downsample   Run the downsampled-inference parity demo. (hook; implemented next)
-  all          Expand to: setup quickcheck smoke inference biophys-ml downsample
+  all          Expand to: setup quickcheck smoke inference
 
 Defaults:
   If no stage is supplied, C_SPIKES_RUN_STAGES is used.
-  If C_SPIKES_RUN_STAGES is unset, the current default is: setup quickcheck.
+  If C_SPIKES_RUN_STAGES is unset, the default is: setup quickcheck smoke inference.
 
 Common environment overrides:
   C_SPIKES_DATA_DIR       Data asset root. Default: ../data
   C_SPIKES_RESULTS_DIR    Persisted output root. Default: ../results
   C_SPIKES_SCRATCH_DIR    Temporary working root. Default: ../scratch
+  C_SPIKES_DATASET_PERCENT
+                          Optional inference expansion percent, >0 and <=100.
+                          Unset uses curated default epochs.
+  C_SPIKES_INFERENCE_PLAN_ONLY
+                          Set to 1 to write the inference plan without running it.
+  C_SPIKES_JG8F_BM_SIGMA  PGAS bm_sigma for jGCaMP8f inference. Default: 0.03
+  C_SPIKES_JG8M_BM_SIGMA  PGAS bm_sigma for jGCaMP8m inference. Default: 0.05
   C_SPIKES_QUICKCHECK     Set to 0 to skip quickcheck inside all/default workflows.
   C_SPIKES_SMOKE_REQUIRE_GPU
                            Set to 0 to allow smoke tests without a visible GPU.
@@ -213,13 +219,6 @@ stage_biophys_ml() {
         "${C_SPIKES_RESULTS_DIR}/biophys_ml_parity"
 }
 
-stage_downsample() {
-    run_python_stage \
-        "downsample" \
-        "scripts/code_ocean_downsample_demo.py" \
-        "${C_SPIKES_RESULTS_DIR}/downsample_parity"
-}
-
 normalize_stage() {
     echo "$1" | tr '_' '-'
 }
@@ -233,14 +232,11 @@ run_stage() {
         smoke) stage_smoke ;;
         inference) stage_inference ;;
         biophys-ml) stage_biophys_ml ;;
-        downsample) stage_downsample ;;
         all)
             stage_setup
             stage_quickcheck
             stage_smoke
             stage_inference
-            stage_biophys_ml
-            stage_downsample
             ;;
         help|-h|--help) usage ;;
         *)
@@ -251,10 +247,34 @@ run_stage() {
     esac
 }
 
-if [[ "$#" -eq 0 ]]; then
-    read -r -a stages <<< "${C_SPIKES_RUN_STAGES:-setup quickcheck}"
-else
-    stages=("$@")
+stages=()
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --dataset-percent)
+            if [[ "$#" -lt 2 ]]; then
+                echo "[run.sh] --dataset-percent requires a value." >&2
+                exit 2
+            fi
+            export C_SPIKES_DATASET_PERCENT="$2"
+            shift 2
+            ;;
+        --dataset-percent=*)
+            export C_SPIKES_DATASET_PERCENT="${1#*=}"
+            shift
+            ;;
+        help|-h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            stages+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ "${#stages[@]}" -eq 0 ]]; then
+    read -r -a stages <<< "${C_SPIKES_RUN_STAGES:-setup quickcheck smoke inference}"
 fi
 
 for stage in "${stages[@]}"; do

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import random
 import subprocess
@@ -28,9 +29,12 @@ JG8M_NOTEBOOK_DATASET = "jGCaMP8m_ANM472179_cell02"
 
 RUN_JG8F_BASE = "code_ocean_jg8f_base"
 RUN_JG8F_PARAMS = "code_ocean_jg8f_params"
-RUN_JG8F_BIOPHYS_ML = "code_ocean_jg8f_biophys_ml"
+RUN_JG8F_BIOPHYS_ML_CACHE = "code_ocean_jg8f_biophys_ml_cache"
 RUN_JG8M_BASE = "code_ocean_jg8m_base"
-RUN_JG8M_BIOPHYS_ML = "code_ocean_jg8m_biophys_ml"
+RUN_JG8M_BIOPHYS_ML_CACHE = "code_ocean_jg8m_biophys_ml_cache"
+
+DEFAULT_JG8F_BM_SIGMA = "0.03"
+DEFAULT_JG8M_BM_SIGMA = "0.05"
 
 
 @dataclass(frozen=True)
@@ -85,8 +89,8 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "Figure 4B,D; Supplementary Figure 12A,B",
         "trialwise_correlations_jG8f_repro.csv",
         "trialwise_correlations_jG8f.csv",
-        RUN_JG8F_BIOPHYS_ML,
-        "ens2",
+        RUN_JG8F_BASE,
+        "biophys_ml",
         "updated_biophys-ml_cascade",
         "ens2",
         "BiophysML",
@@ -151,8 +155,8 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "Supplementary Figure 14F,G",
         "trialwise_correlations_jG8m_repro.csv",
         "trialwise_correlations_jG8m.csv",
-        RUN_JG8M_BIOPHYS_ML,
-        "ens2",
+        RUN_JG8M_BASE,
+        "biophys_ml",
         "ens2_jG8m_sweep2_best_k2_r9_s2p0_d0p45_sb19000",
         "ens2",
         "BiophysML",
@@ -179,6 +183,29 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Number of deterministic extra epochs to include from the BiophysML source "
             "dataset in addition to the source epoch."
         ),
+    )
+    parser.add_argument(
+        "--dataset-percent",
+        type=float,
+        default=(
+            float(os.environ["C_SPIKES_DATASET_PERCENT"])
+            if os.environ.get("C_SPIKES_DATASET_PERCENT")
+            else None
+        ),
+        help=(
+            "Optional percent of the full eligible excitatory epoch list to run. "
+            "If omitted, only curated default epochs are processed. 100 means all eligible epochs."
+        ),
+    )
+    parser.add_argument(
+        "--jg8f-bm-sigma",
+        default=os.environ.get("C_SPIKES_JG8F_BM_SIGMA", DEFAULT_JG8F_BM_SIGMA),
+        help="Fixed PGAS bm_sigma for jGCaMP8f runs, or 'auto'.",
+    )
+    parser.add_argument(
+        "--jg8m-bm-sigma",
+        default=os.environ.get("C_SPIKES_JG8M_BM_SIGMA", DEFAULT_JG8M_BM_SIGMA),
+        help="Fixed PGAS bm_sigma for jGCaMP8m runs, or 'auto'.",
     )
     parser.add_argument(
         "--random-seed",
@@ -258,6 +285,49 @@ def _selection_for_dataset(
     return out
 
 
+def _valid_trial_indices(dataset: str, edges: Mapping[str, np.ndarray]) -> list[int]:
+    arr = np.asarray(edges[dataset], dtype=np.float64)
+    out: list[int] = []
+    for idx, row in enumerate(arr):
+        if row.shape[0] >= 2 and np.isfinite(row[0]) and np.isfinite(row[1]) and float(row[1]) > float(row[0]):
+            out.append(int(idx))
+    return out
+
+
+def _eligible_epoch_pairs(data_root: Path, edges: Mapping[str, np.ndarray]) -> list[tuple[str, int]]:
+    pairs: list[tuple[str, int]] = []
+    available = {path.stem for path in sorted(data_root.glob("*.mat"))}
+    for dataset in sorted(set(edges).intersection(available)):
+        for trial_idx in _valid_trial_indices(dataset, edges):
+            pairs.append((dataset, int(trial_idx)))
+    return pairs
+
+
+def _selection_from_pairs(pairs: Sequence[tuple[str, int]]) -> dict[str, list[int]]:
+    selection: dict[str, list[int]] = {}
+    for dataset, trial_idx in pairs:
+        bucket = selection.setdefault(str(dataset), [])
+        if int(trial_idx) not in bucket:
+            bucket.append(int(trial_idx))
+    return {dataset: trials for dataset, trials in selection.items() if trials}
+
+
+def _selection_for_percent(
+    *,
+    data_root: Path,
+    edges: Mapping[str, np.ndarray],
+    percent: float,
+) -> dict[str, list[int]]:
+    if not np.isfinite(float(percent)) or float(percent) <= 0.0 or float(percent) > 100.0:
+        raise ValueError("--dataset-percent must be > 0 and <= 100.")
+    pairs = _eligible_epoch_pairs(data_root, edges)
+    if not pairs:
+        raise ValueError(f"No eligible edged epochs found under {data_root}")
+    n = int(math.ceil(len(pairs) * float(percent) / 100.0))
+    n = max(1, min(len(pairs), n))
+    return _selection_from_pairs(pairs[:n])
+
+
 def _random_extra_trials(
     dataset: str,
     *,
@@ -333,13 +403,16 @@ def _run_batch(
     edges_path: Path,
     run_tag: str,
     methods: Sequence[str],
+    smoothing_levels: Sequence[str],
     corr_sigma_ms: float,
     pgas_constants: Path,
     pgas_gparam: Path,
     pgas_output_root: Path,
+    pgas_bm_sigma: str,
     ens2_pretrained_root: Path,
     cascade_model_root: Path,
     cascade_model_name: str = "universal_p_cascade_exc_30",
+    eval_only: bool = False,
 ) -> None:
     cmd: list[str] = [
         sys.executable,
@@ -373,12 +446,93 @@ def _run_batch(
         str(pgas_gparam),
         "--pgas-output-root",
         str(pgas_output_root),
+        "--pgas-bm-sigma",
+        str(pgas_bm_sigma),
     ]
+    if eval_only:
+        cmd.append("--eval-only")
     for method in methods:
         cmd.extend(["--method", method])
+    for smoothing in smoothing_levels:
+        cmd.extend(["--smoothing-level", smoothing])
     for dataset in datasets:
         cmd.extend(["--dataset", dataset])
     _run(cmd, cwd=cwd, env=env, dry_run=dry_run)
+
+
+def _import_ens2_cache_as_biophys_ml(
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    dry_run: bool,
+    eval_root: Path,
+    cache_root: Path,
+    data_root: Path,
+    source_run: str,
+    target_run: str,
+    model_name: str,
+) -> None:
+    code = r"""
+import json
+import os
+from pathlib import Path
+
+from c_spikes.inference.import_external import import_external_method
+
+eval_root = Path(os.environ["C_SPIKES_IMPORT_EVAL_ROOT"])
+cache_root = Path(os.environ["C_SPIKES_IMPORT_CACHE_ROOT"])
+data_root = Path(os.environ["C_SPIKES_IMPORT_DATA_ROOT"])
+source_run = os.environ["C_SPIKES_IMPORT_SOURCE_RUN"]
+target_run = os.environ["C_SPIKES_IMPORT_TARGET_RUN"]
+model_name = os.environ["C_SPIKES_IMPORT_MODEL_NAME"]
+
+count = 0
+for comparison_path in sorted((eval_root / source_run).glob("*/*/comparison.json")):
+    comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+    dataset = str(comparison["dataset"])
+    smoothing = str(comparison["smoothing"])
+    ens2_entries = [entry for entry in comparison.get("methods", []) if entry.get("method") == "ens2"]
+    if len(ens2_entries) != 1:
+        raise RuntimeError(f"Expected exactly one ENS2 entry in {comparison_path}, got {len(ens2_entries)}")
+    entry = ens2_entries[0]
+    cache_tag = str(entry["cache_tag"])
+    cache_key = str(entry["cache_key"])
+    pred_path = cache_root / "ens2" / cache_tag / f"{cache_key}.mat"
+    config = dict(entry.get("config") or {})
+    config["source_method"] = "ens2"
+    config["source_run_tag"] = source_run
+    config["source_cache_tag"] = cache_tag
+    config["source_cache_key"] = cache_key
+    config["method_alias"] = "biophys_ml"
+    import_external_method(
+        pred_path=pred_path,
+        method="biophys_ml",
+        dataset=dataset,
+        smoothing=smoothing,
+        run_tag=target_run,
+        data_root=data_root,
+        eval_root=eval_root,
+        cache_root=cache_root,
+        cache_tag=f"{model_name}/{dataset}",
+        label="biophys_ml",
+        config=config,
+        corr_sigma_ms=50.0,
+    )
+    count += 1
+print(f"[inference-demo] imported {count} ENS2 cache files as biophys_ml into {target_run}")
+"""
+    import_env = dict(env)
+    import_env.update(
+        {
+            "C_SPIKES_IMPORT_EVAL_ROOT": str(eval_root),
+            "C_SPIKES_IMPORT_CACHE_ROOT": str(cache_root),
+            "C_SPIKES_IMPORT_DATA_ROOT": str(data_root),
+            "C_SPIKES_IMPORT_SOURCE_RUN": str(source_run),
+            "C_SPIKES_IMPORT_TARGET_RUN": str(target_run),
+            "C_SPIKES_IMPORT_MODEL_NAME": str(model_name),
+        }
+    )
+    _run([sys.executable, "-c", code], cwd=cwd, env=import_env, dry_run=dry_run)
 
 
 def _trialwise_csv(
@@ -640,6 +794,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     edge_8m = data_dir / "reference_inputs" / "edges" / "excitatory_jG8m_edges_2000pts.npy"
     edges_8f = _load_edges(edge_8f)
     edges_8m = _load_edges(edge_8m)
+    jg8f_data_root = data_dir / "sample_data" / "janelia_8f" / "excitatory"
+    jg8m_data_root = data_dir / "sample_data" / "janelia_8m" / "excitatory"
 
     notebook_trial_8f = _bounded_trial(JG8F_NOTEBOOK_DATASET, args.notebook_trial, edges_8f)
     notebook_trial_8m = _bounded_trial(JG8M_NOTEBOOK_DATASET, args.notebook_trial, edges_8m)
@@ -652,45 +808,120 @@ def main(argv: Sequence[str] | None = None) -> None:
         seed=args.random_seed,
     )
 
-    if args.include_all_notebook_trials:
+    if args.dataset_percent is not None:
+        selection_8f = _selection_for_percent(
+            data_root=jg8f_data_root,
+            edges=edges_8f,
+            percent=float(args.dataset_percent),
+        )
+        selection_8m = _selection_for_percent(
+            data_root=jg8m_data_root,
+            edges=edges_8m,
+            percent=float(args.dataset_percent),
+        )
+    elif args.include_all_notebook_trials:
         jg8f_main_trials = list(range(np.asarray(edges_8f[JG8F_NOTEBOOK_DATASET]).shape[0]))
         jg8m_main_trials = list(range(np.asarray(edges_8m[JG8M_NOTEBOOK_DATASET]).shape[0]))
+        selection_8f = {
+            JG8F_NOTEBOOK_DATASET: _selection_for_dataset(
+                JG8F_NOTEBOOK_DATASET,
+                edges=edges_8f,
+                preferred=jg8f_main_trials,
+            ),
+            JG8F_BIOPHYS_ML_SOURCE_DATASET: _selection_for_dataset(
+                JG8F_BIOPHYS_ML_SOURCE_DATASET,
+                edges=edges_8f,
+                preferred=[source_trial, *source_extra],
+            ),
+        }
+        selection_8m = {
+            JG8M_NOTEBOOK_DATASET: _selection_for_dataset(
+                JG8M_NOTEBOOK_DATASET,
+                edges=edges_8m,
+                preferred=jg8m_main_trials,
+            )
+        }
     else:
         jg8f_main_trials = [notebook_trial_8f]
         jg8m_main_trials = [notebook_trial_8m]
-
-    selection_8f = {
-        JG8F_NOTEBOOK_DATASET: _selection_for_dataset(
-            JG8F_NOTEBOOK_DATASET,
-            edges=edges_8f,
-            preferred=jg8f_main_trials,
-        ),
-        JG8F_BIOPHYS_ML_SOURCE_DATASET: _selection_for_dataset(
-            JG8F_BIOPHYS_ML_SOURCE_DATASET,
-            edges=edges_8f,
-            preferred=[source_trial, *source_extra],
-        ),
-    }
-    selection_8m = {
-        JG8M_NOTEBOOK_DATASET: _selection_for_dataset(
-            JG8M_NOTEBOOK_DATASET,
-            edges=edges_8m,
-            preferred=jg8m_main_trials,
-        )
-    }
+        selection_8f = {
+            JG8F_NOTEBOOK_DATASET: _selection_for_dataset(
+                JG8F_NOTEBOOK_DATASET,
+                edges=edges_8f,
+                preferred=jg8f_main_trials,
+            ),
+            JG8F_BIOPHYS_ML_SOURCE_DATASET: _selection_for_dataset(
+                JG8F_BIOPHYS_ML_SOURCE_DATASET,
+                edges=edges_8f,
+                preferred=[source_trial, *source_extra],
+            ),
+        }
+        selection_8m = {
+            JG8M_NOTEBOOK_DATASET: _selection_for_dataset(
+                JG8M_NOTEBOOK_DATASET,
+                edges=edges_8m,
+                preferred=jg8m_main_trials,
+            )
+        }
 
     selection_8f_path = scratch_dir / "code_ocean_selection_jG8f.json"
     selection_8m_path = scratch_dir / "code_ocean_selection_jG8m.json"
     _write_json(selection_8f_path, selection_8f)
     _write_json(selection_8m_path, selection_8m)
 
+    datasets_8f = sorted(selection_8f)
+    datasets_8m = sorted(selection_8m)
+    jg8f_smoothing_levels = ["raw", "30Hz", "10Hz"]
+    jg8m_smoothing_levels = ["raw"]
+    ens2_root = data_dir / "Pretrained_models" / "ENS2" / "ens2_published"
+    biophys_ml_root = data_dir / "Pretrained_models" / "BiophysML" / "ens2_synth_comparison_k1_r12_s2p0_d0p45_sb11000"
+    biophys_ml_jg8m_root = data_dir / "Pretrained_models" / "BiophysML" / "ens2_synth_j8m_base_k2_r9_s2p0_d0p45_sb19000"
+    cascade_root = data_dir / "Pretrained_models" / "CASCADE"
+
     plan = {
         "corr_sigma_ms": float(args.corr_sigma_ms),
+        "dataset_percent": args.dataset_percent,
+        "jg8f_bm_sigma": str(args.jg8f_bm_sigma),
+        "jg8m_bm_sigma": str(args.jg8m_bm_sigma),
         "jG8f_selection": selection_8f,
         "jG8m_selection": selection_8m,
+        "jG8f_epoch_count": int(sum(len(v) for v in selection_8f.values())),
+        "jG8m_epoch_count": int(sum(len(v) for v in selection_8m.values())),
+        "method_matrix": {
+            "jG8f_excitatory": {
+                "datasets": datasets_8f,
+                "smoothing_levels": jg8f_smoothing_levels,
+                "methods": ["pgas_gold", "pgas_janelia_params_raw_only", "ens2", "cascade", "biophys_ml"],
+            },
+            "jG8m_excitatory": {
+                "datasets": datasets_8m,
+                "smoothing_levels": jg8m_smoothing_levels,
+                "methods": ["pgas", "ens2", "cascade", "biophys_ml"],
+            },
+        },
+        "model_paths": {
+            "ens2_published": str(ens2_root),
+            "biophys_ml_jG8f_reference": str(biophys_ml_root),
+            "biophys_ml_jG8m_reference": str(biophys_ml_jg8m_root),
+            "cascade_jG8f": str(cascade_root / "universal_p_cascade_exc_30"),
+            "cascade_jG8m": str(cascade_root / "Cascade_Universal_30Hz"),
+        },
+        "pgas_parameter_files": {
+            "jG8f_gold": str(data_dir / "pgas_parameters" / "20230525_gold.dat"),
+            "jG8f_janelia": str(data_dir / "pgas_parameters" / "20251210_Janelia_8f_params.dat"),
+            "jG8m": str(data_dir / "pgas_parameters" / "20251207_jG8m_params.dat"),
+        },
+        "expected_outputs": {
+            "jG8f_trialwise_csv": str(results_dir / "trialwise_correlations_jG8f_repro.csv"),
+            "jG8m_trialwise_csv": str(results_dir / "trialwise_correlations_jG8m_repro.csv"),
+            "combined_trialwise_csv": str(results_dir / "trialwise_correlations_reproducible.csv"),
+            "parity_csv": str(results_dir / "correlation_parity.csv"),
+        },
         "reference_note": (
-            "Trial indices are 0-based. Increase coverage with "
-            "--include-all-notebook-trials and/or --extra-random-epochs."
+            "Trial indices are 0-based. By default this runs curated epochs only. "
+            "Use --dataset-percent or C_SPIKES_DATASET_PERCENT to expand deterministically."
+            " jGCaMP8f inhibitory data are staged for optional exploration but are not part "
+            "of the default reviewer workflow."
         ),
     }
     _write_json(results_dir / "inference_plan.json", plan)
@@ -704,13 +935,6 @@ def main(argv: Sequence[str] | None = None) -> None:
     cache_root = capsule_root / "results" / "inference_cache"
     pgas_output_root = results_dir / "pgas_output"
 
-    jg8f_data_root = data_dir / "sample_data" / "janelia_8f" / "excitatory"
-    jg8m_data_root = data_dir / "sample_data" / "janelia_8m" / "excitatory"
-    ens2_root = data_dir / "Pretrained_models" / "ENS2" / "ens2_published"
-    biophys_ml_root = data_dir / "Pretrained_models" / "BiophysML" / "ens2_synth_comparison_k1_r12_s2p0_d0p45_sb11000"
-    biophys_ml_jg8m_root = data_dir / "Pretrained_models" / "BiophysML" / "ens2_synth_j8m_base_k2_r9_s2p0_d0p45_sb19000"
-    cascade_root = data_dir / "Pretrained_models" / "CASCADE"
-
     base_8f_methods = ["ens2", "cascade"] if args.skip_pgas else ["pgas", "ens2", "cascade"]
     base_8m_methods = ["ens2", "cascade"] if args.skip_pgas else ["pgas", "ens2", "cascade"]
     param_methods = [] if args.skip_pgas else ["pgas"]
@@ -720,19 +944,22 @@ def main(argv: Sequence[str] | None = None) -> None:
         env=env,
         dry_run=False,
         data_root=jg8f_data_root,
-        datasets=[JG8F_NOTEBOOK_DATASET, JG8F_BIOPHYS_ML_SOURCE_DATASET],
+        datasets=datasets_8f,
         selection_json=selection_8f_path,
         output_root=eval_root,
         cache_root=cache_root,
         edges_path=edge_8f,
         run_tag=RUN_JG8F_BASE,
         methods=base_8f_methods,
+        smoothing_levels=jg8f_smoothing_levels,
         corr_sigma_ms=args.corr_sigma_ms,
         pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8_soma.json",
         pgas_gparam=data_dir / "pgas_parameters" / "20230525_gold.dat",
         pgas_output_root=pgas_output_root / RUN_JG8F_BASE,
+        pgas_bm_sigma=str(args.jg8f_bm_sigma),
         ens2_pretrained_root=ens2_root,
         cascade_model_root=cascade_root,
+        cascade_model_name="universal_p_cascade_exc_30",
     )
     if param_methods:
         _run_batch(
@@ -740,76 +967,156 @@ def main(argv: Sequence[str] | None = None) -> None:
             env=env,
             dry_run=False,
             data_root=jg8f_data_root,
-            datasets=[JG8F_NOTEBOOK_DATASET],
+            datasets=datasets_8f,
             selection_json=selection_8f_path,
             output_root=eval_root,
             cache_root=cache_root,
             edges_path=edge_8f,
             run_tag=RUN_JG8F_PARAMS,
             methods=param_methods,
+            smoothing_levels=["raw"],
             corr_sigma_ms=args.corr_sigma_ms,
             pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8_soma.json",
             pgas_gparam=data_dir / "pgas_parameters" / "20251210_Janelia_8f_params.dat",
             pgas_output_root=pgas_output_root / RUN_JG8F_PARAMS,
+            pgas_bm_sigma=str(args.jg8f_bm_sigma),
             ens2_pretrained_root=ens2_root,
             cascade_model_root=cascade_root,
+            cascade_model_name="universal_p_cascade_exc_30",
         )
     _run_batch(
         cwd=capsule_root,
         env=env,
         dry_run=False,
         data_root=jg8f_data_root,
-        datasets=[JG8F_NOTEBOOK_DATASET],
+        datasets=datasets_8f,
         selection_json=selection_8f_path,
         output_root=eval_root,
         cache_root=cache_root,
         edges_path=edge_8f,
-        run_tag=RUN_JG8F_BIOPHYS_ML,
+        run_tag=RUN_JG8F_BIOPHYS_ML_CACHE,
         methods=["ens2"],
+        smoothing_levels=jg8f_smoothing_levels,
         corr_sigma_ms=args.corr_sigma_ms,
         pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8_soma.json",
         pgas_gparam=data_dir / "pgas_parameters" / "20230525_gold.dat",
-        pgas_output_root=pgas_output_root / RUN_JG8F_BIOPHYS_ML,
+        pgas_output_root=pgas_output_root / RUN_JG8F_BIOPHYS_ML_CACHE,
+        pgas_bm_sigma=str(args.jg8f_bm_sigma),
         ens2_pretrained_root=biophys_ml_root,
         cascade_model_root=cascade_root,
+        cascade_model_name="universal_p_cascade_exc_30",
+    )
+    _import_ens2_cache_as_biophys_ml(
+        cwd=capsule_root,
+        env=env,
+        dry_run=False,
+        eval_root=eval_root,
+        cache_root=cache_root,
+        data_root=jg8f_data_root,
+        source_run=RUN_JG8F_BIOPHYS_ML_CACHE,
+        target_run=RUN_JG8F_BASE,
+        model_name=biophys_ml_root.name,
+    )
+    _run_batch(
+        cwd=capsule_root,
+        env=env,
+        dry_run=False,
+        eval_only=True,
+        data_root=jg8f_data_root,
+        datasets=datasets_8f,
+        selection_json=selection_8f_path,
+        output_root=eval_root,
+        cache_root=cache_root,
+        edges_path=edge_8f,
+        run_tag=RUN_JG8F_BASE,
+        methods=[*base_8f_methods, "biophys_ml"],
+        smoothing_levels=jg8f_smoothing_levels,
+        corr_sigma_ms=args.corr_sigma_ms,
+        pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8_soma.json",
+        pgas_gparam=data_dir / "pgas_parameters" / "20230525_gold.dat",
+        pgas_output_root=pgas_output_root / RUN_JG8F_BASE,
+        pgas_bm_sigma=str(args.jg8f_bm_sigma),
+        ens2_pretrained_root=ens2_root,
+        cascade_model_root=cascade_root,
+        cascade_model_name="universal_p_cascade_exc_30",
     )
     _run_batch(
         cwd=capsule_root,
         env=env,
         dry_run=False,
         data_root=jg8m_data_root,
-        datasets=[JG8M_NOTEBOOK_DATASET],
+        datasets=datasets_8m,
         selection_json=selection_8m_path,
         output_root=eval_root,
         cache_root=cache_root,
         edges_path=edge_8m,
         run_tag=RUN_JG8M_BASE,
         methods=base_8m_methods,
+        smoothing_levels=jg8m_smoothing_levels,
         corr_sigma_ms=args.corr_sigma_ms,
         pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8m_soma.json",
         pgas_gparam=data_dir / "pgas_parameters" / "20251207_jG8m_params.dat",
         pgas_output_root=pgas_output_root / RUN_JG8M_BASE,
+        pgas_bm_sigma=str(args.jg8m_bm_sigma),
         ens2_pretrained_root=ens2_root,
         cascade_model_root=cascade_root,
+        cascade_model_name="Cascade_Universal_30Hz",
     )
     _run_batch(
         cwd=capsule_root,
         env=env,
         dry_run=False,
         data_root=jg8m_data_root,
-        datasets=[JG8M_NOTEBOOK_DATASET],
+        datasets=datasets_8m,
         selection_json=selection_8m_path,
         output_root=eval_root,
         cache_root=cache_root,
         edges_path=edge_8m,
-        run_tag=RUN_JG8M_BIOPHYS_ML,
+        run_tag=RUN_JG8M_BIOPHYS_ML_CACHE,
         methods=["ens2"],
+        smoothing_levels=jg8m_smoothing_levels,
         corr_sigma_ms=args.corr_sigma_ms,
         pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8m_soma.json",
         pgas_gparam=data_dir / "pgas_parameters" / "20251207_jG8m_params.dat",
-        pgas_output_root=pgas_output_root / RUN_JG8M_BIOPHYS_ML,
+        pgas_output_root=pgas_output_root / RUN_JG8M_BIOPHYS_ML_CACHE,
+        pgas_bm_sigma=str(args.jg8m_bm_sigma),
         ens2_pretrained_root=biophys_ml_jg8m_root,
         cascade_model_root=cascade_root,
+        cascade_model_name="Cascade_Universal_30Hz",
+    )
+    _import_ens2_cache_as_biophys_ml(
+        cwd=capsule_root,
+        env=env,
+        dry_run=False,
+        eval_root=eval_root,
+        cache_root=cache_root,
+        data_root=jg8m_data_root,
+        source_run=RUN_JG8M_BIOPHYS_ML_CACHE,
+        target_run=RUN_JG8M_BASE,
+        model_name=biophys_ml_jg8m_root.name,
+    )
+    _run_batch(
+        cwd=capsule_root,
+        env=env,
+        dry_run=False,
+        eval_only=True,
+        data_root=jg8m_data_root,
+        datasets=datasets_8m,
+        selection_json=selection_8m_path,
+        output_root=eval_root,
+        cache_root=cache_root,
+        edges_path=edge_8m,
+        run_tag=RUN_JG8M_BASE,
+        methods=[*base_8m_methods, "biophys_ml"],
+        smoothing_levels=jg8m_smoothing_levels,
+        corr_sigma_ms=args.corr_sigma_ms,
+        pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8m_soma.json",
+        pgas_gparam=data_dir / "pgas_parameters" / "20251207_jG8m_params.dat",
+        pgas_output_root=pgas_output_root / RUN_JG8M_BASE,
+        pgas_bm_sigma=str(args.jg8m_bm_sigma),
+        ens2_pretrained_root=ens2_root,
+        cascade_model_root=cascade_root,
+        cascade_model_name="Cascade_Universal_30Hz",
     )
 
     _trialwise_csv(
@@ -820,8 +1127,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         data_root=jg8f_data_root,
         edges_path=edge_8f,
         out_csv=results_dir / "trialwise_correlations_jG8f_repro.csv",
-        runs=[RUN_JG8F_BASE, RUN_JG8F_PARAMS, RUN_JG8F_BIOPHYS_ML],
-        datasets=[JG8F_NOTEBOOK_DATASET, JG8F_BIOPHYS_ML_SOURCE_DATASET],
+        runs=[RUN_JG8F_BASE, RUN_JG8F_PARAMS],
+        datasets=datasets_8f,
         corr_sigma_ms=args.corr_sigma_ms,
     )
     _filter_finite_correlation_csv(results_dir / "trialwise_correlations_jG8f_repro.csv")
@@ -833,8 +1140,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         data_root=jg8m_data_root,
         edges_path=edge_8m,
         out_csv=results_dir / "trialwise_correlations_jG8m_repro.csv",
-        runs=[RUN_JG8M_BASE, RUN_JG8M_BIOPHYS_ML],
-        datasets=[JG8M_NOTEBOOK_DATASET],
+        runs=[RUN_JG8M_BASE],
+        datasets=datasets_8m,
         corr_sigma_ms=args.corr_sigma_ms,
     )
     _filter_finite_correlation_csv(results_dir / "trialwise_correlations_jG8m_repro.csv")
@@ -863,7 +1170,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             out=plots_dir / "cell2_jG8f_trace_panel.png",
             methods=[
                 f"pgas@{RUN_JG8F_BASE}",
-                f"biophys_ml=ens2@{RUN_JG8F_BIOPHYS_ML}",
+                f"biophys_ml@{RUN_JG8F_BASE}",
                 f"ens2=ens2@{RUN_JG8F_BASE}",
                 f"cascade@{RUN_JG8F_BASE}",
             ],
@@ -912,7 +1219,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             out=plots_dir / "cell4_jG8m_trace_panel.png",
             methods=[
                 f"pgas@{RUN_JG8M_BASE}",
-                f"biophys_ml=ens2@{RUN_JG8M_BIOPHYS_ML}",
+                f"biophys_ml@{RUN_JG8M_BASE}",
                 f"ens2=ens2@{RUN_JG8M_BASE}",
                 f"cascade@{RUN_JG8M_BASE}",
             ],
