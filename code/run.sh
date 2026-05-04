@@ -83,6 +83,11 @@ try_activate_conda() {
 
 try_activate_conda
 
+if [[ -f /etc/profile.d/c_spikes_build.sh ]]; then
+    # shellcheck disable=SC1091
+    source /etc/profile.d/c_spikes_build.sh
+fi
+
 mkdir -p \
     "${C_SPIKES_RESULTS_DIR}" \
     "${C_SPIKES_RESULTS_DIR}/logs" \
@@ -136,8 +141,50 @@ prepend_ld_path "${CUDA_HOME:-/usr/local/cuda}/lib64"
 
 cd "${C_SPIKES_CODE_DIR}"
 
+ensure_pgas_backend() {
+    if [[ "${C_SPIKES_SKIP_PGAS_BUILD:-0}" == "1" ]]; then
+        return 0
+    fi
+
+    if python - <<'PY' >/dev/null 2>&1
+import importlib
+importlib.import_module("c_spikes.pgas.pgas_bound")
+PY
+    then
+        return 0
+    fi
+
+    if [[ ! -f "${C_SPIKES_CODE_DIR}/pyproject.toml" ]]; then
+        echo "[run.sh] PGAS backend is not importable and ${C_SPIKES_CODE_DIR}/pyproject.toml is missing." >&2
+        return 1
+    fi
+
+    echo "[run.sh] PGAS backend is not importable; building C-SPIKES package."
+    python -m pip install --no-deps --no-build-isolation -v "${C_SPIKES_CODE_DIR}"
+    python - <<'PY'
+from pathlib import Path
+import os
+import shutil
+
+code_dir = Path(os.environ["C_SPIKES_CODE_DIR"])
+target_dir = code_dir / "src" / "c_spikes" / "pgas"
+built = sorted((code_dir / "build").glob("**/pgas_bound_*.so"))
+if not built:
+    raise SystemExit("PGAS build completed but no pgas_bound_*.so files were found under code/build.")
+for path in built:
+    shutil.copy2(path, target_dir / path.name)
+    print(f"[run.sh] staged {path.name} into {target_dir}")
+PY
+    python - <<'PY'
+import importlib
+module = importlib.import_module("c_spikes.pgas.pgas_bound")
+print(f"[run.sh] PGAS backend import ok: {getattr(module, '__backend__', 'unknown')}")
+PY
+}
+
 stage_setup() {
     echo "[run.sh] setup"
+    ensure_pgas_backend
     python - <<'PY'
 from __future__ import annotations
 
@@ -182,6 +229,7 @@ stage_quickcheck() {
 }
 
 stage_smoke() {
+    ensure_pgas_backend
     run_python_stage \
         "smoke" \
         "scripts/code_ocean_smoke_test.py" \
@@ -206,6 +254,7 @@ run_python_stage() {
 }
 
 stage_inference() {
+    ensure_pgas_backend
     run_python_stage \
         "inference" \
         "scripts/code_ocean_inference_demo.py" \

@@ -47,6 +47,16 @@ def test_torch_import_and_ens2_module():
         logger.info("Torch CUDA version=%s", torch.version.cuda)
 
 
+def test_pgas_backend_import():
+    try:
+        pgas_module = __import__("c_spikes.pgas.pgas_bound", fromlist=["Analyzer"])
+    except Exception as exc:
+        pytest.fail(f"PGAS backend import failed: {exc}")
+
+    assert hasattr(pgas_module, "Analyzer")
+    logger.info("PGAS backend=%s", getattr(pgas_module, "__backend__", "unknown"))
+
+
 @pytest.mark.requires_tensorflow
 def test_tensorflow_import_and_cascade_module():
     try:
