@@ -478,6 +478,7 @@ import os
 from pathlib import Path
 
 from c_spikes.inference.import_external import import_external_method
+from c_spikes.inference.types import compute_config_signature
 
 eval_root = Path(os.environ["C_SPIKES_IMPORT_EVAL_ROOT"])
 cache_root = Path(os.environ["C_SPIKES_IMPORT_CACHE_ROOT"])
@@ -495,10 +496,13 @@ for comparison_path in sorted((eval_root / source_run).glob("*/*/comparison.json
     if len(ens2_entries) != 1:
         raise RuntimeError(f"Expected exactly one ENS2 entry in {comparison_path}, got {len(ens2_entries)}")
     entry = ens2_entries[0]
-    cache_tag = str(entry["cache_tag"])
-    cache_key = str(entry["cache_key"])
-    pred_path = cache_root / "ens2" / cache_tag / f"{cache_key}.mat"
+    cache_tag = str(entry.get("cache_tag") or dataset).strip()
     config = dict(entry.get("config") or {})
+    cache_key_raw = entry.get("cache_key")
+    cache_key = str(cache_key_raw).strip() if cache_key_raw is not None else ""
+    if not cache_key:
+        cache_key, _ = compute_config_signature(config)
+    pred_path = cache_root / "ens2" / cache_tag / f"{cache_key}.mat"
     config["source_method"] = "ens2"
     config["source_run_tag"] = source_run
     config["source_cache_tag"] = cache_tag
