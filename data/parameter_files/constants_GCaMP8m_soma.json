@@ -4,7 +4,7 @@
     },
 
     "BM":{
-        "bm_sigma":3e-2
+        "bm_sigma":5e-2
     },
 
     "priors":{

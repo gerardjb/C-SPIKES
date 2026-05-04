@@ -5,11 +5,12 @@ This directory is staged as the data asset for the C-SPIKES manuscript Code Ocea
 ## Contents
 
 - `sample_data/`: clean Janelia-style `.mat` sample inputs for jGCaMP8f and jGCaMP8m. This copy contains only tracked sample input files, not cached `spike_inference`, `biophys_ml`, `edges`, or generated output directories.
-- `Pretrained_models/`: model checkpoints required by the reviewer-facing demonstrations, including published ENS2, CASCADE, and bundled BiophysML checkpoints.
+- `Pretrained_models/`: model checkpoints required by the reviewer-facing demonstrations, including published ENS2, CASCADE, and bundled BiophysML checkpoints. The current reference rebuild checkpoints are `Pretrained_models/BiophysML/refbuild_biophysml_jg8f/` and `Pretrained_models/BiophysML/refbuild_biophysml_jg8m_bm0p05/`.
 - `parameter_files/` and `pgas_parameters/`: constants and GCaMP parameter files used by PGAS/BiophysSMC.
 - `reference_inputs/edges/`: edge/window selections used by manuscript-scale comparisons.
+- `reference_inputs/biophys_ml/`: PGAS parameter-sample inputs and archived synthetic ground-truth training inputs used to regenerate the packaged reference BiophysML checkpoints. It currently contains the jGCaMP8f BM=0.03 training bundle for `refbuild_biophysml_jg8f` and the two jGCaMP8m BM=0.05 training bundles for `refbuild_biophysml_jg8m_bm0p05`.
 - `reference_inputs/synthetic_noise/gt_noise_dir/`: noise traces used by synthetic-generation/BiophysML workflows.
-- `reference_outputs/paper_summaries/`: trialwise summary CSVs referenced by `notebooks/trialwise_visualizations.ipynb` cells 2, 3, and 4.
+- `reference_outputs/paper_summaries/`: enriched trialwise summary CSVs from the current reference rebuilds. The staged summary set is intentionally collapsed to one jGCaMP8f CSV (`trialwise_correlations_jG8f.csv`) and one jGCaMP8m CSV (`trialwise_correlations_jG8m.csv`); jGCaMP8f parameter-comparison rows are included in the jGCaMP8f CSV rather than a separate file.
 - `DATA_MANIFEST.csv` and `DATA_MANIFEST.json`: file sizes, SHA-256 checksums, and roles for every staged file.
 
 ## Reference CSV attribution
@@ -22,7 +23,10 @@ The enriched CSVs in `reference_outputs/paper_summaries/` preserve the original 
 - `display_method`
 - `method_family`
 - `comparison_context`
+- `manuscript_figure`
 - `code_ocean_runnable`
 - `notes`
 
 Rows marked `code_ocean_runnable=false` are MATLAB MLspike reference rows. They are included for comparison to paper summaries, but the Python Code Ocean capsule is not expected to reproduce MLspike outputs.
+
+The current recomputed CSVs are fully Code Ocean runnable and do not include MATLAB MLspike rows. Some BiophysML checkpoints are ENS2-format models, so `method` may remain `ens2` for cache/evaluation compatibility while `label`, `series_key`, `display_method`, and `method_family` identify the semantic method as `biophys_ml`. Plotting utilities can consume these rows with alias series specs such as `biophys_ml=ens2@refbuild_jg8f_biophysml`.

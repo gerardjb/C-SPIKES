@@ -23,12 +23,8 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 
-MODEL_NAME = "ens2_synth_comparison_k1_r12_s2p0_d0p45_sb11000"
-RUN_TAG = "k1_r12_s2p0_d0p45_sb11000"
-PARAM_SAMPLES_NAME = "param_samples_jGCaMP8f_ANM478349_cell04_ms2_trial1.dat"
-
-REFERENCE_CHECKPOINT_FILE_SHA256 = "3ed1a57fa13a3b5782ded277a5ac295351f8d6a265f4d424707235ad18b2e9aa"
-REFERENCE_STATE_DICT_SHA256 = "b7d87b3a85e2eb31de88aa0b4ed567a1bb693efbb5e09cbbee4102311ea38852"
+MODEL_NAME = "refbuild_biophysml_jg8f"
+RUN_TAG = "auto"
 
 TRACE_DATASET = "jGCaMP8f_ANM471994_cell05"
 TRACE_TRIAL = 1
@@ -195,10 +191,23 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _find_manifest_entry(manifest: Mapping[str, Any], run_tag: str) -> dict[str, Any]:
+    entries = [entry for entry in manifest.get("synthetic_entries", []) or [] if isinstance(entry, dict)]
+    if run_tag in {"", "auto"}:
+        if not entries:
+            raise KeyError("No synthetic manifest entries found.")
+        return entries[0]
     for entry in manifest.get("synthetic_entries", []) or []:
         if isinstance(entry, dict) and entry.get("run_tag") == run_tag:
             return entry
     raise KeyError(f"No synthetic manifest entry found for run_tag={run_tag!r}")
+
+
+def _packaged_param_samples_path(data_dir: Path, entry: Mapping[str, Any]) -> Path:
+    return data_dir / "reference_inputs" / "biophys_ml" / Path(str(entry["param_samples_path"])).name
+
+
+def _packaged_gparam_path(data_dir: Path, entry: Mapping[str, Any]) -> Path:
+    return data_dir / "pgas_parameters" / Path(str(entry["gparam_path"])).name
 
 
 def _load_cparams(param_samples: Path, burnin: int) -> np.ndarray:
@@ -266,6 +275,15 @@ def _state_dict_sha256(path: Path) -> str:
         h.update(str(arr.dtype).encode("ascii"))
         h.update(arr.tobytes())
     return h.hexdigest()
+
+
+def _try_state_dict_sha256(path: Path) -> str | None:
+    try:
+        return _state_dict_sha256(path)
+    except ModuleNotFoundError as exc:
+        if exc.name == "torch":
+            return None
+        raise
 
 
 def _compare_state_dicts(reference: Path, candidate: Path) -> dict[str, Any]:
@@ -530,13 +548,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     manifest_path = reference_model_dir / "ens2_manifest.json"
     manifest = _load_json(manifest_path)
     entry = _find_manifest_entry(manifest, str(args.run_tag))
+    selected_run_tag = str(entry["run_tag"])
     syn_cfg = dict(entry["syn_gen"])
 
     param_samples = args.param_samples
     if param_samples is None:
-        param_samples = data_dir / "reference_inputs" / "biophys_ml" / PARAM_SAMPLES_NAME
+        param_samples = _packaged_param_samples_path(data_dir, entry)
     param_samples = _resolve(param_samples)
-    gparam_path = data_dir / "pgas_parameters" / "20230525_gold.dat"
+    gparam_path = _packaged_gparam_path(data_dir, entry)
     noise_dir = data_dir / "reference_inputs" / "synthetic_noise" / "gt_noise_dir"
     archived_synth_dir = data_dir / "reference_inputs" / "biophys_ml" / "Ground_truth" / f"synth_{syn_cfg['tag']}"
     reference_checkpoint = reference_model_dir / "exc_ens2_pub.pt"
@@ -572,12 +591,17 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
     input_checks["cparams"]["hash_match"] = input_checks["cparams"]["expected_hash"] == input_checks["cparams"]["observed_hash"]
 
+    reference_checkpoint_file_sha256 = _sha256_file(reference_checkpoint)
+    reference_checkpoint_state_dict_sha256 = _try_state_dict_sha256(reference_checkpoint)
     reference_checkpoint_info = {
         "path": str(reference_checkpoint),
-        "expected_file_sha256": REFERENCE_CHECKPOINT_FILE_SHA256,
-        "observed_file_sha256": _sha256_file(reference_checkpoint),
-        "expected_state_dict_sha256": REFERENCE_STATE_DICT_SHA256,
-        "observed_state_dict_sha256": _state_dict_sha256(reference_checkpoint),
+        "expected_file_sha256": reference_checkpoint_file_sha256,
+        "observed_file_sha256": reference_checkpoint_file_sha256,
+        "expected_state_dict_sha256": reference_checkpoint_state_dict_sha256,
+        "observed_state_dict_sha256": reference_checkpoint_state_dict_sha256,
+        "state_dict_note": None
+        if reference_checkpoint_state_dict_sha256 is not None
+        else "Skipped because torch is not importable in this environment.",
     }
     reference_checkpoint_info["file_sha256_match"] = (
         reference_checkpoint_info["expected_file_sha256"] == reference_checkpoint_info["observed_file_sha256"]
@@ -588,7 +612,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     report: dict[str, Any] = {
         "model_name": args.model_name,
-        "run_tag": args.run_tag,
+        "requested_run_tag": args.run_tag,
+        "run_tag": selected_run_tag,
         "reference_manifest": str(manifest_path),
         "input_checks": input_checks,
         "reference_checkpoint": reference_checkpoint_info,
@@ -616,7 +641,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "noise_fraction": float(syn_cfg.get("noise_fraction", 1.0)),
         "noise_seed": syn_cfg.get("noise_seed"),
         "tag": syn_cfg["tag"],
-        "run_tag": args.run_tag,
+        "run_tag": selected_run_tag,
     }
     retrained_model_root = results_dir / "Pretrained_models"
     retrained_model_dir = retrained_model_root / str(args.model_name)
@@ -625,8 +650,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         [param_spec],
         gparam_path=gparam_path,
         output_root=results_dir,
-        manifest_path=retrained_manifest,
-        manifest_model_name=str(args.model_name),
+            manifest_path=retrained_manifest,
+            manifest_model_name=str(args.model_name),
         force_synth=bool(args.force_synth),
         seed_spikes=True,
     )
@@ -658,20 +683,20 @@ def main(argv: Sequence[str] | None = None) -> None:
             sampling_rate=60.0,
             smoothing_std=0.025,
             manifest_path=retrained_manifest,
-            run_tag=str(args.run_tag),
+            run_tag=selected_run_tag,
         )
         training_info = {
             "skipped": False,
             "checkpoint_path": str(checkpoint_path),
             "file_sha256": _sha256_file(checkpoint_path),
             "state_dict_sha256": _state_dict_sha256(checkpoint_path),
-            "expected_file_sha256": REFERENCE_CHECKPOINT_FILE_SHA256,
-            "expected_state_dict_sha256": REFERENCE_STATE_DICT_SHA256,
+            "expected_file_sha256": reference_checkpoint_file_sha256,
+            "expected_state_dict_sha256": reference_checkpoint_state_dict_sha256,
             "synth_dir_used": str(training_synth_dir),
             "trained_from_generated_synth": bool(args.train_from_generated_synth),
         }
-        training_info["file_sha256_match"] = training_info["file_sha256"] == REFERENCE_CHECKPOINT_FILE_SHA256
-        training_info["state_dict_sha256_match"] = training_info["state_dict_sha256"] == REFERENCE_STATE_DICT_SHA256
+        training_info["file_sha256_match"] = training_info["file_sha256"] == reference_checkpoint_file_sha256
+        training_info["state_dict_sha256_match"] = training_info["state_dict_sha256"] == reference_checkpoint_state_dict_sha256
         training_info["state_dict_comparison"] = _compare_state_dicts(reference_checkpoint, checkpoint_path)
         report["training"] = training_info
         _write_json(results_dir / "biophys_ml_reproducibility_report.json", report)

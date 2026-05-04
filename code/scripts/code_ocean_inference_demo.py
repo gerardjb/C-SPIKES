@@ -58,7 +58,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "trialwise_correlations_jG8f.csv",
         RUN_JG8F_BASE,
         "pgas",
-        "base",
+        "refbuild_jg8f_gold",
         "pgas",
         "BiophysSMC",
     ),
@@ -69,7 +69,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "trialwise_correlations_jG8f.csv",
         RUN_JG8F_BASE,
         "ens2",
-        "base",
+        "refbuild_jg8f_gold",
         "ens2",
         "Published ENS2",
     ),
@@ -80,7 +80,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "trialwise_correlations_jG8f.csv",
         RUN_JG8F_BASE,
         "cascade",
-        "updated_biophys-ml_cascade",
+        "refbuild_jg8f_gold",
         "cascade",
         "Published CASCADE",
     ),
@@ -91,7 +91,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "trialwise_correlations_jG8f.csv",
         RUN_JG8F_BASE,
         "biophys_ml",
-        "updated_biophys-ml_cascade",
+        "refbuild_jg8f_biophysml",
         "ens2",
         "BiophysML",
     ),
@@ -99,10 +99,10 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "cell3_jg8f_parameterization",
         "Supplementary Figure 13C,D",
         "trialwise_correlations_jG8f_repro.csv",
-        "trialwise_correlations_jG8f_param_comparison.csv",
+        "trialwise_correlations_jG8f.csv",
         RUN_JG8F_BASE,
         "pgas",
-        "base",
+        "refbuild_jg8f_gold",
         "pgas",
         "BiophysSMC default parameters",
     ),
@@ -110,10 +110,10 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "cell3_jg8f_parameterization",
         "Supplementary Figure 13C,D",
         "trialwise_correlations_jG8f_repro.csv",
-        "trialwise_correlations_jG8f_param_comparison.csv",
+        "trialwise_correlations_jG8f.csv",
         RUN_JG8F_PARAMS,
         "pgas",
-        "pgas_jG8f_params",
+        "refbuild_jg8f_janelia_params",
         "pgas",
         "BiophysSMC jGCaMP8f parameters",
     ),
@@ -124,7 +124,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "trialwise_correlations_jG8m.csv",
         RUN_JG8M_BASE,
         "pgas",
-        "pgasraw",
+        "refbuild_jg8m_bm0p05_biophysml_full",
         "pgas",
         "BiophysSMC",
     ),
@@ -135,7 +135,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "trialwise_correlations_jG8m.csv",
         RUN_JG8M_BASE,
         "ens2",
-        "cascadein_nodisc_ens2",
+        "refbuild_jg8m_bm0p05_biophysml_full",
         "ens2",
         "Published ENS2",
     ),
@@ -146,7 +146,7 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "trialwise_correlations_jG8m.csv",
         RUN_JG8M_BASE,
         "cascade",
-        "cascade_updated_model",
+        "refbuild_jg8m_bm0p05_biophysml_full",
         "cascade",
         "Published CASCADE",
     ),
@@ -157,8 +157,8 @@ PARITY_MAPS: tuple[ParityMap, ...] = (
         "trialwise_correlations_jG8m.csv",
         RUN_JG8M_BASE,
         "biophys_ml",
-        "ens2_jG8m_sweep2_best_k2_r9_s2p0_d0p45_sb19000",
-        "ens2",
+        "refbuild_jg8m_bm0p05_biophysml_full",
+        "biophys_ml",
         "BiophysML",
     ),
 )
@@ -874,8 +874,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     jg8f_smoothing_levels = ["raw", "30Hz", "10Hz"]
     jg8m_smoothing_levels = ["raw"]
     ens2_root = data_dir / "Pretrained_models" / "ENS2" / "ens2_published"
-    biophys_ml_root = data_dir / "Pretrained_models" / "BiophysML" / "ens2_synth_comparison_k1_r12_s2p0_d0p45_sb11000"
-    biophys_ml_jg8m_root = data_dir / "Pretrained_models" / "BiophysML" / "ens2_synth_j8m_base_k2_r9_s2p0_d0p45_sb19000"
+    biophys_ml_root = data_dir / "Pretrained_models" / "BiophysML" / "refbuild_biophysml_jg8f"
+    biophys_ml_jg8m_root = data_dir / "Pretrained_models" / "BiophysML" / "refbuild_biophysml_jg8m_bm0p05"
     cascade_root = data_dir / "Pretrained_models" / "CASCADE"
 
     plan = {

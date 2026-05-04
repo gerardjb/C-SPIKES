@@ -1,0 +1,42 @@
+{
+  "model_name": "refbuild_biophysml_jg8f",
+  "created": "2026-04-30T11:38:25.510781",
+  "updated": "2026-04-30T11:38:25.518725",
+  "synthetic_entries": [
+    {
+      "timestamp": "2026-04-30T11:38:25.510802",
+      "run_tag": "refbuild_biophysml_jg8f_train",
+      "param_samples_path": "results/reference_rebuild/pgas_output/jg8f_biophysml_training/param_samples_jGCaMP8f_ANM478349_cell04_sraw_ms2_rsraw_bm0p03_trial0.dat",
+      "param_samples_sha256": "ed598ed15a415f1acbebd3844ddb2cc770a4fef064d1d2279a243be6f25a9c53",
+      "gparam_path": "code/src/c_spikes/pgas/20230525_gold.dat",
+      "gparam_sha256": "1280692b5bc842d0d0f8effa17dcd6bdf5eb9cfa856d2c41aab85337a1cb3883",
+      "burnin": 100,
+      "cparams_mean": [
+        5.6412622e-05,
+        775.4643499999994,
+        1.2443843999999996e-05,
+        5.449011399999998,
+        4.188085600000001,
+        4.370303700000001
+      ],
+      "cparams_hash": "c956c1d62c5314f4e1b46423f99219b49bde8d87131b181f40e3216a34aad773",
+      "syn_gen": {
+        "tag": "jGCaMP8f_ANM478349_cell04_sraw_ms2_rsraw_bm0p03_trial0",
+        "spike_rate": 12.0,
+        "spike_params": [
+          2.0,
+          0.45
+        ],
+        "noise_dir": "/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES-codeocean/data/reference_inputs/synthetic_noise/gt_noise_dir",
+        "noise_fraction": 1.0,
+        "noise_seed": [
+          11000
+        ],
+        "seed_spikes": true,
+        "output_dir": "results/Ground_truth/synth_jGCaMP8f_ANM478349_cell04_sraw_ms2_rsraw_bm0p03_trial0"
+      },
+      "synth_dir_hash": "196d5f2ddd8f6b63821eb66310ab6809cf24ba31ec7b8b4e071fd5d082d03425"
+    }
+  ],
+  "training": {}
+}

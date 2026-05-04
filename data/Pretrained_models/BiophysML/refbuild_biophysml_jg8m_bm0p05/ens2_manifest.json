@@ -1,0 +1,72 @@
+{
+  "model_name": "refbuild_biophysml_jg8m_bm0p05",
+  "created": "2026-05-01T13:41:55.979935",
+  "updated": "2026-05-01T13:42:28.299796",
+  "synthetic_entries": [
+    {
+      "timestamp": "2026-05-01T13:41:55.979956",
+      "run_tag": "refbuild_biophysml_jg8m_bm0p05_train",
+      "param_samples_path": "results/reference_rebuild/pgas_output/jg8m_bm0p05_biophysml_training/param_samples_jGCaMP8m_ANM472179_cell02_sraw_ms2_rsraw_bm0p05_trial0.dat",
+      "param_samples_sha256": "d92ade6892f9b24ec9cff6b75844b65da307bd855514da9594c830f45ff307f2",
+      "gparam_path": "code/src/c_spikes/pgas/20251207_jG8m_params.dat",
+      "gparam_sha256": "56e70aebdd607af824d5e0b8478825a8416ca0076adb6766b6e785e9095fa187",
+      "burnin": 100,
+      "cparams_mean": [
+        3.7246930000000006e-05,
+        956.1947699999998,
+        1.2416356000000003e-05,
+        9.401876499999984,
+        9.198978199999997,
+        2.9227173999999985
+      ],
+      "cparams_hash": "54c7cea2068416c22ac3146a6ec70b3b21593dc7cdfaac25f186b5da1ff0e5e8",
+      "syn_gen": {
+        "tag": "jGCaMP8m_ANM472179_cell02_sraw_ms2_rsraw_bm0p05_trial0",
+        "spike_rate": 9.0,
+        "spike_params": [
+          2.0,
+          0.45
+        ],
+        "noise_dir": "/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES-codeocean/data/reference_inputs/synthetic_noise/gt_noise_dir",
+        "noise_fraction": 0.5,
+        "noise_seed": 19000,
+        "seed_spikes": true,
+        "output_dir": "results/Ground_truth/synth_jGCaMP8m_ANM472179_cell02_sraw_ms2_rsraw_bm0p05_trial0"
+      },
+      "synth_dir_hash": "3050a267890b607a42e85d6889f0bb87f289c2213074d698eacc145e30a4562a"
+    },
+    {
+      "timestamp": "2026-05-01T13:42:28.299343",
+      "run_tag": "refbuild_biophysml_jg8m_bm0p05_train",
+      "param_samples_path": "results/reference_rebuild/pgas_output/jg8m_bm0p05_biophysml_training/param_samples_jGCaMP8m_ANM472180_cell03_sraw_ms2_rsraw_bm0p05_trial0.dat",
+      "param_samples_sha256": "cad6a8d2c4b717d4027f8ea82ff158896d04b5f28f704505f0552e1583cafb36",
+      "gparam_path": "code/src/c_spikes/pgas/20251207_jG8m_params.dat",
+      "gparam_sha256": "56e70aebdd607af824d5e0b8478825a8416ca0076adb6766b6e785e9095fa187",
+      "burnin": 100,
+      "cparams_mean": [
+        2.6058617000000015e-05,
+        1108.1655999999996,
+        1.3091474e-05,
+        9.373000099999999,
+        6.913369200000001,
+        3.665956599999999
+      ],
+      "cparams_hash": "a71567efff1736abe73207f131329bc28b29a4d96b8bf2509d05dc03fb3e1297",
+      "syn_gen": {
+        "tag": "jGCaMP8m_ANM472180_cell03_sraw_ms2_rsraw_bm0p05_trial0",
+        "spike_rate": 9.0,
+        "spike_params": [
+          2.0,
+          0.45
+        ],
+        "noise_dir": "/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES-codeocean/data/reference_inputs/synthetic_noise/gt_noise_dir",
+        "noise_fraction": 0.5,
+        "noise_seed": 19001,
+        "seed_spikes": true,
+        "output_dir": "results/Ground_truth/synth_jGCaMP8m_ANM472180_cell03_sraw_ms2_rsraw_bm0p05_trial0"
+      },
+      "synth_dir_hash": "ff5d777330b921464781758c8c1787e9328d96566b3f375ce280d67608dea55f"
+    }
+  ],
+  "training": {}
+}
