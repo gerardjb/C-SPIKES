@@ -116,8 +116,9 @@ def _python_probe(code: str, *, env: Mapping[str, str]) -> dict[str, Any]:
 
 def _base_env(repo_root: Path, scratch_dir: Path) -> dict[str, str]:
     env = dict(os.environ)
-    src = str(repo_root / "code" / "src")
-    env["PYTHONPATH"] = f"{src}{os.pathsep}{env['PYTHONPATH']}" if env.get("PYTHONPATH") else src
+    if env.get("C_SPIKES_USE_SOURCE_TREE") == "1":
+        src = str(repo_root / "code" / "src")
+        env["PYTHONPATH"] = f"{src}{os.pathsep}{env['PYTHONPATH']}" if env.get("PYTHONPATH") else src
     env.setdefault("MPLBACKEND", "Agg")
     env.setdefault("MPLCONFIGDIR", str(scratch_dir / "mpl_cache"))
     env.setdefault("XDG_CACHE_HOME", str(scratch_dir / "mpl_cache"))

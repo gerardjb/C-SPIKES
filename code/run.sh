@@ -32,6 +32,9 @@ Common environment overrides:
   C_SPIKES_JG8F_BM_SIGMA  PGAS bm_sigma for jGCaMP8f inference. Default: 0.03
   C_SPIKES_JG8M_BM_SIGMA  PGAS bm_sigma for jGCaMP8m inference. Default: 0.05
   C_SPIKES_QUICKCHECK     Set to 0 to skip quickcheck inside all/default workflows.
+  C_SPIKES_USE_SOURCE_TREE
+                          Set to 1 to import c_spikes from code/src instead of
+                          the installed package. Default: 0.
   C_SPIKES_SMOKE_REQUIRE_GPU
                            Set to 0 to allow smoke tests without a visible GPU.
 EOF
@@ -95,7 +98,9 @@ mkdir -p \
     "${C_SPIKES_SCRATCH_DIR}/mpl_cache" \
     "${C_SPIKES_SCRATCH_DIR}/python_cache"
 
-export PYTHONPATH="${C_SPIKES_CODE_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
+if [[ "${C_SPIKES_USE_SOURCE_TREE:-0}" == "1" ]]; then
+    export PYTHONPATH="${C_SPIKES_CODE_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
+fi
 export PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-${C_SPIKES_SCRATCH_DIR}/python_cache}"
 export MPLBACKEND="${MPLBACKEND:-Agg}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-${C_SPIKES_SCRATCH_DIR}/mpl_cache}"
@@ -162,20 +167,6 @@ PY
     echo "[run.sh] PGAS backend is not importable; building C-SPIKES package."
     python -m pip install --no-deps --no-build-isolation -v "${C_SPIKES_CODE_DIR}"
     python - <<'PY'
-from pathlib import Path
-import os
-import shutil
-
-code_dir = Path(os.environ["C_SPIKES_CODE_DIR"])
-target_dir = code_dir / "src" / "c_spikes" / "pgas"
-built = sorted((code_dir / "build").glob("**/pgas_bound_*.so"))
-if not built:
-    raise SystemExit("PGAS build completed but no pgas_bound_*.so files were found under code/build.")
-for path in built:
-    shutil.copy2(path, target_dir / path.name)
-    print(f"[run.sh] staged {path.name} into {target_dir}")
-PY
-    python - <<'PY'
 import importlib
 module = importlib.import_module("c_spikes.pgas.pgas_bound")
 print(f"[run.sh] PGAS backend import ok: {getattr(module, '__backend__', 'unknown')}")
@@ -225,6 +216,7 @@ stage_quickcheck() {
         return 0
     fi
     echo "[run.sh] quickcheck"
+    ensure_pgas_backend
     python -m pytest -q tests/test_dependency_imports.py
 }
 
@@ -262,6 +254,7 @@ stage_inference() {
 }
 
 stage_biophys_ml() {
+    ensure_pgas_backend
     run_python_stage \
         "biophys-ml" \
         "scripts/code_ocean_biophys_ml_demo.py" \

@@ -220,8 +220,9 @@ def _load_cparams(param_samples: Path, burnin: int) -> np.ndarray:
 
 def _base_env(repo_root: Path) -> dict[str, str]:
     env = dict(os.environ)
-    src = str(repo_root / "code" / "src")
-    env["PYTHONPATH"] = f"{src}{os.pathsep}{env['PYTHONPATH']}" if env.get("PYTHONPATH") else src
+    if env.get("C_SPIKES_USE_SOURCE_TREE") == "1":
+        src = str(repo_root / "code" / "src")
+        env["PYTHONPATH"] = f"{src}{os.pathsep}{env['PYTHONPATH']}" if env.get("PYTHONPATH") else src
     env.setdefault("MPLBACKEND", "Agg")
     env.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
     env.setdefault("C_SPIKES_TF_SUPPRESS_RUNTIME_STDERR", "1")

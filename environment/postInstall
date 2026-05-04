@@ -4,8 +4,18 @@ set -euo pipefail
 : "${KOKKOS_SOURCE_DIR:=/opt/kokkos-src}"
 : "${CUDA_HOME:=/usr/local/cuda}"
 : "${NVCC_WRAPPER_DEFAULT_COMPILER:=/usr/bin/g++}"
-: "${C_SPIKES_CODE_DIR:=/code}"
 : "${C_SPIKES_BUILD_PACKAGE:=1}"
+
+if [[ -z "${C_SPIKES_CODE_DIR:-}" ]]; then
+    if [[ -f /root/capsule/code/pyproject.toml ]]; then
+        C_SPIKES_CODE_DIR=/root/capsule/code
+    elif [[ -f /code/pyproject.toml ]]; then
+        C_SPIKES_CODE_DIR=/code
+    else
+        C_SPIKES_CODE_DIR=/root/capsule/code
+    fi
+fi
+export C_SPIKES_CODE_DIR
 
 if [[ ! -f "${KOKKOS_SOURCE_DIR}/CMakeLists.txt" ]]; then
     echo "Missing Kokkos source at ${KOKKOS_SOURCE_DIR}; Dockerfile Kokkos prefetch did not complete." >&2
@@ -50,18 +60,6 @@ EOF
 if [[ "${C_SPIKES_BUILD_PACKAGE}" == "1" ]]; then
     if [[ -f "${C_SPIKES_CODE_DIR}/pyproject.toml" ]]; then
         python -m pip install --no-deps --no-build-isolation -v "${C_SPIKES_CODE_DIR}"
-        python - <<'PY'
-from pathlib import Path
-import os
-import shutil
-
-code_dir = Path(os.environ["C_SPIKES_CODE_DIR"])
-target_dir = code_dir / "src" / "c_spikes" / "pgas"
-if target_dir.exists():
-    for built in sorted((code_dir / "build").glob("**/pgas_bound_*.so")):
-        shutil.copy2(built, target_dir / built.name)
-        print(f"Staged {built.name} into {target_dir}")
-PY
     else
         echo "C-SPIKES source not found at ${C_SPIKES_CODE_DIR}; skipping package build during image construction."
     fi
