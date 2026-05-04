@@ -23,7 +23,7 @@ and runs PGAS, ENS2, and CASCADE on one selected jGCaMP8f epoch. Set
   - PyTorch `>=2.0`
   - TensorFlow (CPU and GPU-capable installs are supported where available)
   - PGAS build stack: `scikit-build-core`, `pybind11`, CMake toolchain, and a C++ compiler
-  - For GPU PGAS builds: Kokkos with CUDA enabled (see `kokkos_install.md`)
+  - For GPU PGAS builds: Kokkos with CUDA enabled (see `environment/README.md`)
 - **Operating systems supported**:
   - Linux (`x86_64`) and Windows (`x86_64`) are supported for installation and CPU workflows.
   - **GPU backends are currently available on Linux only**.
@@ -40,14 +40,24 @@ and runs PGAS, ENS2, and CASCADE on one selected jGCaMP8f epoch. Set
 
 
 ## Installation (build PGAS + deps)
-PGAS is a compiled C++/pybind extension. The quickest path on Linux/HPC is:
+PGAS is a compiled C++/pybind extension. The canonical Code Ocean environment is
+defined in `environment/Dockerfile`; the matching HPC build path is documented in
+`environment/README.md` and wrapped by:
 
-1. Install C++ deps via vcpkg (see `kokkos_install.md` for the exact commands/pins used in this repo).
-2. Install the Python package in editable mode (builds the extension):
-   ```bash
-   conda create -n c_spikes python=3.11
-   pip install -e .
-   ```
+```bash
+environment/hpc_bootstrap_deps.sh
+C_SPIKES_CUDA_MODULE=cudatoolkit/12.4 environment/hpc_build.sh
+```
+
+For a local non-HPC install, create an environment with the Python dependencies
+from `environment/requirements.txt`, then install the package from `code/`:
+
+```bash
+conda create -n c_spikes python=3.12
+conda activate c_spikes
+python -m pip install -r environment/requirements.txt
+python -m pip install -e code
+```
 
 Check that the extension imports:
 ```bash

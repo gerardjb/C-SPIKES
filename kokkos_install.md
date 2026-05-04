@@ -1,23 +1,33 @@
-# Instalation
-Vcpkg is used to grab the c++ dependecies. However, I was running into issues with later vcpkg compatability with the kokkos pin. Current solution is to use an older vcpkg tag as below (though adding this update as a dropin TODO here):
+# HPC PGAS/Kokkos Install
+
+The maintained HPC build path is now in `environment/`.
+
+The Code Ocean Dockerfile is the canonical environment definition. It currently uses CUDA `12.4`, Kokkos `4.3.01`, Python `3.12.4`, and the pinned Python packages in `environment/requirements.txt`.
+
+On HPC systems without apt access, use:
+
 ```bash
-cd /scratch/gpfs/<username>/C-SPIKES
-git clone https://github.com/microsoft/vcpkg
-./vcpkg/bootstrap-vcpkg.sh
-./vcpkg/vcpkg install gsl Armadillo jsoncpp boost-circular-buffer
-./vcpkg/vcpkg integrate install
-```
-And then our HPC dropin modules for cuda as:
-```bash
-module load cudatoolkit/12.9
-```
-then best to make an editable local install unless you don't plan to make changes to the codebase:
-```bash
-pip install -e .
-```
-and note that I've included an as-yet underdeveloped set of unit tests for deployment through pytest to check build integrity if you add the optional testing suite dependencies (see the pyproject.toml [test] for more details if you're into this kind of thing) as:
-```bash
-pip install -e . [test]
+environment/hpc_bootstrap_deps.sh
+C_SPIKES_CUDA_MODULE=cudatoolkit/12.4 environment/hpc_build.sh
 ```
 
-You can add the -v flag to the pip call for the scikit build core if you'd like more verbosity on the error messages, etc., during the build.
+`hpc_bootstrap_deps.sh` stages the native dependencies with vcpkg:
+
+- `openblas[dynamic-arch]`
+- `armadillo`
+- `boost-circular-buffer`
+- `gsl`
+- `jsoncpp`
+
+It also clones Kokkos at the same version used by the Dockerfile.
+
+If CUDA `12.4` is unavailable on the cluster, set `C_SPIKES_CUDA_MODULE` to the closest compatible CUDA `12.x` module and set architecture overrides when needed:
+
+```bash
+C_SPIKES_CUDA_MODULE=cudatoolkit/12.6 \
+C_SPIKES_KOKKOS_ARCH=AMPERE80 \
+C_SPIKES_CUDA_ARCH=80 \
+environment/hpc_build.sh
+```
+
+Both scripts support `--help`.

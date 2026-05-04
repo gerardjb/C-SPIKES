@@ -4,6 +4,36 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 
+usage() {
+    cat <<'EOF'
+Stage native build dependencies for environment/hpc_build.sh.
+
+This mirrors the native libraries installed by environment/Dockerfile without
+requiring sudo on an HPC system. Docker gets these from apt:
+  libarmadillo-dev libboost-dev libgsl-dev libjsoncpp-dev libopenblas-dev
+
+The HPC bootstrap stages their vcpkg equivalents:
+  openblas[dynamic-arch] armadillo boost-circular-buffer gsl jsoncpp
+
+It also clones Kokkos at the same version used by the Dockerfile.
+
+Useful overrides:
+  C_SPIKES_DEPS_ROOT    Dependency cache root (default: $SCRATCH/c_spikes_deps)
+  VCPKG_ROOT            vcpkg checkout path
+  VCPKG_REF             vcpkg tag/branch (default: 2026.03.18)
+  VCPKG_DEFAULT_TRIPLET vcpkg triplet (default: x64-linux)
+  KOKKOS_SOURCE_DIR     Kokkos source checkout path
+  KOKKOS_REF            Kokkos tag/branch (default: 4.3.01)
+EOF
+}
+
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
 : "${C_SPIKES_DEPS_ROOT:=${SCRATCH:-/scratch/gpfs/WANG/${USER}}/c_spikes_deps}"
 : "${VCPKG_ROOT:=${C_SPIKES_DEPS_ROOT}/vcpkg}"
 : "${VCPKG_DEFAULT_TRIPLET:=x64-linux}"

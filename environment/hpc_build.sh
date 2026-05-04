@@ -6,6 +6,44 @@ repo_root="$(cd "${script_dir}/.." && pwd)"
 code_dir="${repo_root}/code"
 requirements_file="${script_dir}/requirements.txt"
 
+usage() {
+    cat <<'EOF'
+Build the C-SPIKES PGAS extensions in an HPC conda environment.
+
+This is the HPC analogue of environment/Dockerfile. The Code Ocean image uses:
+  - pytorch:2.4.0-cuda12.4.0-mambaforge24.5.0-0-python3.12.4-ubuntu22.04
+  - Kokkos 4.3.01
+  - CUDA arch 75 / Kokkos arch TURING75 by default
+  - Python dependencies pinned in environment/requirements.txt
+  - system BLAS/Armadillo/GSL/JsonCpp/Boost libraries
+
+On HPC, those compiled libraries are staged with vcpkg by
+environment/hpc_bootstrap_deps.sh, because apt packages are usually not
+available to unprivileged users.
+
+Typical use:
+  environment/hpc_bootstrap_deps.sh
+  C_SPIKES_CUDA_MODULE=cudatoolkit/12.4 environment/hpc_build.sh
+
+Useful overrides:
+  C_SPIKES_CONDA_ENV          Conda env to activate (default: c_spikes_co)
+  C_SPIKES_CUDA_MODULE        Module to load before build (default: try CUDA 12.4, then newer 12.x)
+  C_SPIKES_KOKKOS_ARCH        Kokkos arch, e.g. TURING75, AMPERE80, AMPERE86, ADA89, HOPPER90
+  C_SPIKES_CUDA_ARCH          CUDA architecture number, e.g. 75, 80, 86, 89, 90
+  C_SPIKES_DEPS_ROOT          Dependency cache root (default: $SCRATCH/c_spikes_deps)
+  C_SPIKES_INSTALL_REQUIREMENTS=1  Install environment/requirements.txt before building
+  C_SPIKES_INSTALL_PROJECT_DEPS=1  Let pip resolve project dependencies during editable install
+  C_SPIKES_RUN_TESTS=1        Run dependency import tests after build
+EOF
+}
+
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
 if [[ -f /etc/profile.d/modules.sh ]]; then
     # shellcheck disable=SC1091
     source /etc/profile.d/modules.sh
@@ -16,9 +54,10 @@ if command -v module >/dev/null 2>&1; then
     if [[ -n "${C_SPIKES_CUDA_MODULE:-}" ]]; then
         module load "${C_SPIKES_CUDA_MODULE}"
     else
-        module load cudatoolkit/12.9 >/dev/null 2>&1 \
-            || module load cudatoolkit/12.8 >/dev/null 2>&1 \
+        module load cudatoolkit/12.4 >/dev/null 2>&1 \
             || module load cudatoolkit/12.6 >/dev/null 2>&1 \
+            || module load cudatoolkit/12.8 >/dev/null 2>&1 \
+            || module load cudatoolkit/12.9 >/dev/null 2>&1 \
             || true
     fi
 fi
@@ -93,7 +132,13 @@ export CXX="${KOKKOS_SOURCE_DIR}/bin/nvcc_wrapper"
 export NVCC_WRAPPER_DEFAULT_COMPILER="${NVCC_WRAPPER_DEFAULT_COMPILER:-$(command -v g++)}"
 export CMAKE_PREFIX_PATH="${VCPKG_ROOT}/installed/${VCPKG_DEFAULT_TRIPLET}${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
 export LD_LIBRARY_PATH="${VCPKG_ROOT}/installed/${VCPKG_DEFAULT_TRIPLET}/lib${nvidia_python_libs:+:${nvidia_python_libs}}:${CUDA_HOME}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-8}"
+export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}"
+export MPLBACKEND="${MPLBACKEND:-Agg}"
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
+export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
 export OMP_PROC_BIND="${OMP_PROC_BIND:-spread}"
 export OMP_PLACES="${OMP_PLACES:-threads}"
 export SKBUILD_BUILD_VERBOSE="${SKBUILD_BUILD_VERBOSE:-true}"
