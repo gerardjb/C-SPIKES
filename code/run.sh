@@ -18,7 +18,7 @@ Stages:
 
 Defaults:
   If no stage is supplied, C_SPIKES_RUN_STAGES is used.
-  If C_SPIKES_RUN_STAGES is unset, the default is: setup quickcheck smoke inference.
+  If C_SPIKES_RUN_STAGES is unset, the default is: setup quickcheck inference.
 
 Common environment overrides:
   C_SPIKES_DATA_DIR       Data asset root. Default: ../data
@@ -237,6 +237,7 @@ run_stage() {
             stage_quickcheck
             stage_smoke
             stage_inference
+            stage_biophys_ml
             ;;
         help|-h|--help) usage ;;
         *)
@@ -273,8 +274,9 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
+
 if [[ "${#stages[@]}" -eq 0 ]]; then
-    read -r -a stages <<< "${C_SPIKES_RUN_STAGES:-setup quickcheck smoke inference}"
+    read -r -a stages <<< "${C_SPIKES_RUN_STAGES:-setup quickcheck inference}"
 fi
 
 for stage in "${stages[@]}"; do

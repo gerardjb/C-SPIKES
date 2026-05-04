@@ -1,9 +1,7 @@
 # C-SPIKES Code Ocean Capsule Outputs
 
 This capsule is a reproducibility demonstration for the C-SPIKES manuscript. It does not rebuild
-the publication figures end-to-end. Instead, it reruns the core spike-inference mechanics on a
-small, reviewer-runnable subset, records quantitative trialwise correlations, and writes checksums
-for packaged inputs and regenerated outputs.
+the publication figures end-to-end (for that, see [gcamp_reproducible_plotting](https://figshare.com/articles/dataset/Precise_calcium-to-spike_inference_using_biophysical_generative_models/28550441)). Instead, it reruns the core spike-inference mechanics on a small subset of the data, records quantitative trialwise correlations, and writes checksums for packaged inputs and regenerated outputs.
 
 ## How to Run
 
@@ -11,10 +9,22 @@ From the Code Ocean capsule terminal:
 
 ```bash
 cd /root/capsule/code
-./run.sh setup quickcheck smoke inference biophys-ml
+./run.sh
 ```
 
-For a short environment/GPU check only:
+With no arguments, `run.sh` currently runs the default reviewer slate:
+
+- `setup`: writes `results/run_manifest.json` and creates output/scratch directories.
+- `quickcheck`: runs lightweight backend import tests.
+- `inference`: runs the curated jGCaMP8f/jGCaMP8m inference subset, including PGAS/BiophysSMC, ENS2, CASCADE, and packaged BiophysML checkpoints.
+
+Additional stages can be requested explicitly:
+
+- `smoke`: checks GPU/backend visibility and runs a one-epoch inference smoke test.
+- `biophys-ml`: checks the packaged BiophysML construction inputs and can regenerate/retrain the BiophysML model path; this is excluded from the default run because it is substantially more compute intensive.
+- `all`: expands to `setup quickcheck smoke inference biophys_ml`.
+
+For a short environment/GPU check only, run:
 
 ```bash
 cd /root/capsule/code
@@ -23,6 +33,21 @@ cd /root/capsule/code
 
 The smoke stage writes GPU/backend visibility, a one-epoch inference plan, and walltime fields under
 `/root/capsule/results/smoke/`.
+
+By default, `inference` uses curated epochs so the capsule stays reviewer-runnable. Reviewers can
+expand the inference workload deterministically with `--dataset-percent`, where `100` requests all
+eligible default-run epochs:
+
+```bash
+cd /root/capsule/code
+./run.sh --dataset-percent 10 inference
+```
+
+The same control is available as an environment variable:
+
+```bash
+C_SPIKES_DATASET_PERCENT=10 ./run.sh inference
+```
 
 ## Output Crosswalk
 
