@@ -45,9 +45,9 @@ Common environment overrides:
                           Default: 0.
   C_SPIKES_PREPEND_NVIDIA_PYTHON_LIBS
                           Set to 0 to avoid prepending pip nvidia/*/lib paths.
-                          Default: 1.
+                          Default: 1 globally, 0 for inference stage.
   C_SPIKES_TF_PRELOAD     Set to 0 to skip TensorFlow preload in the batch CLI.
-                          Default: 1.
+                          Default: 1 globally, 0 for inference stage.
   C_SPIKES_USE_SOURCE_TREE
                           Set to 1 to import c_spikes from code/src instead of
                           the installed package. Default: 0.
@@ -344,6 +344,8 @@ run_python_stage() {
 
 stage_inference() {
     ensure_setup
+    export C_SPIKES_TF_PRELOAD="${C_SPIKES_TF_PRELOAD:-0}"
+    export C_SPIKES_PREPEND_NVIDIA_PYTHON_LIBS="${C_SPIKES_PREPEND_NVIDIA_PYTHON_LIBS:-0}"
     run_python_stage \
         "inference" \
         "scripts/code_ocean_inference_demo.py" \

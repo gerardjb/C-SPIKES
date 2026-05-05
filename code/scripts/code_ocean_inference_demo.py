@@ -364,6 +364,8 @@ def _base_env(repo_root: Path) -> dict[str, str]:
     env.setdefault("MPLBACKEND", "Agg")
     env.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
     env.setdefault("C_SPIKES_TF_SUPPRESS_RUNTIME_STDERR", "1")
+    env.setdefault("C_SPIKES_TF_PRELOAD", "0")
+    env.setdefault("C_SPIKES_PREPEND_NVIDIA_PYTHON_LIBS", "0")
     env.setdefault("OMP_NUM_THREADS", "2")
     env.setdefault("OPENBLAS_NUM_THREADS", "2")
     env.setdefault("MKL_NUM_THREADS", "2")
@@ -463,7 +465,11 @@ def _run_batch(
     _run(cmd, cwd=cwd, env=env, dry_run=dry_run)
 
 
-def _import_ens2_cache_as_biophys_ml(
+def _producer_run_tag(run_tag: str, method: str) -> str:
+    return f"{run_tag}__{method}"
+
+
+def _import_producer_method(
     *,
     cwd: Path,
     env: Mapping[str, str],
@@ -473,7 +479,11 @@ def _import_ens2_cache_as_biophys_ml(
     data_root: Path,
     source_run: str,
     target_run: str,
-    model_name: str,
+    source_method: str,
+    target_method: str,
+    label: str,
+    corr_sigma_ms: float,
+    cache_tag_prefix: str | None = None,
 ) -> None:
     code = r"""
 import json
@@ -488,45 +498,51 @@ cache_root = Path(os.environ["C_SPIKES_IMPORT_CACHE_ROOT"])
 data_root = Path(os.environ["C_SPIKES_IMPORT_DATA_ROOT"])
 source_run = os.environ["C_SPIKES_IMPORT_SOURCE_RUN"]
 target_run = os.environ["C_SPIKES_IMPORT_TARGET_RUN"]
-model_name = os.environ["C_SPIKES_IMPORT_MODEL_NAME"]
+source_method = os.environ["C_SPIKES_IMPORT_SOURCE_METHOD"]
+target_method = os.environ["C_SPIKES_IMPORT_TARGET_METHOD"]
+label = os.environ["C_SPIKES_IMPORT_LABEL"]
+corr_sigma_ms = float(os.environ["C_SPIKES_IMPORT_CORR_SIGMA_MS"])
+cache_tag_prefix = os.environ.get("C_SPIKES_IMPORT_CACHE_TAG_PREFIX", "").strip()
 
 count = 0
 for comparison_path in sorted((eval_root / source_run).glob("*/*/comparison.json")):
     comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
     dataset = str(comparison["dataset"])
     smoothing = str(comparison["smoothing"])
-    ens2_entries = [entry for entry in comparison.get("methods", []) if entry.get("method") == "ens2"]
-    if len(ens2_entries) != 1:
-        raise RuntimeError(f"Expected exactly one ENS2 entry in {comparison_path}, got {len(ens2_entries)}")
-    entry = ens2_entries[0]
+    entries = [entry for entry in comparison.get("methods", []) if entry.get("method") == source_method]
+    if len(entries) != 1:
+        raise RuntimeError(f"Expected exactly one {source_method} entry in {comparison_path}, got {len(entries)}")
+    entry = entries[0]
     cache_tag = str(entry.get("cache_tag") or dataset).strip()
     config = dict(entry.get("config") or {})
     cache_key_raw = entry.get("cache_key")
     cache_key = str(cache_key_raw).strip() if cache_key_raw is not None else ""
     if not cache_key:
         cache_key, _ = compute_config_signature(config)
-    pred_path = cache_root / "ens2" / cache_tag / f"{cache_key}.mat"
-    config["source_method"] = "ens2"
+    pred_path = cache_root / source_method / cache_tag / f"{cache_key}.mat"
+    config["source_method"] = source_method
     config["source_run_tag"] = source_run
     config["source_cache_tag"] = cache_tag
     config["source_cache_key"] = cache_key
-    config["method_alias"] = "biophys_ml"
+    if source_method != target_method:
+        config["method_alias"] = target_method
+    target_cache_tag = f"{cache_tag_prefix}/{dataset}" if cache_tag_prefix else cache_tag
     import_external_method(
         pred_path=pred_path,
-        method="biophys_ml",
+        method=target_method,
         dataset=dataset,
         smoothing=smoothing,
         run_tag=target_run,
         data_root=data_root,
         eval_root=eval_root,
         cache_root=cache_root,
-        cache_tag=f"{model_name}/{dataset}",
-        label="biophys_ml",
+        cache_tag=target_cache_tag,
+        label=label,
         config=config,
-        corr_sigma_ms=50.0,
+        corr_sigma_ms=corr_sigma_ms,
     )
     count += 1
-print(f"[inference-demo] imported {count} ENS2 cache files as biophys_ml into {target_run}")
+print(f"[inference-demo] imported {count} {source_method} cache files as {target_method} into {target_run}")
 """
     import_env = dict(env)
     import_env.update(
@@ -536,9 +552,14 @@ print(f"[inference-demo] imported {count} ENS2 cache files as biophys_ml into {t
             "C_SPIKES_IMPORT_DATA_ROOT": str(data_root),
             "C_SPIKES_IMPORT_SOURCE_RUN": str(source_run),
             "C_SPIKES_IMPORT_TARGET_RUN": str(target_run),
-            "C_SPIKES_IMPORT_MODEL_NAME": str(model_name),
+            "C_SPIKES_IMPORT_SOURCE_METHOD": str(source_method),
+            "C_SPIKES_IMPORT_TARGET_METHOD": str(target_method),
+            "C_SPIKES_IMPORT_LABEL": str(label),
+            "C_SPIKES_IMPORT_CORR_SIGMA_MS": str(float(corr_sigma_ms)),
         }
     )
+    if cache_tag_prefix:
+        import_env["C_SPIKES_IMPORT_CACHE_TAG_PREFIX"] = str(cache_tag_prefix)
     _run([sys.executable, "-c", code], cwd=cwd, env=import_env, dry_run=dry_run)
 
 
@@ -577,6 +598,34 @@ def _trialwise_csv(
     for dataset in datasets:
         cmd.extend(["--dataset", dataset])
     _run(cmd, cwd=cwd, env=env, dry_run=dry_run)
+
+
+def _validate_run_methods(
+    *,
+    eval_root: Path,
+    run_tag: str,
+    datasets: Sequence[str],
+    smoothing_levels: Sequence[str],
+    expected_methods: Sequence[str],
+) -> None:
+    expected = {str(method) for method in expected_methods}
+    for dataset in datasets:
+        for smoothing in smoothing_levels:
+            path = eval_root / run_tag / dataset / smoothing / "comparison.json"
+            if not path.exists():
+                raise FileNotFoundError(f"Missing canonical comparison file before CSV generation: {path}")
+            obj = json.loads(path.read_text(encoding="utf-8"))
+            methods = {
+                str(entry.get("method", "")).strip()
+                for entry in obj.get("methods", [])
+                if isinstance(entry, dict)
+            }
+            missing = sorted(expected - methods)
+            if missing:
+                raise RuntimeError(
+                    f"{path} is missing expected method entries before CSV generation: {missing}. "
+                    f"Found: {sorted(methods)}"
+                )
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -949,28 +998,44 @@ def main(argv: Sequence[str] | None = None) -> None:
     base_8m_methods = ["ens2", "cascade"] if args.skip_pgas else ["pgas", "ens2", "cascade"]
     param_methods = [] if args.skip_pgas else ["pgas"]
 
-    _run_batch(
-        cwd=capsule_root,
-        env=env,
-        dry_run=False,
-        data_root=jg8f_data_root,
-        datasets=datasets_8f,
-        selection_json=selection_8f_path,
-        output_root=eval_root,
-        cache_root=cache_root,
-        edges_path=edge_8f,
-        run_tag=RUN_JG8F_BASE,
-        methods=base_8f_methods,
-        smoothing_levels=jg8f_smoothing_levels,
-        corr_sigma_ms=args.corr_sigma_ms,
-        pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8_soma.json",
-        pgas_gparam=data_dir / "pgas_parameters" / "20230525_gold.dat",
-        pgas_output_root=pgas_output_root / RUN_JG8F_BASE,
-        pgas_bm_sigma=str(args.jg8f_bm_sigma),
-        ens2_pretrained_root=ens2_root,
-        cascade_model_root=cascade_root,
-        cascade_model_name="universal_p_cascade_exc_30",
-    )
+    for method in base_8f_methods:
+        producer_run = _producer_run_tag(RUN_JG8F_BASE, method)
+        _run_batch(
+            cwd=capsule_root,
+            env=env,
+            dry_run=False,
+            data_root=jg8f_data_root,
+            datasets=datasets_8f,
+            selection_json=selection_8f_path,
+            output_root=eval_root,
+            cache_root=cache_root,
+            edges_path=edge_8f,
+            run_tag=producer_run,
+            methods=[method],
+            smoothing_levels=jg8f_smoothing_levels,
+            corr_sigma_ms=args.corr_sigma_ms,
+            pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8_soma.json",
+            pgas_gparam=data_dir / "pgas_parameters" / "20230525_gold.dat",
+            pgas_output_root=pgas_output_root / producer_run,
+            pgas_bm_sigma=str(args.jg8f_bm_sigma),
+            ens2_pretrained_root=ens2_root,
+            cascade_model_root=cascade_root,
+            cascade_model_name="universal_p_cascade_exc_30",
+        )
+        _import_producer_method(
+            cwd=capsule_root,
+            env=env,
+            dry_run=False,
+            eval_root=eval_root,
+            cache_root=cache_root,
+            data_root=jg8f_data_root,
+            source_run=producer_run,
+            target_run=RUN_JG8F_BASE,
+            source_method=method,
+            target_method=method,
+            label=method,
+            corr_sigma_ms=args.corr_sigma_ms,
+        )
     if param_methods:
         _run_batch(
             cwd=capsule_root,
@@ -994,6 +1059,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             cascade_model_root=cascade_root,
             cascade_model_name="universal_p_cascade_exc_30",
         )
+    jg8f_biophys_producer = _producer_run_tag(RUN_JG8F_BASE, "biophys_ml")
     _run_batch(
         cwd=capsule_root,
         env=env,
@@ -1004,28 +1070,32 @@ def main(argv: Sequence[str] | None = None) -> None:
         output_root=eval_root,
         cache_root=cache_root,
         edges_path=edge_8f,
-        run_tag=RUN_JG8F_BIOPHYS_ML_CACHE,
+        run_tag=jg8f_biophys_producer,
         methods=["ens2"],
         smoothing_levels=jg8f_smoothing_levels,
         corr_sigma_ms=args.corr_sigma_ms,
         pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8_soma.json",
         pgas_gparam=data_dir / "pgas_parameters" / "20230525_gold.dat",
-        pgas_output_root=pgas_output_root / RUN_JG8F_BIOPHYS_ML_CACHE,
+        pgas_output_root=pgas_output_root / jg8f_biophys_producer,
         pgas_bm_sigma=str(args.jg8f_bm_sigma),
         ens2_pretrained_root=biophys_ml_root,
         cascade_model_root=cascade_root,
         cascade_model_name="universal_p_cascade_exc_30",
     )
-    _import_ens2_cache_as_biophys_ml(
+    _import_producer_method(
         cwd=capsule_root,
         env=env,
         dry_run=False,
         eval_root=eval_root,
         cache_root=cache_root,
         data_root=jg8f_data_root,
-        source_run=RUN_JG8F_BIOPHYS_ML_CACHE,
+        source_run=jg8f_biophys_producer,
         target_run=RUN_JG8F_BASE,
-        model_name=biophys_ml_root.name,
+        source_method="ens2",
+        target_method="biophys_ml",
+        label="biophys_ml",
+        corr_sigma_ms=args.corr_sigma_ms,
+        cache_tag_prefix=biophys_ml_root.name,
     )
     _run_batch(
         cwd=capsule_root,
@@ -1050,6 +1120,45 @@ def main(argv: Sequence[str] | None = None) -> None:
         cascade_model_root=cascade_root,
         cascade_model_name="universal_p_cascade_exc_30",
     )
+    for method in base_8m_methods:
+        producer_run = _producer_run_tag(RUN_JG8M_BASE, method)
+        _run_batch(
+            cwd=capsule_root,
+            env=env,
+            dry_run=False,
+            data_root=jg8m_data_root,
+            datasets=datasets_8m,
+            selection_json=selection_8m_path,
+            output_root=eval_root,
+            cache_root=cache_root,
+            edges_path=edge_8m,
+            run_tag=producer_run,
+            methods=[method],
+            smoothing_levels=jg8m_smoothing_levels,
+            corr_sigma_ms=args.corr_sigma_ms,
+            pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8m_soma.json",
+            pgas_gparam=data_dir / "pgas_parameters" / "20251207_jG8m_params.dat",
+            pgas_output_root=pgas_output_root / producer_run,
+            pgas_bm_sigma=str(args.jg8m_bm_sigma),
+            ens2_pretrained_root=ens2_root,
+            cascade_model_root=cascade_root,
+            cascade_model_name="Cascade_Universal_30Hz",
+        )
+        _import_producer_method(
+            cwd=capsule_root,
+            env=env,
+            dry_run=False,
+            eval_root=eval_root,
+            cache_root=cache_root,
+            data_root=jg8m_data_root,
+            source_run=producer_run,
+            target_run=RUN_JG8M_BASE,
+            source_method=method,
+            target_method=method,
+            label=method,
+            corr_sigma_ms=args.corr_sigma_ms,
+        )
+    jg8m_biophys_producer = _producer_run_tag(RUN_JG8M_BASE, "biophys_ml")
     _run_batch(
         cwd=capsule_root,
         env=env,
@@ -1060,50 +1169,32 @@ def main(argv: Sequence[str] | None = None) -> None:
         output_root=eval_root,
         cache_root=cache_root,
         edges_path=edge_8m,
-        run_tag=RUN_JG8M_BASE,
-        methods=base_8m_methods,
-        smoothing_levels=jg8m_smoothing_levels,
-        corr_sigma_ms=args.corr_sigma_ms,
-        pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8m_soma.json",
-        pgas_gparam=data_dir / "pgas_parameters" / "20251207_jG8m_params.dat",
-        pgas_output_root=pgas_output_root / RUN_JG8M_BASE,
-        pgas_bm_sigma=str(args.jg8m_bm_sigma),
-        ens2_pretrained_root=ens2_root,
-        cascade_model_root=cascade_root,
-        cascade_model_name="Cascade_Universal_30Hz",
-    )
-    _run_batch(
-        cwd=capsule_root,
-        env=env,
-        dry_run=False,
-        data_root=jg8m_data_root,
-        datasets=datasets_8m,
-        selection_json=selection_8m_path,
-        output_root=eval_root,
-        cache_root=cache_root,
-        edges_path=edge_8m,
-        run_tag=RUN_JG8M_BIOPHYS_ML_CACHE,
+        run_tag=jg8m_biophys_producer,
         methods=["ens2"],
         smoothing_levels=jg8m_smoothing_levels,
         corr_sigma_ms=args.corr_sigma_ms,
         pgas_constants=data_dir / "parameter_files" / "constants_GCaMP8m_soma.json",
         pgas_gparam=data_dir / "pgas_parameters" / "20251207_jG8m_params.dat",
-        pgas_output_root=pgas_output_root / RUN_JG8M_BIOPHYS_ML_CACHE,
+        pgas_output_root=pgas_output_root / jg8m_biophys_producer,
         pgas_bm_sigma=str(args.jg8m_bm_sigma),
         ens2_pretrained_root=biophys_ml_jg8m_root,
         cascade_model_root=cascade_root,
         cascade_model_name="Cascade_Universal_30Hz",
     )
-    _import_ens2_cache_as_biophys_ml(
+    _import_producer_method(
         cwd=capsule_root,
         env=env,
         dry_run=False,
         eval_root=eval_root,
         cache_root=cache_root,
         data_root=jg8m_data_root,
-        source_run=RUN_JG8M_BIOPHYS_ML_CACHE,
+        source_run=jg8m_biophys_producer,
         target_run=RUN_JG8M_BASE,
-        model_name=biophys_ml_jg8m_root.name,
+        source_method="ens2",
+        target_method="biophys_ml",
+        label="biophys_ml",
+        corr_sigma_ms=args.corr_sigma_ms,
+        cache_tag_prefix=biophys_ml_jg8m_root.name,
     )
     _run_batch(
         cwd=capsule_root,
@@ -1127,6 +1218,29 @@ def main(argv: Sequence[str] | None = None) -> None:
         ens2_pretrained_root=ens2_root,
         cascade_model_root=cascade_root,
         cascade_model_name="Cascade_Universal_30Hz",
+    )
+
+    _validate_run_methods(
+        eval_root=eval_root,
+        run_tag=RUN_JG8F_BASE,
+        datasets=datasets_8f,
+        smoothing_levels=jg8f_smoothing_levels,
+        expected_methods=[*base_8f_methods, "biophys_ml"],
+    )
+    if param_methods:
+        _validate_run_methods(
+            eval_root=eval_root,
+            run_tag=RUN_JG8F_PARAMS,
+            datasets=datasets_8f,
+            smoothing_levels=["raw"],
+            expected_methods=param_methods,
+        )
+    _validate_run_methods(
+        eval_root=eval_root,
+        run_tag=RUN_JG8M_BASE,
+        datasets=datasets_8m,
+        smoothing_levels=jg8m_smoothing_levels,
+        expected_methods=[*base_8m_methods, "biophys_ml"],
     )
 
     _trialwise_csv(
