@@ -229,6 +229,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                     compute_trialwise_correlations_windowed,
                 )
                 from c_spikes.inference.types import MethodResult, TrialSeries, compute_config_signature, compute_sampling_rate
+                from c_spikes.inference.cache import get_cache_root
                 from c_spikes.utils import load_Janelia_data
 
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -303,7 +304,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                             cache_key, _ = compute_config_signature(cfg_dict)
                     if not cache_key:
                         continue
-                    mat_path = Path("results/inference_cache") / method_name / cache_tag / f"{cache_key}.mat"
+                    mat_path = get_cache_root() / method_name / cache_tag / f"{cache_key}.mat"
                     if not mat_path.exists():
                         print(f"[eval-only] Missing cache mat: {mat_path}")
                         continue

@@ -34,6 +34,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--dataset", action="append", metavar="STEM", help="Restrict to specific dataset stem(s). Repeatable.")
     p.add_argument("--smoothing", action="append", metavar="LABEL", help="Restrict to smoothing label(s) (raw, 30Hz, 10Hz). Repeatable.")
     p.add_argument("--method", action="append", metavar="NAME", help="Restrict to method label(s) (e.g., ens2, cascade). Repeatable.")
+    p.add_argument("--cache-root", type=Path, default=Path("results/inference_cache"), help="Inference cache root.")
     p.add_argument("--edges-path", type=Path, default=None, help="Optional edges .npy mapping dataset_stem -> (n_trials,2).")
     p.add_argument(
         "--corr-sigma-ms",
@@ -212,6 +213,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     args = parse_args(argv)
     eval_root = args.eval_root.expanduser().resolve()
     data_root = args.data_root.expanduser().resolve()
+    cache_root = args.cache_root.expanduser().resolve()
     edges_lookup = _load_edges(args.edges_path)
 
     run_filter = _uniq(args.run)
@@ -314,7 +316,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     if method_filter and label not in method_filter and method_name not in method_filter:
                         continue
 
-                    mat_path = Path("results/inference_cache") / method_name / cache_tag / f"{cache_key}.mat"
+                    mat_path = cache_root / method_name / cache_tag / f"{cache_key}.mat"
                     if not mat_path.exists():
                         print(f"[warn] Missing cache mat: {mat_path}")
                         continue

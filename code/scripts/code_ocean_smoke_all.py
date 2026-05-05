@@ -375,6 +375,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                 "code/scripts/trialwise_correlations.py",
                 "--eval-root",
                 str(results_dir / "full_evaluation"),
+                "--cache-root",
+                str(results_dir / "inference_cache"),
                 "--data-root",
                 str(data_dir / "sample_data" / "janelia_8f" / "excitatory"),
                 "--edges-path",
