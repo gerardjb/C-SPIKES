@@ -9,7 +9,7 @@ Usage:
   ./run.sh [--dataset-percent PERCENT] [stage ...]
 
 Stages:
-  setup        Write a run manifest and create standard output directories.
+  setup        Build/install C-SPIKES, verify PGAS, and write a run manifest.
   quickcheck   Run lightweight import checks for required Python backends.
   smoke        Check GPU/backend visibility and run one epoch of inference.
   inference    Run the reviewer-facing manuscript inference workflow.
@@ -146,11 +146,28 @@ prepend_ld_path "${CUDA_HOME:-/usr/local/cuda}/lib64"
 
 cd "${C_SPIKES_CODE_DIR}"
 
-ensure_pgas_backend() {
-    if [[ "${C_SPIKES_SKIP_PGAS_BUILD:-0}" == "1" ]]; then
-        return 0
-    fi
+setup_marker="${C_SPIKES_RESULTS_DIR}/.c_spikes_setup_complete"
 
+code_revision() {
+    git rev-parse HEAD 2>/dev/null || echo "unknown"
+}
+
+setup_is_current() {
+    local expected
+    expected="$(code_revision)"
+    [[ -f "${setup_marker}" ]] && grep -qx "code_revision=${expected}" "${setup_marker}"
+}
+
+build_c_spikes_package() {
+    if [[ ! -f "${C_SPIKES_CODE_DIR}/pyproject.toml" ]]; then
+        echo "[run.sh] ${C_SPIKES_CODE_DIR}/pyproject.toml is missing; cannot build C-SPIKES package." >&2
+        return 1
+    fi
+    echo "[run.sh] building C-SPIKES package from ${C_SPIKES_CODE_DIR}"
+    python -m pip install --no-deps --no-build-isolation -v "${C_SPIKES_CODE_DIR}"
+}
+
+verify_pgas_backend() {
     if python - <<'PY' >/dev/null 2>&1
 import importlib
 importlib.import_module("c_spikes.pgas.pgas_bound")
@@ -159,23 +176,37 @@ PY
         return 0
     fi
 
-    if [[ ! -f "${C_SPIKES_CODE_DIR}/pyproject.toml" ]]; then
-        echo "[run.sh] PGAS backend is not importable and ${C_SPIKES_CODE_DIR}/pyproject.toml is missing." >&2
-        return 1
-    fi
-
-    echo "[run.sh] PGAS backend is not importable; building C-SPIKES package."
-    python -m pip install --no-deps --no-build-isolation -v "${C_SPIKES_CODE_DIR}"
+    echo "[run.sh] PGAS backend is not importable after setup." >&2
     python - <<'PY'
 import importlib
-module = importlib.import_module("c_spikes.pgas.pgas_bound")
-print(f"[run.sh] PGAS backend import ok: {getattr(module, '__backend__', 'unknown')}")
+import sys
+from pathlib import Path
+
+print(f"[run.sh] python={sys.version}", file=sys.stderr)
+print("[run.sh] sys.path:", file=sys.stderr)
+for item in sys.path:
+    print(f"  {item}", file=sys.stderr)
+try:
+    import c_spikes
+    print(f"[run.sh] c_spikes={getattr(c_spikes, '__file__', None)}", file=sys.stderr)
+except Exception as exc:
+    print(f"[run.sh] c_spikes import failed: {exc!r}", file=sys.stderr)
+for root in sys.path:
+    if not root:
+        continue
+    pgas_dir = Path(root) / "c_spikes" / "pgas"
+    if pgas_dir.exists():
+        print(f"[run.sh] pgas files in {pgas_dir}:", file=sys.stderr)
+        for path in sorted(pgas_dir.glob("pgas_bound*")):
+            print(f"  {path.name}", file=sys.stderr)
+raise SystemExit(1)
 PY
 }
 
 stage_setup() {
     echo "[run.sh] setup"
-    ensure_pgas_backend
+    build_c_spikes_package
+    verify_pgas_backend
     python - <<'PY'
 from __future__ import annotations
 
@@ -208,20 +239,33 @@ out = results_dir / "run_manifest.json"
 out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 print(f"[run.sh] wrote {out}")
 PY
+    {
+        echo "code_revision=$(code_revision)"
+        date -u +"created_utc=%Y-%m-%dT%H:%M:%SZ"
+    } > "${setup_marker}"
+    echo "[run.sh] wrote ${setup_marker}"
+}
+
+ensure_setup() {
+    if setup_is_current; then
+        return 0
+    fi
+    echo "[run.sh] setup has not run for this code revision; running setup first."
+    stage_setup
 }
 
 stage_quickcheck() {
+    ensure_setup
     if [[ "${C_SPIKES_QUICKCHECK:-1}" != "1" ]]; then
         echo "[run.sh] quickcheck skipped (C_SPIKES_QUICKCHECK=${C_SPIKES_QUICKCHECK})"
         return 0
     fi
     echo "[run.sh] quickcheck"
-    ensure_pgas_backend
     python -m pytest -q tests/test_dependency_imports.py
 }
 
 stage_smoke() {
-    ensure_pgas_backend
+    ensure_setup
     run_python_stage \
         "smoke" \
         "scripts/code_ocean_smoke_test.py" \
@@ -246,7 +290,7 @@ run_python_stage() {
 }
 
 stage_inference() {
-    ensure_pgas_backend
+    ensure_setup
     run_python_stage \
         "inference" \
         "scripts/code_ocean_inference_demo.py" \
@@ -254,7 +298,7 @@ stage_inference() {
 }
 
 stage_biophys_ml() {
-    ensure_pgas_backend
+    ensure_setup
     run_python_stage \
         "biophys-ml" \
         "scripts/code_ocean_biophys_ml_demo.py" \
