@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import subprocess
@@ -113,6 +114,8 @@ def _make_short_edges(
     trial: int,
     fraction: float,
 ) -> tuple[Path, float, float]:
+    from c_spikes.utils import load_Janelia_data
+
     source = data_dir / "reference_inputs" / "edges" / "excitatory_time_stamp_edges.npy"
     edges = np.load(source, allow_pickle=True).item()
     if dataset not in edges:
@@ -123,13 +126,60 @@ def _make_short_edges(
     start, end = [float(x) for x in arr[trial, :2]]
     if not np.isfinite(start) or not np.isfinite(end) or end <= start:
         raise ValueError(f"Invalid source edge for {dataset} trial {trial}: {(start, end)}")
-    short_end = start + (end - start) * float(fraction)
+    duration = max(0.1, (end - start) * float(fraction))
+    duration = min(duration, end - start)
+    short_start = start
+    dataset_path = data_dir / "sample_data" / "janelia_8f" / "excitatory" / f"{dataset}.mat"
+    if dataset_path.exists():
+        _time_stamps, _dff, spike_times = load_Janelia_data(str(dataset_path))
+        spikes = np.asarray(spike_times, dtype=np.float64).ravel()
+        spikes = spikes[np.isfinite(spikes)]
+        spikes = np.sort(spikes[(spikes >= start) & (spikes <= end)])
+        if spikes.size:
+            best_start = short_start
+            best_count = -1
+            for spike in spikes:
+                candidate_start = float(spike) - duration / 2.0
+                candidate_start = max(start, min(candidate_start, end - duration))
+                candidate_end = candidate_start + duration
+                count = int(np.count_nonzero((spikes >= candidate_start) & (spikes <= candidate_end)))
+                if count > best_count:
+                    best_count = count
+                    best_start = candidate_start
+            short_start = best_start
+    short_end = short_start + duration
     arr[trial, 1] = short_end
+    arr[trial, 0] = short_start
     short_edges = dict(edges)
     short_edges[dataset] = arr
     out = results_dir / "smoke_all_edges.npy"
     np.save(out, short_edges, allow_pickle=True)
-    return out, start, short_end
+    return out, short_start, short_end
+
+
+def _validate_trialwise_csv(csv_path: Path, *, methods: Sequence[str]) -> dict[str, Any]:
+    with csv_path.open("r", newline="", encoding="utf-8") as fh:
+        rows = [dict(row) for row in csv.DictReader(fh)]
+    if not rows:
+        raise RuntimeError(f"{csv_path} has no rows")
+    finite_by_method = {method: 0 for method in methods}
+    for row in rows:
+        method = str(row.get("method", "")).strip()
+        if method not in finite_by_method:
+            continue
+        try:
+            value = float(row.get("correlation", "nan"))
+        except ValueError:
+            value = float("nan")
+        if np.isfinite(value):
+            finite_by_method[method] += 1
+    missing = [method for method, count in finite_by_method.items() if count <= 0]
+    if missing:
+        raise RuntimeError(
+            f"{csv_path} has no finite trialwise correlations for: {', '.join(missing)}. "
+            "The smoke window likely lacks spike or prediction variance."
+        )
+    return {"row_count": len(rows), "finite_by_method": finite_by_method}
 
 
 def _run_cli(
@@ -396,6 +446,26 @@ def main(argv: Sequence[str] | None = None) -> None:
             plan_only=bool(args.plan_only),
         )
     )
+    validation_step: dict[str, Any] = {
+        "name": "validate_trialwise_csv",
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    if args.plan_only:
+        validation_step.update({"returncode": 0, "plan_only": True})
+    else:
+        try:
+            validation_step.update(
+                {
+                    "returncode": 0,
+                    **_validate_trialwise_csv(
+                        trialwise_csv,
+                        methods=["pgas", "biophys_ml", "ens2", "cascade"],
+                    ),
+                }
+            )
+        except Exception as exc:
+            validation_step.update({"returncode": 1, "error": str(exc)})
+    steps.append(validation_step)
     plot_path = results_dir / "plots" / "smoke_all_trace_panel.png"
     steps.append(
         _run_step(
@@ -407,6 +477,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                 str(trialwise_csv),
                 "--eval-root",
                 str(results_dir / "full_evaluation"),
+                "--cache-root",
+                str(results_dir / "inference_cache"),
                 "--data-root",
                 str(data_dir / "sample_data" / "janelia_8f" / "excitatory"),
                 "--edges-path",
@@ -459,7 +531,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     _write_json(results_dir / "smoke_all_summary.json", summary)
     print(f"[smoke-all] wrote {results_dir / 'smoke_all_summary.json'}", flush=True)
     if failures:
-        detail = "; ".join(f"{step['name']} rc={step['returncode']} stderr={step.get('stderr_log')}" for step in failures)
+        detail = "; ".join(
+            f"{step['name']} rc={step['returncode']} stderr={step.get('stderr_log')} error={step.get('error')}"
+            for step in failures
+        )
         raise RuntimeError(f"smoke-all failures: {detail}")
 
 

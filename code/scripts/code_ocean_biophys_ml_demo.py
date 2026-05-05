@@ -233,6 +233,8 @@ def _base_env(repo_root: Path) -> dict[str, str]:
 
 
 def _append_nvidia_libs_to_env(env: dict[str, str]) -> None:
+    if str(env.get("C_SPIKES_PREPEND_NVIDIA_PYTHON_LIBS", "1")).strip().lower() in {"0", "false", "no", "off"}:
+        return
     code = (
         "import glob, site; "
         "print(':'.join(sorted(p for root in site.getsitepackages() "

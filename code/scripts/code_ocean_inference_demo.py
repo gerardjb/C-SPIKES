@@ -371,6 +371,8 @@ def _base_env(repo_root: Path) -> dict[str, str]:
 
 
 def _append_nvidia_libs_to_env(env: dict[str, str]) -> None:
+    if str(env.get("C_SPIKES_PREPEND_NVIDIA_PYTHON_LIBS", "1")).strip().lower() in {"0", "false", "no", "off"}:
+        return
     code = (
         "import glob, site; "
         "print(':'.join(sorted(p for root in site.getsitepackages() "
@@ -547,6 +549,7 @@ def _trialwise_csv(
     dry_run: bool,
     eval_root: Path,
     data_root: Path,
+    cache_root: Path,
     edges_path: Path,
     out_csv: Path,
     runs: Sequence[str],
@@ -560,6 +563,8 @@ def _trialwise_csv(
         str(eval_root),
         "--data-root",
         str(data_root),
+        "--cache-root",
+        str(cache_root),
         "--edges-path",
         str(edges_path),
         "--out-csv",
@@ -1130,6 +1135,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         dry_run=False,
         eval_root=eval_root,
         data_root=jg8f_data_root,
+        cache_root=cache_root,
         edges_path=edge_8f,
         out_csv=results_dir / "trialwise_correlations_jG8f_repro.csv",
         runs=[RUN_JG8F_BASE, RUN_JG8F_PARAMS],
@@ -1143,6 +1149,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         dry_run=False,
         eval_root=eval_root,
         data_root=jg8m_data_root,
+        cache_root=cache_root,
         edges_path=edge_8m,
         out_csv=results_dir / "trialwise_correlations_jG8m_repro.csv",
         runs=[RUN_JG8M_BASE],
