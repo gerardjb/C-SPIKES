@@ -14,12 +14,14 @@ Example usages:
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import List, Optional, Sequence
 
 from c_spikes.tensorflow_env import preload_tensorflow_quietly
 
-preload_tensorflow_quietly()
+if os.environ.get("C_SPIKES_TF_PRELOAD", "1").strip().lower() not in {"0", "false", "no", "off"}:
+    preload_tensorflow_quietly()
 
 from c_spikes.inference.cache import set_cache_root
 from c_spikes.pipeline import RunConfig, run_batch

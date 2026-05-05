@@ -42,6 +42,11 @@ Common environment overrides:
   C_SPIKES_SETUP_STRICT_REVISION
                           Set to 1 to rerun setup when the git revision changes.
                           Default: 0.
+  C_SPIKES_PREPEND_NVIDIA_PYTHON_LIBS
+                          Set to 0 to avoid prepending pip nvidia/*/lib paths.
+                          Default: 1.
+  C_SPIKES_TF_PRELOAD     Set to 0 to skip TensorFlow preload in the batch CLI.
+                          Default: 1.
   C_SPIKES_USE_SOURCE_TREE
                           Set to 1 to import c_spikes from code/src instead of
                           the installed package. Default: 0.
@@ -148,7 +153,7 @@ PY
     fi
 }
 
-if command -v python >/dev/null 2>&1; then
+if [[ "${C_SPIKES_PREPEND_NVIDIA_PYTHON_LIBS:-1}" == "1" ]] && command -v python >/dev/null 2>&1; then
     prepend_nvidia_python_libs
 fi
 prepend_ld_path "${VCPKG_ROOT:-/opt/vcpkg}/installed/${VCPKG_DEFAULT_TRIPLET:-x64-linux}/lib"
