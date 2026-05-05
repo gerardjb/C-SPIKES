@@ -129,6 +129,7 @@ def _base_env(repo_root: Path, scratch_dir: Path) -> dict[str, str]:
     env.setdefault("MPLCONFIGDIR", str(scratch_dir / "mpl_cache"))
     env.setdefault("XDG_CACHE_HOME", str(scratch_dir / "mpl_cache"))
     env.setdefault("PYTHONPYCACHEPREFIX", str(scratch_dir / "python_cache"))
+    env.setdefault("PYTHONFAULTHANDLER", "1")
     env.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
     env.setdefault("C_SPIKES_TF_SUPPRESS_RUNTIME_STDERR", "1")
     env.setdefault("OMP_NUM_THREADS", "1")
@@ -230,6 +231,8 @@ def _run_inference(
     pgas_output_root = results_dir / "pgas_output"
     cmd: list[str] = [
         sys.executable,
+        "-X",
+        "faulthandler",
         "-m",
         "c_spikes.cli.run",
         "--data-root",
