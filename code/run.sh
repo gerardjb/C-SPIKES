@@ -293,7 +293,9 @@ stage_quickcheck() {
         return 0
     fi
     echo "[run.sh] quickcheck"
-    python -m pytest -q tests/test_dependency_imports.py
+    python -m pytest -q \
+        tests/test_dependency_imports.py \
+        tests/test_code_ocean_inference_plumbing.py
 }
 
 stage_smoke() {
