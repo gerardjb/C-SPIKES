@@ -81,6 +81,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=Path("results/full_evaluation"),
         help="Full evaluation root containing run_tag/dataset/smoothing/comparison.json.",
     )
+    p.add_argument(
+        "--cache-root",
+        type=Path,
+        default=Path("results/inference_cache"),
+        help="Inference cache root containing method/cache_tag/cache_key.mat files.",
+    )
     p.add_argument("--data-root", type=Path, required=True, help="Dataset root containing .mat files.")
     p.add_argument("--edges-path", type=Path, default=None, help="Optional edges .npy mapping dataset->(n_trials,2).")
     p.add_argument("--dataset", required=True, help="Dataset stem (e.g. jGCaMP8m_ANM472179_cell02).")
@@ -395,6 +401,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     fig, _ax, meta = plot_trace_panel(
         csv_path=args.csv,
         eval_root=args.eval_root,
+        cache_root=args.cache_root,
         data_root=args.data_root,
         edges_path=args.edges_path,
         dataset=args.dataset,

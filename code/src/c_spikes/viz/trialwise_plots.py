@@ -722,10 +722,10 @@ def _cache_paths_from_entry(entry: Dict[str, Any], *, dataset_fallback: str) -> 
     return cache_tag, cache_key
 
 
-def _load_method_cache_mat(method: str, cache_tag: str, cache_key: str) -> Any:
+def _load_method_cache_mat(method: str, cache_tag: str, cache_key: str, *, cache_root: Pathish = Path("results/inference_cache")) -> Any:
     from c_spikes.inference.types import MethodResult, compute_sampling_rate
 
-    mat_path = Path("results/inference_cache") / method / cache_tag / f"{cache_key}.mat"
+    mat_path = Path(cache_root) / method / cache_tag / f"{cache_key}.mat"
     if not mat_path.exists():
         raise FileNotFoundError(f"Missing cache mat: {mat_path}")
     data = sio.loadmat(mat_path)
@@ -793,6 +793,7 @@ def plot_trace_panel(
     eval_root: Pathish,
     data_root: Pathish,
     dataset: str,
+    cache_root: Pathish = Path("results/inference_cache"),
     smoothing: str = "raw",
     corr_sigma_ms: float = 50.0,
     display_sigma_ms: Optional[float] = None,
@@ -1006,7 +1007,7 @@ def plot_trace_panel(
         cache_spec = CacheSpec(method=spec.method, run_tag=run_tag, dataset=dataset_stem, smoothing=smoothing)
         entry = _load_comparison_method_entry(eval_root, cache_spec)
         cache_tag, cache_key = _cache_paths_from_entry(entry, dataset_fallback=dataset_stem)
-        method_results[series_key] = _load_method_cache_mat(spec.method, cache_tag, cache_key)
+        method_results[series_key] = _load_method_cache_mat(spec.method, cache_tag, cache_key, cache_root=cache_root)
         result = method_results[series_key]
         segs = _segment_slices(result.time_stamps, result.sampling_rate)
         seg = _select_segment_for_trial(
