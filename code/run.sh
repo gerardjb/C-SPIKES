@@ -39,6 +39,9 @@ Common environment overrides:
   C_SPIKES_STRICT_PIP_INSTALL
                           Set to 1 to add --no-deps --no-build-isolation to the
                           setup install. Default: 0.
+  C_SPIKES_SETUP_STRICT_REVISION
+                          Set to 1 to rerun setup when the git revision changes.
+                          Default: 0.
   C_SPIKES_USE_SOURCE_TREE
                           Set to 1 to import c_spikes from code/src instead of
                           the installed package. Default: 0.
@@ -160,9 +163,13 @@ code_revision() {
 }
 
 setup_is_current() {
-    local expected
-    expected="$(code_revision)"
-    [[ -f "${setup_marker}" ]] && grep -qx "code_revision=${expected}" "${setup_marker}"
+    [[ -f "${setup_marker}" ]] || return 1
+    if [[ "${C_SPIKES_SETUP_STRICT_REVISION:-0}" == "1" ]]; then
+        local expected
+        expected="$(code_revision)"
+        grep -qx "code_revision=${expected}" "${setup_marker}" || return 1
+    fi
+    verify_pgas_backend >/dev/null 2>&1
 }
 
 build_c_spikes_package() {
@@ -269,7 +276,7 @@ ensure_setup() {
     if setup_is_current; then
         return 0
     fi
-    echo "[run.sh] setup has not run for this code revision; running setup first."
+    echo "[run.sh] setup marker is missing, stale, or PGAS import failed; running setup first."
     stage_setup
 }
 
