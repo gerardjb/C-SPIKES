@@ -35,6 +35,9 @@ Common environment overrides:
   C_SPIKES_EDITABLE_INSTALL
                           Set to 0 to use a non-editable package install during
                           setup. Default: 1.
+  C_SPIKES_STRICT_PIP_INSTALL
+                          Set to 1 to add --no-deps --no-build-isolation to the
+                          setup install. Default: 0.
   C_SPIKES_USE_SOURCE_TREE
                           Set to 1 to import c_spikes from code/src instead of
                           the installed package. Default: 0.
@@ -168,9 +171,17 @@ build_c_spikes_package() {
     fi
     echo "[run.sh] building C-SPIKES package from ${C_SPIKES_CODE_DIR}"
     if [[ "${C_SPIKES_EDITABLE_INSTALL:-1}" == "1" ]]; then
-        python -m pip install --no-deps --no-build-isolation -v -e "${C_SPIKES_CODE_DIR}"
+        if [[ "${C_SPIKES_STRICT_PIP_INSTALL:-0}" == "1" ]]; then
+            python -m pip install --no-deps --no-build-isolation -v -e "${C_SPIKES_CODE_DIR}"
+        else
+            python -m pip install -e "${C_SPIKES_CODE_DIR}"
+        fi
     else
-        python -m pip install --no-deps --no-build-isolation -v "${C_SPIKES_CODE_DIR}"
+        if [[ "${C_SPIKES_STRICT_PIP_INSTALL:-0}" == "1" ]]; then
+            python -m pip install --no-deps --no-build-isolation -v "${C_SPIKES_CODE_DIR}"
+        else
+            python -m pip install "${C_SPIKES_CODE_DIR}"
+        fi
     fi
 }
 
