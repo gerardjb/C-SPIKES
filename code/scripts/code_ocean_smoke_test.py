@@ -60,6 +60,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=_env_flag("C_SPIKES_SMOKE_PLAN_ONLY", False),
         help="Write selection/probe artifacts without launching inference.",
     )
+    parser.add_argument(
+        "--split-methods",
+        action="store_true",
+        default=_env_flag("C_SPIKES_SMOKE_SPLIT_METHODS", False),
+        help="Run each requested method in a separate CLI process and log return codes/stdout/stderr.",
+    )
     return parser.parse_args(argv)
 
 
@@ -213,6 +219,8 @@ def _run_inference(
     trial: int,
     methods: Sequence[str],
     plan_only: bool,
+    run_tag: str = RUN_TAG,
+    capture: bool = False,
 ) -> tuple[Path, float]:
     selection = results_dir / "smoke_trial_selection.json"
     _write_json(selection, {dataset: [int(trial)]})
@@ -257,7 +265,7 @@ def _run_inference(
         "50",
         "--trialwise-correlations",
         "--run-tag",
-        RUN_TAG,
+        run_tag,
     ]
     for method in methods:
         cmd.extend(["--method", method])
@@ -267,15 +275,102 @@ def _run_inference(
         "trial": int(trial),
         "methods": list(methods),
         "command": cmd,
-        "summary_path": str(output_root / RUN_TAG / dataset / "raw" / "summary.json"),
+        "summary_path": str(output_root / run_tag / dataset / "raw" / "summary.json"),
     }
-    _write_json(results_dir / "smoke_plan.json", plan)
+    plan_name = "smoke_plan.json" if run_tag == RUN_TAG else f"smoke_plan_{run_tag}.json"
+    _write_json(results_dir / plan_name, plan)
     print("[smoke] " + " ".join(cmd), flush=True)
     start = time.perf_counter()
     if not plan_only:
-        subprocess.run(cmd, cwd=str(repo_root), env=dict(env), check=True)
+        if capture:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(repo_root),
+                env=dict(env),
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+            log_payload = {
+                "created_utc": datetime.now(timezone.utc).isoformat(),
+                "command": cmd,
+                "returncode": proc.returncode,
+                "signal": -proc.returncode if proc.returncode < 0 else None,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+            }
+            _write_json(results_dir / f"smoke_process_{run_tag}.json", log_payload)
+            (results_dir / f"smoke_stdout_{run_tag}.log").write_text(proc.stdout, encoding="utf-8")
+            (results_dir / f"smoke_stderr_{run_tag}.log").write_text(proc.stderr, encoding="utf-8")
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, cmd, output=proc.stdout, stderr=proc.stderr)
+        else:
+            subprocess.run(cmd, cwd=str(repo_root), env=dict(env), check=True)
     walltime_s = time.perf_counter() - start
-    return output_root / RUN_TAG / dataset / "raw" / "summary.json", walltime_s
+    return output_root / run_tag / dataset / "raw" / "summary.json", walltime_s
+
+
+def _run_split_inference(
+    *,
+    repo_root: Path,
+    data_dir: Path,
+    results_dir: Path,
+    env: Mapping[str, str],
+    dataset: str,
+    trial: int,
+    methods: Sequence[str],
+    plan_only: bool,
+) -> tuple[list[dict[str, Any]], float]:
+    outcomes: list[dict[str, Any]] = []
+    start = time.perf_counter()
+    for method in methods:
+        run_tag = f"{RUN_TAG}_{method}"
+        method_start = time.perf_counter()
+        try:
+            summary_path, _ = _run_inference(
+                repo_root=repo_root,
+                data_dir=data_dir,
+                results_dir=results_dir,
+                env=env,
+                dataset=dataset,
+                trial=trial,
+                methods=[method],
+                plan_only=plan_only,
+                run_tag=run_tag,
+                capture=True,
+            )
+            result = _validate_summary(summary_path, [method], plan_only=plan_only)
+            returncode = 0
+            error = None
+        except subprocess.CalledProcessError as exc:
+            summary_path = results_dir / "full_evaluation" / run_tag / dataset / "raw" / "summary.json"
+            result = None
+            returncode = int(exc.returncode)
+            if returncode < 0:
+                error = f"{method} terminated by signal {-returncode}"
+            else:
+                error = f"{method} exited with return code {returncode}"
+        except Exception as exc:
+            summary_path = results_dir / "full_evaluation" / run_tag / dataset / "raw" / "summary.json"
+            result = None
+            returncode = 1
+            error = f"{method} smoke validation failed: {type(exc).__name__}: {exc}"
+        outcomes.append(
+            {
+                "method": method,
+                "run_tag": run_tag,
+                "returncode": returncode,
+                "signal": -returncode if returncode < 0 else None,
+                "error": error,
+                "summary_path": str(summary_path),
+                "walltime_s": time.perf_counter() - method_start,
+                "result": result,
+                "stdout_log": str(results_dir / f"smoke_stdout_{run_tag}.log"),
+                "stderr_log": str(results_dir / f"smoke_stderr_{run_tag}.log"),
+                "process_json": str(results_dir / f"smoke_process_{run_tag}.json"),
+            }
+        )
+    return outcomes, time.perf_counter() - start
 
 
 def _validate_summary(summary_path: Path, methods: Sequence[str], *, plan_only: bool) -> dict[str, Any]:
@@ -328,17 +423,32 @@ def main(argv: Sequence[str] | None = None) -> None:
             f"See {results_dir / 'gpu_environment.json'}."
         )
 
-    summary_path, inference_walltime_s = _run_inference(
-        repo_root=repo_root,
-        data_dir=data_dir,
-        results_dir=results_dir,
-        env=env,
-        dataset=str(args.dataset),
-        trial=int(args.trial),
-        methods=methods,
-        plan_only=bool(args.plan_only),
-    )
-    result = _validate_summary(summary_path, methods, plan_only=bool(args.plan_only))
+    if args.split_methods:
+        split_results, inference_walltime_s = _run_split_inference(
+            repo_root=repo_root,
+            data_dir=data_dir,
+            results_dir=results_dir,
+            env=env,
+            dataset=str(args.dataset),
+            trial=int(args.trial),
+            methods=methods,
+            plan_only=bool(args.plan_only),
+        )
+        failures = [item for item in split_results if item["returncode"] != 0]
+        result = {"split_methods": True, "methods": split_results}
+    else:
+        summary_path, inference_walltime_s = _run_inference(
+            repo_root=repo_root,
+            data_dir=data_dir,
+            results_dir=results_dir,
+            env=env,
+            dataset=str(args.dataset),
+            trial=int(args.trial),
+            methods=methods,
+            plan_only=bool(args.plan_only),
+        )
+        failures = []
+        result = _validate_summary(summary_path, methods, plan_only=bool(args.plan_only))
     total_walltime_s = time.perf_counter() - smoke_start
     _write_json(
         results_dir / "smoke_summary.json",
@@ -356,6 +466,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         },
     )
     print(f"[smoke] wrote {results_dir / 'smoke_summary.json'}", flush=True)
+    if failures:
+        details = "; ".join(f"{item['method']}: {item['error']} (stderr: {item['stderr_log']})" for item in failures)
+        raise RuntimeError(f"Smoke method failures: {details}")
 
 
 if __name__ == "__main__":

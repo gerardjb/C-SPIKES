@@ -12,6 +12,7 @@ Stages:
   setup        Build/install C-SPIKES, verify PGAS, and write a run manifest.
   quickcheck   Run lightweight import checks for required Python backends.
   smoke        Check GPU/backend visibility and run one epoch of inference.
+  smoke-ml     Run ENS2 and CASCADE smoke checks separately with per-method logs.
   inference    Run the reviewer-facing manuscript inference workflow.
   biophys-ml   Run the BiophysML regeneration/checksum demo.
   all          Expand to: setup quickcheck smoke inference
@@ -290,10 +291,22 @@ stage_smoke() {
         "${C_SPIKES_RESULTS_DIR}/smoke"
 }
 
+stage_smoke_ml() {
+    ensure_setup
+    run_python_stage \
+        "smoke-ml" \
+        "scripts/code_ocean_smoke_test.py" \
+        "${C_SPIKES_RESULTS_DIR}/smoke_ml" \
+        --methods ens2,cascade \
+        --no-require-gpu \
+        --split-methods
+}
+
 run_python_stage() {
     local stage="$1"
     local script="$2"
     local out_dir="$3"
+    shift 3
     if [[ ! -f "${script}" ]]; then
         echo "[run.sh] stage '${stage}' is not implemented yet." >&2
         echo "[run.sh] expected script: ${script}" >&2
@@ -304,7 +317,8 @@ run_python_stage() {
     python "${script}" \
         --data-dir "${C_SPIKES_DATA_DIR}" \
         --results-dir "${out_dir}" \
-        --scratch-dir "${C_SPIKES_SCRATCH_DIR}"
+        --scratch-dir "${C_SPIKES_SCRATCH_DIR}" \
+        "$@"
 }
 
 stage_inference() {
@@ -334,6 +348,7 @@ run_stage() {
         setup) stage_setup ;;
         quickcheck) stage_quickcheck ;;
         smoke) stage_smoke ;;
+        smoke-ml) stage_smoke_ml ;;
         inference) stage_inference ;;
         biophys-ml) stage_biophys_ml ;;
         all)
