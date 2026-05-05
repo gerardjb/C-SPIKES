@@ -92,10 +92,10 @@ try_activate_conda() {
 
 try_activate_conda
 
-if [[ -f /etc/profile.d/c_spikes_build.sh ]]; then
+#if [[ -f /etc/profile.d/c_spikes_build.sh ]]; then
     # shellcheck disable=SC1091
-    source /etc/profile.d/c_spikes_build.sh
-fi
+#    source /etc/profile.d/c_spikes_build.sh
+#fi
 
 mkdir -p \
     "${C_SPIKES_RESULTS_DIR}" \
