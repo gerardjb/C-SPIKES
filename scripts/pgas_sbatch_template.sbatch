@@ -36,6 +36,10 @@ DATASET_TAGS=("jGCaMP8f_ANM471993_cell01" "jGCaMP8f_ANM471993_cell02")
 USE_CACHE=1
 BM_SIGMA="0.02"
 BM_SIGMA_GAP_S="0.15"
+# Optional b10+ sigma2 prior calibration knobs. Leave empty to keep the commit's default prior.
+PGAS_SIGMA2_TARGET="${PGAS_SIGMA2_TARGET:-}"
+PGAS_SIGMA2_ALPHA="${PGAS_SIGMA2_ALPHA:-}"
+PGAS_SIGMA2_PRIOR_STRENGTH="${PGAS_SIGMA2_PRIOR_STRENGTH:-4}"
 CONDA_BASE_ENV="c_spikes_e"
 CONDA_OFFLINE_MODE=1
 KOKKOS_SOURCE_OVERRIDE="${KOKKOS_SOURCE_OVERRIDE:-}"
@@ -195,6 +199,16 @@ CMD=(
   --pgas-bm-sigma "$BM_SIGMA"
   --bm-sigma-spike-gap "$BM_SIGMA_GAP_S"
 )
+
+if [[ -n "${PGAS_SIGMA2_TARGET}" ]]; then
+  CMD+=(--pgas-sigma2-target "$PGAS_SIGMA2_TARGET")
+  CMD+=(--pgas-sigma2-prior-strength "$PGAS_SIGMA2_PRIOR_STRENGTH")
+  if [[ -n "${PGAS_SIGMA2_ALPHA}" ]]; then
+    CMD+=(--pgas-sigma2-alpha "$PGAS_SIGMA2_ALPHA")
+  fi
+elif [[ -n "${PGAS_SIGMA2_ALPHA}" ]]; then
+  CMD+=(--pgas-sigma2-alpha "$PGAS_SIGMA2_ALPHA")
+fi
 
 for dataset_tag in "${RESOLVED_DATASET_TAGS[@]}"; do
   CMD+=(--dataset "$dataset_tag")
