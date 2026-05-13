@@ -11,9 +11,10 @@ The goal is to run inference for each target commit into distinct run tags so re
 ## 1. What each file does
 
 1. `pgas_sbatch_template.sbatch`
-   - Slurm job template that accepts two positional arguments:
+   - Slurm job template that accepts two required positional arguments and one optional patch argument:
      - `$1`: run tag
      - `$2`: commit hash
+     - `$3`: optional tracked worktree patch snapshot path
    - For each job, it:
      - clones a pre-existing base conda env into a run-specific env
      - checks out the requested commit into a detached worktree
@@ -22,10 +23,12 @@ The goal is to run inference for each target commit into distinct run tags so re
 
 2. `pgas_commit_builds.json`
    - Commit matrix with short run tags + full commit hashes.
+   - Entries may also set `"apply_worktree_patch": true` to layer the current tracked repo diff on top of the listed base commit.
    - You can add/remove/relabel entries safely.
 
 3. `submit_pgas_commit_builds.py`
    - Reads the JSON matrix and submits one `sbatch` command per entry.
+   - For `"apply_worktree_patch": true` entries, it snapshots the current tracked `git diff HEAD --` into `scripts/.pgas_build_patches/` and passes that patch path to the Slurm job.
    - Supports filtering, dry-run, prefixes/suffixes, and error handling.
 
 ## 2. One-time setup before submission
@@ -90,6 +93,8 @@ git cat-file -e <commit_hash>^{commit}
 python scripts/submit_pgas_commit_builds.py --dry-run
 ```
 
+Tracked-worktree patch overlays only include tracked modifications. Untracked files are not bundled into the build snapshot.
+
 ## 3. Ensure commits are available in the submitting clone
 
 Before running any scripts, fetch the branch containing the commit hashes to ensure they're available to the slurm scheduler:
@@ -123,6 +128,9 @@ Useful variants:
 ```bash
 # Submit only selected run tags
 python scripts/submit_pgas_commit_builds.py --include-run-tag b07_auto_calib --include-run-tag b12_provenance --run-tag-prefix <subset_run_prefix_tag>
+
+# Submit the local MH-tuning overlay build
+python scripts/submit_pgas_commit_builds.py --include-run-tag b13_mh_tune --run-tag-prefix <overlay_prefix_>
 
 # Exclude selected run tags
 python scripts/submit_pgas_commit_builds.py --exclude-run-tag m00_main_base --run-tag-prefix <subset_excludes_>
