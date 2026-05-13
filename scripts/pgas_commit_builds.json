@@ -66,6 +66,12 @@
       "run_tag": "b12_provenance",
       "commit": "4ee748ceed10c0707ed9d8d85f4143985f7476af",
       "label": "calibration provenance metadata schema"
+    },
+    {
+      "run_tag": "b13_mh_tune",
+      "commit": "df0a8d9f92b4941347af65555bfda91f600f7211",
+      "label": "fixed log-space MH widths with adaptive burn-in tuning",
+      "apply_worktree_patch": true
     }
   ]
 }

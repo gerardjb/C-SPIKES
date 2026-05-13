@@ -10,6 +10,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -25,6 +26,10 @@ def _default_matrix_path() -> Path:
 
 def _default_template_path() -> Path:
     return Path(__file__).resolve().parent / "pgas_sbatch_template.sbatch"
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parent.parent
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -169,6 +174,36 @@ def _extract_job_id(text: str) -> str | None:
     return None
 
 
+def _materialize_worktree_patch(repo_root: Path, patch_dir: Path) -> Path:
+    diff_proc = subprocess.run(
+        ["git", "-C", str(repo_root), "diff", "--binary", "HEAD", "--"],
+        capture_output=True,
+    )
+    if diff_proc.returncode != 0:
+        stderr = diff_proc.stderr.decode("utf-8", errors="replace").strip()
+        stdout = diff_proc.stdout.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Failed to export worktree diff: {stderr or stdout}")
+
+    diff_bytes = diff_proc.stdout
+    if not diff_bytes.strip():
+        raise ValueError("Requested worktree patch overlay, but the current tracked worktree diff is empty.")
+
+    head_proc = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if head_proc.returncode != 0:
+        raise RuntimeError(f"Failed to resolve HEAD for worktree patch: {(head_proc.stderr or head_proc.stdout).strip()}")
+    head_sha = head_proc.stdout.strip()
+
+    patch_hash = hashlib.sha256(diff_bytes).hexdigest()[:12]
+    patch_dir.mkdir(parents=True, exist_ok=True)
+    patch_path = patch_dir / f"worktree_{head_sha[:8]}_{patch_hash}.patch"
+    patch_path.write_bytes(diff_bytes)
+    return patch_path
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
@@ -190,15 +225,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     sbatch_extra = list(args.sbatch_arg or [])
     submitted = 0
     failed = 0
+    repo_root = _repo_root()
+    generated_patch_dir = args.matrix.resolve().parent / ".pgas_build_patches"
+    cached_worktree_patch: Path | None = None
 
     for idx, item in enumerate(selected, start=1):
         base_run_tag = str(item["run_tag"]).strip()
         commit = str(item["commit"]).strip()
         label = str(item.get("label", "")).strip()
         run_tag = f"{args.run_tag_prefix}{base_run_tag}{args.run_tag_suffix}"
+        apply_worktree_patch = bool(item.get("apply_worktree_patch", False))
         try:
             _validate_commit_token(commit)
+            patch_path: Path | None = None
+            if apply_worktree_patch:
+                if cached_worktree_patch is None:
+                    cached_worktree_patch = _materialize_worktree_patch(repo_root, generated_patch_dir)
+                patch_path = cached_worktree_patch
         except ValueError as exc:
+            print(f"[error] {base_run_tag}: {exc}", file=sys.stderr)
+            failed += 1
+            if not args.continue_on_error:
+                return 1
+            continue
+        except RuntimeError as exc:
             print(f"[error] {base_run_tag}: {exc}", file=sys.stderr)
             failed += 1
             if not args.continue_on_error:
@@ -206,9 +256,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             continue
 
         cmd = ["sbatch", *sbatch_extra, str(args.template), run_tag, commit]
+        if patch_path is not None:
+            cmd.append(str(patch_path))
         prefix = f"[{idx}/{len(selected)}] {base_run_tag} -> {run_tag} ({commit[:8]})"
         if label:
             prefix = f"{prefix} {label}"
+        if patch_path is not None:
+            prefix = f"{prefix} [worktree-patch]"
         print(prefix)
         print("  " + " ".join(cmd))
 
@@ -244,4 +298,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
