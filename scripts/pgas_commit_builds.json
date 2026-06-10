@@ -68,10 +68,14 @@
       "label": "calibration provenance metadata schema"
     },
     {
-      "run_tag": "b13_mh_tune",
+      "run_tag": "b13_s2_knobs",
       "commit": "df0a8d9f92b4941347af65555bfda91f600f7211",
-      "label": "fixed log-space MH widths with adaptive burn-in tuning",
-      "apply_worktree_patch": true
+      "label": "expose sigma2 calibration knobs in sweep template"
+    },
+    {
+      "run_tag": "b14_mh_tune",
+      "commit": "9a96257a0fa6a66ced9ece967db64c1995b0d885",
+      "label": "fixed log-space MH widths with adaptive burn-in tuning"
     }
   ]
 }

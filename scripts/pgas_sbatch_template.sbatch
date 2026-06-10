@@ -11,13 +11,12 @@
 set -eo pipefail
 
 if [[ $# -lt 2 ]]; then
-  echo "Usage: sbatch $0 <run_tag> <commit_hash> [worktree_patch]" >&2
+  echo "Usage: sbatch $0 <run_tag> <commit_hash>" >&2
   exit 2
 fi
 
 RUN_TAG="$1"
 COMMIT_HASH="$2"
-WORKTREE_PATCH="${3:-}"
 COMMIT_SHORT="$(echo "$COMMIT_HASH" | cut -c1-8)"
 ENV_NAME="${RUN_TAG}_build"
 
@@ -98,15 +97,6 @@ if [[ -d "$BUILD_DIR" ]]; then
 fi
 git -C "$REPO_ROOT" worktree add --detach -f "$BUILD_DIR" "$COMMIT_HASH"
 git -C "$BUILD_DIR" checkout --detach "$COMMIT_HASH"
-
-if [[ -n "$WORKTREE_PATCH" ]]; then
-  if [[ ! -f "$WORKTREE_PATCH" ]]; then
-    echo "[error] Requested worktree patch not found: $WORKTREE_PATCH" >&2
-    exit 9
-  fi
-  echo "[setup] Applying tracked worktree patch snapshot: $WORKTREE_PATCH"
-  git -C "$BUILD_DIR" apply --whitespace=nowarn "$WORKTREE_PATCH"
-fi
 
 # Worktree checkouts do not include untracked files from REPO_ROOT.
 # Wire in vcpkg so pyproject's relative toolchain path resolves in this build.
