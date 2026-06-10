@@ -29,12 +29,12 @@ RESULTS_PARENT="/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/sample_data/janelia_8f
 SLURM_LOG_DIR="/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/logs/slurm_logs_build_test"
 PGAS_CONSTANTS="$REPO_ROOT/parameter_files/constants_GCaMP8_soma.json"
 PGAS_GPARAM="$REPO_ROOT/src/c_spikes/pgas/20230525_gold.dat"
-EDGES_PATH="/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/sample_data/janelia_8f/excitatory/edges/edges.npy"
-TRIAL_SELECTION_PATH="/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/sample_data/janelia_8f/excitatory/spike_inference/run_3/slurm/trial_selection.json"
+EDGES_PATH="" #"/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/sample_data/janelia_8f/excitatory/edges/edges.npy"
+TRIAL_SELECTION_PATH="/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES/sample_data/janelia_8f/excitatory/spike_inference/run_1/slurm/trial_selection.json"
 # If empty, datasets are inferred from TRIAL_SELECTION_PATH keys (when provided).
-DATASET_TAGS=("jGCaMP8f_ANM471993_cell01" "jGCaMP8f_ANM471993_cell02")
+DATASET_TAGS=()
 USE_CACHE=1
-BM_SIGMA="0.02"
+BM_SIGMA="auto"
 BM_SIGMA_GAP_S="0.15"
 # Optional b10+ sigma2 prior calibration knobs. Leave empty to keep the commit's default prior.
 PGAS_SIGMA2_TARGET="${PGAS_SIGMA2_TARGET:-}"
