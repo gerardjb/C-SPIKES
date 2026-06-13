@@ -27,6 +27,8 @@ PGAS_MAX_SPIKES_PER_BIN: int = 1
 PGAS_BURNIN: int = 100
 PGAS_NITER: int = 200
 PGAS_BM_SIGMA_DEFAULT: float = 2e-2
+PGAS_BM_SIGMA_MIN: float = 5e-4
+PGAS_BM_SIGMA_MAX: float = 5e-1
 
 
 @dataclass
@@ -42,9 +44,25 @@ class PgasConfig:
     maxspikes: Optional[int] = None
     maxspikes_per_bin: int = PGAS_MAX_SPIKES_PER_BIN
     bm_sigma: Optional[float] = None
+    bm_sigma_min: float = PGAS_BM_SIGMA_MIN
+    bm_sigma_max: float = PGAS_BM_SIGMA_MAX
     bm_sigma_gap_s: float = 0.15
     edges: Optional[np.ndarray] = None
     use_cache: bool = True
+
+
+def validate_bm_sigma_bounds(min_sigma: float, max_sigma: float) -> Tuple[float, float]:
+    min_sigma = float(min_sigma)
+    max_sigma = float(max_sigma)
+    if not np.isfinite(min_sigma) or min_sigma <= 0:
+        raise ValueError(f"bm_sigma minimum must be positive and finite; got {min_sigma!r}.")
+    if not np.isfinite(max_sigma) or max_sigma <= 0:
+        raise ValueError(f"bm_sigma maximum must be positive and finite; got {max_sigma!r}.")
+    if max_sigma < min_sigma:
+        raise ValueError(
+            f"bm_sigma maximum must be >= minimum; got min={min_sigma:g}, max={max_sigma:g}."
+        )
+    return min_sigma, max_sigma
 
 
 def maxspikes_for_rate(target_fs: Optional[float], native_fs: float) -> int:
@@ -122,11 +140,12 @@ def derive_bm_sigma(
     values: np.ndarray,
     target_fs: float,
     scale_factor: float = 0.25,
-    min_sigma: float = 5e-4,
-    max_sigma: float = 5e-2,
+    min_sigma: float = PGAS_BM_SIGMA_MIN,
+    max_sigma: float = PGAS_BM_SIGMA_MAX,
 ) -> float:
     if target_fs <= 0:
         raise ValueError("target_fs must be positive.")
+    min_sigma, max_sigma = validate_bm_sigma_bounds(min_sigma, max_sigma)
     diff_std = compute_robust_diff_std(times, values)
     if diff_std <= 0:
         return float(min_sigma)
@@ -179,6 +198,8 @@ def estimate_bm_sigma_for_trials(
     spike_times: np.ndarray,
     resample_fs: float,
     gap_s: float,
+    min_bm_sigma: float = PGAS_BM_SIGMA_MIN,
+    max_bm_sigma: float = PGAS_BM_SIGMA_MAX,
 ) -> float:
     resampled = resample_trials_to_fs(trials, resample_fs)
     from .types import flatten_trials
@@ -191,7 +212,13 @@ def estimate_bm_sigma_for_trials(
     else:
         sigma_times = sigma_time_flat
         sigma_values = sigma_trace_flat
-    return derive_bm_sigma(sigma_times, sigma_values, target_fs=resample_fs)
+    return derive_bm_sigma(
+        sigma_times,
+        sigma_values,
+        target_fs=resample_fs,
+        min_sigma=min_bm_sigma,
+        max_sigma=max_bm_sigma,
+    )
 
 
 def run_pgas_inference(
@@ -222,10 +249,21 @@ def run_pgas_inference(
         if config.maxspikes is not None
         else maxspikes_for_rate(input_fs, raw_fs)
     )
+    bm_sigma_min, bm_sigma_max = validate_bm_sigma_bounds(
+        config.bm_sigma_min,
+        config.bm_sigma_max,
+    )
     bm_sigma = (
         config.bm_sigma
         if config.bm_sigma is not None
-        else estimate_bm_sigma_for_trials(trials_for_pgas, spike_times, input_fs, config.bm_sigma_gap_s)
+        else estimate_bm_sigma_for_trials(
+            trials_for_pgas,
+            spike_times,
+            input_fs,
+            config.bm_sigma_gap_s,
+            min_bm_sigma=bm_sigma_min,
+            max_bm_sigma=bm_sigma_max,
+        )
     )
     constants_path = prepare_constants_with_params(
         config.constants_file,
@@ -245,6 +283,10 @@ def run_pgas_inference(
         "maxspikes": maxspikes,
         "input_resample_fs": float(input_fs),
         "bm_sigma": bm_sigma,
+        "bm_sigma_bounds": {
+            "min": float(bm_sigma_min),
+            "max": float(bm_sigma_max),
+        },
     }
     if config.edges is not None:
         cfg_dict["edge_hash"] = hash_array(config.edges)
@@ -257,6 +299,10 @@ def run_pgas_inference(
             cached.metadata.setdefault("cache_tag", run_tag)
             cached.metadata.setdefault("maxspikes", maxspikes)
             cached.metadata.setdefault("bm_sigma", bm_sigma)
+            cached.metadata.setdefault(
+                "bm_sigma_bounds",
+                {"min": float(bm_sigma_min), "max": float(bm_sigma_max)},
+            )
             return cached
 
         # Backwards-compatible cache lookup for older runs (e.g. `results/full_evaluation_by_run/base`)
@@ -344,6 +390,10 @@ def run_pgas_inference(
     traces.metadata.setdefault("maxspikes_per_bin", config.maxspikes_per_bin)
     traces.metadata.setdefault("input_resample_fs", config.resample_fs)
     traces.metadata.setdefault("bm_sigma", bm_sigma)
+    traces.metadata.setdefault(
+        "bm_sigma_bounds",
+        {"min": float(bm_sigma_min), "max": float(bm_sigma_max)},
+    )
     traces.metadata.setdefault("cache_tag", run_tag)
     save_method_cache("pgas", run_tag, traces, cfg_dict, trace_hash)
     return traces

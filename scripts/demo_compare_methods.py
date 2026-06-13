@@ -23,7 +23,11 @@ from c_spikes.inference.workflow import (
     SmoothingLevel,
     run_inference_for_dataset,
 )
-from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
+from c_spikes.inference.pgas import (
+    PGAS_BM_SIGMA_DEFAULT,
+    PGAS_BM_SIGMA_MAX,
+    PGAS_BM_SIGMA_MIN,
+)
 from c_spikes.utils import load_Janelia_data
 
 
@@ -63,6 +67,18 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=str(PGAS_BM_SIGMA_DEFAULT),
         help="Fixed PGAS bm_sigma value, or 'auto' to estimate from data (default: fixed).",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-min",
+        type=float,
+        default=PGAS_BM_SIGMA_MIN,
+        help="Minimum bm_sigma allowed when --pgas-bm-sigma=auto.",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-max",
+        type=float,
+        default=PGAS_BM_SIGMA_MAX,
+        help="Maximum bm_sigma allowed when --pgas-bm-sigma=auto.",
     )
     parser.add_argument("--pgas-resample", type=float, default=None, help="PGAS resample Hz (None=use native).")
     parser.add_argument(
@@ -239,6 +255,8 @@ def main() -> None:
         pgas_resample_fs=args.pgas_resample,
         cascade_resample_fs=args.cascade_resample,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+        pgas_bm_sigma_min=float(args.pgas_bm_sigma_min),
+        pgas_bm_sigma_max=float(args.pgas_bm_sigma_max),
         cascade_discretize=bool(not args.cascade_no_discrete),
         trialwise_correlations=bool(args.trialwise_correlations),
     )
@@ -270,6 +288,8 @@ def main() -> None:
             pgas_resample_fs=args.pgas_resample,
             cascade_resample_fs=args.cascade_resample,
             pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+            pgas_bm_sigma_min=float(args.pgas_bm_sigma_min),
+            pgas_bm_sigma_max=float(args.pgas_bm_sigma_max),
             cascade_discretize=bool(not args.cascade_no_discrete),
         )
         custom_outputs = run_inference_for_dataset(

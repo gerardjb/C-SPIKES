@@ -17,6 +17,8 @@ import numpy as np
 
 from c_spikes.inference.pgas import (
     PGAS_BM_SIGMA_DEFAULT,
+    PGAS_BM_SIGMA_MAX,
+    PGAS_BM_SIGMA_MIN,
     PGAS_BURNIN,
     PGAS_NITER,
     PgasConfig,
@@ -205,6 +207,10 @@ def _run_worker(spec: RunSpec, args: argparse.Namespace) -> None:
         str(args.pgas_output_root),
         "--pgas-bm-sigma",
         str(args.pgas_bm_sigma),
+        "--pgas-bm-sigma-min",
+        str(args.pgas_bm_sigma_min),
+        "--pgas-bm-sigma-max",
+        str(args.pgas_bm_sigma_max),
         "--niter",
         str(args.niter),
         "--bm-sigma-gap-s",
@@ -271,6 +277,18 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=str(PGAS_BM_SIGMA_DEFAULT),
         help="Fixed bm_sigma value, or 'auto' to estimate.",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-min",
+        type=float,
+        default=PGAS_BM_SIGMA_MIN,
+        help="Minimum bm_sigma allowed when --pgas-bm-sigma=auto.",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-max",
+        type=float,
+        default=PGAS_BM_SIGMA_MAX,
+        help="Maximum bm_sigma allowed when --pgas-bm-sigma=auto.",
     )
     parser.add_argument("--pgas-resample", type=float, default=None, help="PGAS resample Hz (None=raw).")
     parser.add_argument("--niter", type=int, default=PGAS_NITER, help="PGAS niter.")
@@ -415,6 +433,8 @@ def _worker_main(args: argparse.Namespace) -> None:
         downsample_label=snippet_label,
         maxspikes=None,
         bm_sigma=bm_sigma,
+        bm_sigma_min=float(args.pgas_bm_sigma_min),
+        bm_sigma_max=float(args.pgas_bm_sigma_max),
         bm_sigma_gap_s=args.bm_sigma_gap_s,
         edges=None,
         use_cache=args.use_cache,

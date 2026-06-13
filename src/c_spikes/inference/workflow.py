@@ -19,6 +19,8 @@ from .eval import (
 )
 from .pgas import (
     PGAS_RESAMPLE_FS,
+    PGAS_BM_SIGMA_MAX,
+    PGAS_BM_SIGMA_MIN,
     PGAS_BURNIN,
     PGAS_NITER,
     PgasConfig,
@@ -64,6 +66,8 @@ class DatasetRunConfig:
     pgas_resample_fs: Optional[float] = None  # None => use raw/native
     cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
     pgas_fixed_bm_sigma: Optional[float] = None  # Optional fixed bm_sigma (skip tuning)
+    pgas_bm_sigma_min: float = PGAS_BM_SIGMA_MIN
+    pgas_bm_sigma_max: float = PGAS_BM_SIGMA_MAX
     cascade_discretize: bool = True
     cascade_model_name: str = "universal_p_cascade_exc_30"
     trialwise_correlations: bool = False
@@ -218,6 +222,8 @@ def run_inference_for_dataset(
             downsample_label=downsample_label,
             maxspikes=None,
             bm_sigma=cfg.pgas_fixed_bm_sigma,
+            bm_sigma_min=cfg.pgas_bm_sigma_min,
+            bm_sigma_max=cfg.pgas_bm_sigma_max,
             bm_sigma_gap_s=cfg.bm_sigma_gap_s,
             edges=edges_effective,
             use_cache=cfg.use_cache,

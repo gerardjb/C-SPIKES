@@ -168,6 +168,7 @@ python scripts/demo_compare_methods.py \
 Notes:
 - Windowing: restrict PGAS (and correlations) to a time window using either `--start-time/--end-time` or an `--edges-file`.
 - Sensor parameters: for new sensors (e.g. jGCaMP8m), point PGAS at your sensor-specific files via `--pgas-constants` and `--pgas-gparam`.
+- Auto-calibrated `bm_sigma` is clipped with `--pgas-bm-sigma-min` and `--pgas-bm-sigma-max`.
 
 Where outputs go:
 - `results/pgas_output/<run>/traj_samples_<tag>.dat` + `logp_<tag>.dat` (PGAS trajectories)

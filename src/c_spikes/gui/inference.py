@@ -10,7 +10,12 @@ import numpy as np
 from c_spikes.inference.cache import set_cache_root
 from c_spikes.inference.cascade import CascadeConfig, run_cascade_inference, CASCADE_RESAMPLE_FS
 from c_spikes.inference.ens2 import Ens2Config, run_ens2_inference
-from c_spikes.inference.pgas import PgasConfig, run_pgas_inference
+from c_spikes.inference.pgas import (
+    PGAS_BM_SIGMA_MAX,
+    PGAS_BM_SIGMA_MIN,
+    PgasConfig,
+    run_pgas_inference,
+)
 from c_spikes.inference.types import MethodResult, TrialSeries, compute_sampling_rate
 
 
@@ -42,6 +47,8 @@ class InferenceSettings:
     cascade_resample_fs: float = CASCADE_RESAMPLE_FS
     pgas_resample_fs: Optional[float] = None
     pgas_fixed_bm_sigma: Optional[float] = None
+    pgas_bm_sigma_min: float = PGAS_BM_SIGMA_MIN
+    pgas_bm_sigma_max: float = PGAS_BM_SIGMA_MAX
     pgas_bm_sigma_gap_s: float = 0.15
 
 
@@ -122,6 +129,8 @@ def run_inference_for_epoch(
             gparam_file=settings.pgas_gparam_file,
             resample_fs=settings.pgas_resample_fs,
             bm_sigma=settings.pgas_fixed_bm_sigma,
+            bm_sigma_min=settings.pgas_bm_sigma_min,
+            bm_sigma_max=settings.pgas_bm_sigma_max,
             bm_sigma_gap_s=settings.pgas_bm_sigma_gap_s,
             edges=edges,
             use_cache=settings.use_cache,
@@ -252,6 +261,8 @@ def run_inference_for_epoch_safe(
                 gparam_file=settings.pgas_gparam_file,
                 resample_fs=settings.pgas_resample_fs,
                 bm_sigma=settings.pgas_fixed_bm_sigma,
+                bm_sigma_min=settings.pgas_bm_sigma_min,
+                bm_sigma_max=settings.pgas_bm_sigma_max,
                 bm_sigma_gap_s=settings.pgas_bm_sigma_gap_s,
                 edges=edges,
                 use_cache=settings.use_cache,

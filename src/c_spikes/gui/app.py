@@ -60,6 +60,7 @@ from c_spikes.gui.smc_viz import (
     list_spike_inference_runs,
     load_biophys_smc_payload,
 )
+from c_spikes.inference.pgas import PGAS_BM_SIGMA_MAX, PGAS_BM_SIGMA_MIN
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -2202,6 +2203,8 @@ class MainWindow(QtWidgets.QMainWindow):
         gparam_path: Path,
         dataset_stems: List[str],
         trial_selection_path: Path,
+        pgas_bm_sigma_min: float = PGAS_BM_SIGMA_MIN,
+        pgas_bm_sigma_max: float = PGAS_BM_SIGMA_MAX,
     ) -> str:
         args: List[str] = [
             "python",
@@ -2224,6 +2227,12 @@ class MainWindow(QtWidgets.QMainWindow):
             str(context.run_root / "inference_cache"),
             "--run-tag",
             context.run_tag,
+            "--pgas-bm-sigma",
+            "auto",
+            "--pgas-bm-sigma-min",
+            str(float(pgas_bm_sigma_min)),
+            "--pgas-bm-sigma-max",
+            str(float(pgas_bm_sigma_max)),
         ]
         for stem in dataset_stems:
             args.extend(["--dataset", stem])
@@ -2308,6 +2317,8 @@ class MainWindow(QtWidgets.QMainWindow):
             gparam_path=gparam_path,
             dataset_stems=dataset_stems,
             trial_selection_path=trial_selection_path,
+            pgas_bm_sigma_min=PGAS_BM_SIGMA_MIN,
+            pgas_bm_sigma_max=PGAS_BM_SIGMA_MAX,
         )
         try:
             job_name, script_text = render_sbatch_script(
@@ -3611,6 +3622,16 @@ class MainWindow(QtWidgets.QMainWindow):
             "pgas": {
                 "constants_file": str(settings.pgas_constants_file),
                 "gparam_file": str(settings.pgas_gparam_file),
+                "bm_sigma": (
+                    None
+                    if settings.pgas_fixed_bm_sigma is None
+                    else float(settings.pgas_fixed_bm_sigma)
+                ),
+                "bm_sigma_bounds": {
+                    "min": float(settings.pgas_bm_sigma_min),
+                    "max": float(settings.pgas_bm_sigma_max),
+                },
+                "bm_sigma_gap_s": float(settings.pgas_bm_sigma_gap_s),
             },
             "edges": {
                 "enabled": bool(self._edges_enabled),

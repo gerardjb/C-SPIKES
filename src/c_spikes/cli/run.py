@@ -23,7 +23,11 @@ preload_tensorflow_quietly()
 
 from c_spikes.inference.cache import set_cache_root
 from c_spikes.pipeline import RunConfig, run_batch
-from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
+from c_spikes.inference.pgas import (
+    PGAS_BM_SIGMA_DEFAULT,
+    PGAS_BM_SIGMA_MAX,
+    PGAS_BM_SIGMA_MIN,
+)
 
 
 def _parse_dataset_list(path: Path) -> List[str]:
@@ -128,6 +132,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=str(PGAS_BM_SIGMA_DEFAULT),
         help="Fixed PGAS bm_sigma value, or 'auto' to estimate from data (default: fixed).",
     )
+    parser.add_argument(
+        "--pgas-bm-sigma-min",
+        type=float,
+        default=PGAS_BM_SIGMA_MIN,
+        help="Minimum bm_sigma allowed when --pgas-bm-sigma=auto.",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-max",
+        type=float,
+        default=PGAS_BM_SIGMA_MAX,
+        help="Maximum bm_sigma allowed when --pgas-bm-sigma=auto.",
+    )
     parser.add_argument("--pgas-resample-fs", type=float, help="PGAS resample frequency (Hz). (deprecated, kept for compatibility)")
     parser.add_argument(
         "--cascade-resample-fs",
@@ -211,6 +227,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         cascade_model_name=str(args.cascade_model_name),
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+        pgas_bm_sigma_min=float(args.pgas_bm_sigma_min),
+        pgas_bm_sigma_max=float(args.pgas_bm_sigma_max),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),
         run_tag=args.run_tag,
         trialwise_correlations=bool(args.trialwise_correlations),
