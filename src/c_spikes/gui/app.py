@@ -60,7 +60,11 @@ from c_spikes.gui.smc_viz import (
     list_spike_inference_runs,
     load_biophys_smc_payload,
 )
-from c_spikes.inference.pgas import PGAS_BM_SIGMA_MAX, PGAS_BM_SIGMA_MIN
+from c_spikes.inference.pgas import (
+    PGAS_BM_SIGMA_MAX,
+    PGAS_BM_SIGMA_MIN,
+    PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -2205,6 +2209,7 @@ class MainWindow(QtWidgets.QMainWindow):
         trial_selection_path: Path,
         pgas_bm_sigma_min: float = PGAS_BM_SIGMA_MIN,
         pgas_bm_sigma_max: float = PGAS_BM_SIGMA_MAX,
+        pgas_sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
     ) -> str:
         args: List[str] = [
             "python",
@@ -2233,6 +2238,8 @@ class MainWindow(QtWidgets.QMainWindow):
             str(float(pgas_bm_sigma_min)),
             "--pgas-bm-sigma-max",
             str(float(pgas_bm_sigma_max)),
+            "--pgas-sigma2-prior-strength",
+            str(float(pgas_sigma2_prior_strength)),
         ]
         for stem in dataset_stems:
             args.extend(["--dataset", stem])
@@ -2319,6 +2326,7 @@ class MainWindow(QtWidgets.QMainWindow):
             trial_selection_path=trial_selection_path,
             pgas_bm_sigma_min=PGAS_BM_SIGMA_MIN,
             pgas_bm_sigma_max=PGAS_BM_SIGMA_MAX,
+            pgas_sigma2_prior_strength=PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
         )
         try:
             job_name, script_text = render_sbatch_script(
@@ -3632,6 +3640,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     "max": float(settings.pgas_bm_sigma_max),
                 },
                 "bm_sigma_gap_s": float(settings.pgas_bm_sigma_gap_s),
+                "bm_sigma_use_low_activity_mask": bool(settings.pgas_bm_sigma_use_low_activity_mask),
+                "sigma2_target": (
+                    None
+                    if settings.pgas_sigma2_target is None
+                    else float(settings.pgas_sigma2_target)
+                ),
+                "sigma2_alpha": (
+                    None
+                    if settings.pgas_sigma2_alpha is None
+                    else float(settings.pgas_sigma2_alpha)
+                ),
+                "sigma2_prior_strength": float(settings.pgas_sigma2_prior_strength),
             },
             "edges": {
                 "enabled": bool(self._edges_enabled),

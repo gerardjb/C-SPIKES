@@ -24,6 +24,7 @@ from c_spikes.inference.pgas import (
     PGAS_BM_SIGMA_MIN,
     PGAS_BURNIN,
     PGAS_NITER,
+    PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
     PgasConfig,
     run_pgas_inference,
 )
@@ -156,6 +157,10 @@ def _run_backend(
     bm_sigma_min: float,
     bm_sigma_max: float,
     bm_sigma_gap_s: float,
+    bm_sigma_use_low_activity_mask: bool,
+    sigma2_target: float | None,
+    sigma2_alpha: float | None,
+    sigma2_prior_strength: float,
     resample_fs: float | None,
     downsample_label: str,
     use_cache: bool,
@@ -181,6 +186,10 @@ def _run_backend(
         bm_sigma_min=bm_sigma_min,
         bm_sigma_max=bm_sigma_max,
         bm_sigma_gap_s=bm_sigma_gap_s,
+        bm_sigma_use_low_activity_mask=bm_sigma_use_low_activity_mask,
+        sigma2_target=sigma2_target,
+        sigma2_alpha=sigma2_alpha,
+        sigma2_prior_strength=sigma2_prior_strength,
         edges=None,
         use_cache=use_cache,
     )
@@ -214,6 +223,10 @@ def _run_backend_timings_inprocess(
     bm_sigma_min: float,
     bm_sigma_max: float,
     bm_sigma_gap_s: float,
+    bm_sigma_use_low_activity_mask: bool,
+    sigma2_target: float | None,
+    sigma2_alpha: float | None,
+    sigma2_prior_strength: float,
     resample_fs: float | None,
     downsample_label: str,
     use_cache: bool,
@@ -238,6 +251,10 @@ def _run_backend_timings_inprocess(
                 bm_sigma_min=bm_sigma_min,
                 bm_sigma_max=bm_sigma_max,
                 bm_sigma_gap_s=bm_sigma_gap_s,
+                bm_sigma_use_low_activity_mask=bm_sigma_use_low_activity_mask,
+                sigma2_target=sigma2_target,
+                sigma2_alpha=sigma2_alpha,
+                sigma2_prior_strength=sigma2_prior_strength,
                 resample_fs=resample_fs,
                 downsample_label=downsample_label,
                 use_cache=use_cache,
@@ -261,6 +278,10 @@ def _run_backend_timings_inprocess(
             bm_sigma_min=bm_sigma_min,
             bm_sigma_max=bm_sigma_max,
             bm_sigma_gap_s=bm_sigma_gap_s,
+            bm_sigma_use_low_activity_mask=bm_sigma_use_low_activity_mask,
+            sigma2_target=sigma2_target,
+            sigma2_alpha=sigma2_alpha,
+            sigma2_prior_strength=sigma2_prior_strength,
             resample_fs=resample_fs,
             downsample_label=downsample_label,
             use_cache=use_cache,
@@ -320,6 +341,13 @@ def _run_backend_subprocess(
         "--run-name",
         str(args.run_name),
     ]
+    if args.pgas_bm_sigma_use_low_activity_mask:
+        cmd.append("--pgas-bm-sigma-use-low-activity-mask")
+    if args.pgas_sigma2_target is not None:
+        cmd.extend(["--pgas-sigma2-target", str(args.pgas_sigma2_target)])
+    if args.pgas_sigma2_alpha is not None:
+        cmd.extend(["--pgas-sigma2-alpha", str(args.pgas_sigma2_alpha)])
+    cmd.extend(["--pgas-sigma2-prior-strength", str(args.pgas_sigma2_prior_strength)])
     if args.snippet_start_s is not None:
         cmd.extend(["--snippet-start-s", str(args.snippet_start_s)])
     if args.snippet_end_s is not None:
@@ -409,6 +437,39 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=PGAS_BM_SIGMA_MAX,
         help="Maximum bm_sigma allowed when --pgas-bm-sigma=auto.",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-use-low-activity-mask",
+        action="store_true",
+        help="When auto-calibrating bm_sigma, estimate from low-activity regions masked around spikes.",
+    )
+    parser.add_argument(
+        "--pgas-sigma2-target",
+        type=str,
+        default=None,
+        help=(
+            "Optional sigma2 mode target used to set the inverse-gamma prior "
+            "(beta = target * (alpha + 1)). Use 'none' for default behavior "
+            "(calibrated target when bm_sigma is auto; disabled otherwise)."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-sigma2-alpha",
+        type=str,
+        default=None,
+        help=(
+            "Optional inverse-gamma alpha for sigma2 prior. If omitted and --pgas-sigma2-target "
+            "is set, alpha is derived from --pgas-sigma2-prior-strength."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-sigma2-prior-strength",
+        type=float,
+        default=PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+        help=(
+            "Strength knob used when mapping sigma2 target to IG prior alpha "
+            "(alpha = 2 + strength) if --pgas-sigma2-alpha is not set."
+        ),
     )
     parser.add_argument("--pgas-resample", type=float, default=None, help="PGAS resample Hz (None=raw).")
     parser.add_argument("--niter", type=int, default=PGAS_NITER, help="PGAS niter.")
@@ -550,6 +611,8 @@ def main() -> None:
     run_root.mkdir(parents=True, exist_ok=True)
 
     bm_sigma = _parse_optional_float(args.pgas_bm_sigma)
+    sigma2_target = _parse_optional_float(args.pgas_sigma2_target)
+    sigma2_alpha = _parse_optional_float(args.pgas_sigma2_alpha)
 
     timings: Dict[str, List[float]] = {}
     use_subprocess = (
@@ -581,6 +644,10 @@ def main() -> None:
                 bm_sigma_min=float(args.pgas_bm_sigma_min),
                 bm_sigma_max=float(args.pgas_bm_sigma_max),
                 bm_sigma_gap_s=args.bm_sigma_gap_s,
+                bm_sigma_use_low_activity_mask=bool(args.pgas_bm_sigma_use_low_activity_mask),
+                sigma2_target=sigma2_target,
+                sigma2_alpha=sigma2_alpha,
+                sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
                 resample_fs=args.pgas_resample,
                 downsample_label=snippet_label,
                 use_cache=args.use_cache,
@@ -629,6 +696,10 @@ def main() -> None:
             "max": float(args.pgas_bm_sigma_max),
         },
         "bm_sigma_gap_s": float(args.bm_sigma_gap_s),
+        "bm_sigma_use_low_activity_mask": bool(args.pgas_bm_sigma_use_low_activity_mask),
+        "sigma2_target": sigma2_target,
+        "sigma2_alpha": sigma2_alpha,
+        "sigma2_prior_strength": float(args.pgas_sigma2_prior_strength),
         "baseline": baseline,
         "timings": timings,
         "summary": summary_rows,
@@ -744,6 +815,8 @@ def _worker_main(args: argparse.Namespace) -> None:
     run_root.mkdir(parents=True, exist_ok=True)
 
     bm_sigma = _parse_optional_float(args.pgas_bm_sigma)
+    sigma2_target = _parse_optional_float(args.pgas_sigma2_target)
+    sigma2_alpha = _parse_optional_float(args.pgas_sigma2_alpha)
     name, module = backends[0]
     backend_root = run_root / name
     backend_root.mkdir(parents=True, exist_ok=True)
@@ -765,6 +838,10 @@ def _worker_main(args: argparse.Namespace) -> None:
         bm_sigma_min=float(args.pgas_bm_sigma_min),
         bm_sigma_max=float(args.pgas_bm_sigma_max),
         bm_sigma_gap_s=args.bm_sigma_gap_s,
+        bm_sigma_use_low_activity_mask=bool(args.pgas_bm_sigma_use_low_activity_mask),
+        sigma2_target=sigma2_target,
+        sigma2_alpha=sigma2_alpha,
+        sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
         resample_fs=args.pgas_resample,
         downsample_label=snippet_label,
         use_cache=args.use_cache,

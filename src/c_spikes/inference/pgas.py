@@ -29,6 +29,9 @@ PGAS_NITER: int = 200
 PGAS_BM_SIGMA_DEFAULT: float = 2e-2
 PGAS_BM_SIGMA_MIN: float = 5e-4
 PGAS_BM_SIGMA_MAX: float = 5e-1
+PGAS_SIGMA2_TARGET_MIN: float = 5e-6
+PGAS_SIGMA2_TARGET_MAX: float = 8e-2
+PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT: float = 4.0
 
 
 @dataclass
@@ -47,6 +50,10 @@ class PgasConfig:
     bm_sigma_min: float = PGAS_BM_SIGMA_MIN
     bm_sigma_max: float = PGAS_BM_SIGMA_MAX
     bm_sigma_gap_s: float = 0.15
+    bm_sigma_use_low_activity_mask: bool = False
+    sigma2_target: Optional[float] = None
+    sigma2_alpha: Optional[float] = None
+    sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
     edges: Optional[np.ndarray] = None
     use_cache: bool = True
 
@@ -63,6 +70,17 @@ def validate_bm_sigma_bounds(min_sigma: float, max_sigma: float) -> Tuple[float,
             f"bm_sigma maximum must be >= minimum; got min={min_sigma:g}, max={max_sigma:g}."
         )
     return min_sigma, max_sigma
+
+
+@dataclass
+class PgasNoiseCalibration:
+    bm_sigma: float
+    sigma2_target: float
+    diff_var: float
+    diff2_var: float
+    qdt: float
+    n_samples: int
+    used_low_activity_mask: bool
 
 
 def maxspikes_for_rate(target_fs: Optional[float], native_fs: float) -> int:
@@ -121,17 +139,28 @@ def compute_robust_diff_std(
     order = np.argsort(times)
     diffs = np.diff(values[order])
     diffs = diffs[np.isfinite(diffs)]
-    if diffs.size == 0:
+    return _robust_scale(diffs, clip_percentiles=clip_percentiles)
+
+
+def _robust_scale(
+    values: np.ndarray,
+    clip_percentiles: Optional[Tuple[float, float]] = (5.0, 95.0),
+) -> float:
+    vals = np.asarray(values, dtype=np.float64).ravel()
+    vals = vals[np.isfinite(vals)]
+    if vals.size == 0:
         return 0.0
-    if clip_percentiles is not None:
-        lo, hi = np.percentile(diffs, clip_percentiles)
-        mask = (diffs >= lo) & (diffs <= hi)
-        if mask.any():
-            diffs = diffs[mask]
-    median = np.median(diffs)
-    mad = np.median(np.abs(diffs - median))
+    if clip_percentiles is not None and vals.size >= 4:
+        lo, hi = np.percentile(vals, clip_percentiles)
+        keep = (vals >= lo) & (vals <= hi)
+        if keep.any():
+            vals = vals[keep]
+    if vals.size == 0:
+        return 0.0
+    median = np.median(vals)
+    mad = np.median(np.abs(vals - median))
     if mad <= 0:
-        return float(np.std(diffs)) if diffs.size > 0 else 0.0
+        return float(np.std(vals)) if vals.size > 0 else 0.0
     return float(1.4826 * mad)
 
 
@@ -154,6 +183,67 @@ def derive_bm_sigma(
     return float(np.clip(bm_sigma, min_sigma, max_sigma))
 
 
+def derive_bm_sigma_and_sigma2(
+    times: np.ndarray,
+    values: np.ndarray,
+    target_fs: float,
+    *,
+    min_bm_sigma: float = PGAS_BM_SIGMA_MIN,
+    max_bm_sigma: float = PGAS_BM_SIGMA_MAX,
+    min_sigma2_target: float = PGAS_SIGMA2_TARGET_MIN,
+    max_sigma2_target: float = PGAS_SIGMA2_TARGET_MAX,
+    clip_percentiles: Optional[Tuple[float, float]] = (5.0, 95.0),
+    used_low_activity_mask: bool = False,
+) -> PgasNoiseCalibration:
+    if target_fs <= 0:
+        raise ValueError("target_fs must be positive.")
+    min_bm_sigma, max_bm_sigma = validate_bm_sigma_bounds(
+        min_bm_sigma,
+        max_bm_sigma,
+    )
+    times = np.asarray(times, dtype=np.float64).ravel()
+    values = np.asarray(values, dtype=np.float64).ravel()
+    mask = np.isfinite(times) & np.isfinite(values)
+    times = times[mask]
+    values = values[mask]
+    if times.size < 3:
+        return PgasNoiseCalibration(
+            bm_sigma=float(min_bm_sigma),
+            sigma2_target=float(min_sigma2_target),
+            diff_var=0.0,
+            diff2_var=0.0,
+            qdt=0.0,
+            n_samples=int(times.size),
+            used_low_activity_mask=bool(used_low_activity_mask),
+        )
+    order = np.argsort(times)
+    y = values[order]
+    d1 = np.diff(y)
+    d2 = np.diff(d1)
+    diff_std = _robust_scale(d1, clip_percentiles=clip_percentiles)
+    diff2_std = _robust_scale(d2, clip_percentiles=clip_percentiles)
+    diff_var = float(diff_std**2)
+    diff2_var = float(diff2_std**2)
+    qdt = max(3.0 * diff_var - diff2_var, 0.0)
+    sigma2_target = max((diff2_var - 2.0 * diff_var) * 0.5, 0.0)
+    dt = 1.0 / float(target_fs)
+    if qdt <= 0 or dt <= 0:
+        bm_sigma = float(min_bm_sigma)
+    else:
+        bm_sigma = float(np.sqrt(qdt / dt))
+    bm_sigma = float(np.clip(bm_sigma, min_bm_sigma, max_bm_sigma))
+    sigma2_target = float(np.clip(sigma2_target, min_sigma2_target, max_sigma2_target))
+    return PgasNoiseCalibration(
+        bm_sigma=bm_sigma,
+        sigma2_target=sigma2_target,
+        diff_var=diff_var,
+        diff2_var=diff2_var,
+        qdt=float(qdt),
+        n_samples=int(y.size),
+        used_low_activity_mask=bool(used_low_activity_mask),
+    )
+
+
 def build_constants_cache_path(base_constants: Path, tokens: Sequence[str]) -> Path:
     from .cache import get_cache_root
     from .types import ensure_serializable  # unused import hint
@@ -168,16 +258,54 @@ def format_tag_token(value: str) -> str:
     return value.replace(" ", "_").replace(".", "p")
 
 
+def normalize_sigma2_prior_strength(
+    sigma2_prior_strength: float,
+) -> float:
+    strength = float(sigma2_prior_strength)
+    if not np.isfinite(strength) or strength <= 0:
+        return PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+    return strength
+
+
+def map_sigma2_target_to_ig_params(
+    sigma2_target: float,
+    *,
+    sigma2_alpha: Optional[float] = None,
+    sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+) -> Tuple[float, float, float]:
+    sigma2_target_clipped = float(
+        np.clip(float(sigma2_target), PGAS_SIGMA2_TARGET_MIN, PGAS_SIGMA2_TARGET_MAX)
+    )
+    if sigma2_alpha is not None:
+        alpha = float(sigma2_alpha)
+    else:
+        alpha = 2.0 + normalize_sigma2_prior_strength(sigma2_prior_strength)
+    if not np.isfinite(alpha) or alpha <= 0:
+        alpha = 2.0 + PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+    beta = float(sigma2_target_clipped * (alpha + 1.0))
+    return sigma2_target_clipped, float(alpha), beta
+
+
 def prepare_constants_with_params(
     base_constants: Path,
     *,
     maxspikes: int,
     bm_sigma: Optional[float] = None,
+    sigma2_target: Optional[float] = None,
+    sigma2_alpha: Optional[float] = None,
+    sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
 ) -> Path:
     base_constants = Path(base_constants)
     tokens = [f"ms{maxspikes}"]
     if bm_sigma is not None:
         tokens.append(f"bm{format_tag_token(f'{bm_sigma:.4g}')}")
+    if sigma2_target is not None:
+        tokens.append(f"s2{format_tag_token(f'{sigma2_target:.4g}')}")
+    if sigma2_alpha is not None:
+        tokens.append(f"a2{format_tag_token(f'{sigma2_alpha:.4g}')}")
+    elif sigma2_target is not None:
+        prior_strength = normalize_sigma2_prior_strength(sigma2_prior_strength)
+        tokens.append(f"p2{format_tag_token(f'{prior_strength:.4g}')}")
     target_path = build_constants_cache_path(base_constants, tokens)
     if target_path.exists():
         return target_path
@@ -188,6 +316,21 @@ def prepare_constants_with_params(
     data.setdefault("MCMC", {})["maxspikes"] = int(maxspikes)
     if bm_sigma is not None:
         data.setdefault("BM", {})["bm_sigma"] = float(bm_sigma)
+    if sigma2_target is not None:
+        priors = data.setdefault("priors", {})
+        _, alpha, beta = map_sigma2_target_to_ig_params(
+            sigma2_target,
+            sigma2_alpha=sigma2_alpha,
+            sigma2_prior_strength=sigma2_prior_strength,
+        )
+        priors["alpha sigma2"] = float(alpha)
+        priors["beta sigma2"] = float(beta)
+    elif sigma2_alpha is not None:
+        priors = data.setdefault("priors", {})
+        alpha = float(sigma2_alpha)
+        if not np.isfinite(alpha) or alpha <= 0:
+            alpha = 2.0 + PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+        priors["alpha sigma2"] = float(alpha)
     with target_path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
     return target_path
@@ -200,24 +343,53 @@ def estimate_bm_sigma_for_trials(
     gap_s: float,
     min_bm_sigma: float = PGAS_BM_SIGMA_MIN,
     max_bm_sigma: float = PGAS_BM_SIGMA_MAX,
+    use_low_activity_mask: bool = False,
 ) -> float:
+    calibration = estimate_noise_calibration_for_trials(
+        trials,
+        spike_times,
+        resample_fs,
+        gap_s,
+        use_low_activity_mask=use_low_activity_mask,
+        min_bm_sigma=min_bm_sigma,
+        max_bm_sigma=max_bm_sigma,
+    )
+    return float(calibration.bm_sigma)
+
+
+def estimate_noise_calibration_for_trials(
+    trials: Sequence[TrialSeries],
+    spike_times: np.ndarray,
+    resample_fs: float,
+    gap_s: float,
+    *,
+    use_low_activity_mask: bool = False,
+    min_bm_sigma: float = PGAS_BM_SIGMA_MIN,
+    max_bm_sigma: float = PGAS_BM_SIGMA_MAX,
+) -> PgasNoiseCalibration:
     resampled = resample_trials_to_fs(trials, resample_fs)
     from .types import flatten_trials
 
     sigma_time_flat, sigma_trace_flat = flatten_trials(resampled)
-    mask = build_low_activity_mask(sigma_time_flat, spike_times, gap_s)
-    if np.count_nonzero(mask) >= 2:
+    used_mask = False
+    if use_low_activity_mask:
+        mask = build_low_activity_mask(sigma_time_flat, spike_times, gap_s)
+    else:
+        mask = np.ones_like(sigma_time_flat, dtype=bool)
+    if np.count_nonzero(mask) >= 3:
         sigma_times = sigma_time_flat[mask]
         sigma_values = sigma_trace_flat[mask]
+        used_mask = bool(use_low_activity_mask)
     else:
         sigma_times = sigma_time_flat
         sigma_values = sigma_trace_flat
-    return derive_bm_sigma(
+    return derive_bm_sigma_and_sigma2(
         sigma_times,
         sigma_values,
         target_fs=resample_fs,
-        min_sigma=min_bm_sigma,
-        max_sigma=max_bm_sigma,
+        used_low_activity_mask=used_mask,
+        min_bm_sigma=min_bm_sigma,
+        max_bm_sigma=max_bm_sigma,
     )
 
 
@@ -253,27 +425,79 @@ def run_pgas_inference(
         config.bm_sigma_min,
         config.bm_sigma_max,
     )
-    bm_sigma = (
-        config.bm_sigma
-        if config.bm_sigma is not None
-        else estimate_bm_sigma_for_trials(
+    calibration: Optional[PgasNoiseCalibration] = None
+    if config.bm_sigma is None:
+        calibration = estimate_noise_calibration_for_trials(
             trials_for_pgas,
             spike_times,
             input_fs,
             config.bm_sigma_gap_s,
             min_bm_sigma=bm_sigma_min,
             max_bm_sigma=bm_sigma_max,
+            use_low_activity_mask=config.bm_sigma_use_low_activity_mask,
         )
+        bm_sigma = float(calibration.bm_sigma)
+    else:
+        bm_sigma = float(config.bm_sigma)
+    sigma2_target = (
+        float(config.sigma2_target)
+        if config.sigma2_target is not None
+        else (float(calibration.sigma2_target) if calibration is not None else None)
+    )
+    sigma2_target_effective: Optional[float] = None
+    sigma2_alpha_effective: Optional[float] = None
+    sigma2_beta_effective: Optional[float] = None
+    if sigma2_target is not None:
+        sigma2_target_effective, sigma2_alpha_effective, sigma2_beta_effective = map_sigma2_target_to_ig_params(
+            sigma2_target,
+            sigma2_alpha=config.sigma2_alpha,
+            sigma2_prior_strength=config.sigma2_prior_strength,
+        )
+    elif config.sigma2_alpha is not None:
+        sigma2_alpha_effective = float(config.sigma2_alpha)
+        if not np.isfinite(sigma2_alpha_effective) or sigma2_alpha_effective <= 0:
+            sigma2_alpha_effective = 2.0 + PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+
+    sigma2_prior_strength_effective = normalize_sigma2_prior_strength(
+        config.sigma2_prior_strength
     )
     constants_path = prepare_constants_with_params(
         config.constants_file,
         maxspikes=maxspikes,
         bm_sigma=bm_sigma,
+        sigma2_target=sigma2_target_effective,
+        sigma2_alpha=sigma2_alpha_effective if config.sigma2_alpha is not None else None,
+        sigma2_prior_strength=sigma2_prior_strength_effective,
     )
     label_token = format_tag_token(config.downsample_label)
     pgas_resample_token = "raw" if config.resample_fs is None else format_tag_token(f"{config.resample_fs:g}")
     bm_token = format_tag_token(f"{bm_sigma:.3g}")
     run_tag = f"{config.dataset_tag}_s{label_token}_ms{maxspikes}_rs{pgas_resample_token}_bm{bm_token}"
+    if sigma2_target_effective is not None:
+        s2_token = format_tag_token(f"{sigma2_target_effective:.3g}")
+        run_tag = f"{run_tag}_s2{s2_token}"
+        if config.sigma2_alpha is not None:
+            a2_token = format_tag_token(f"{sigma2_alpha_effective:.3g}")
+            run_tag = f"{run_tag}_a2{a2_token}"
+        else:
+            p2_token = format_tag_token(f"{sigma2_prior_strength_effective:.3g}")
+            run_tag = f"{run_tag}_p2{p2_token}"
+    elif sigma2_alpha_effective is not None:
+        a2_token = format_tag_token(f"{sigma2_alpha_effective:.3g}")
+        run_tag = f"{run_tag}_a2{a2_token}"
+
+    noise_calibration = None
+    if calibration is not None:
+        noise_calibration = {
+            "method": "two_timescale_robust_diff",
+            "diff_var": float(calibration.diff_var),
+            "diff2_var": float(calibration.diff2_var),
+            "qdt": float(calibration.qdt),
+            "n_samples": int(calibration.n_samples),
+            "used_low_activity_mask": bool(calibration.used_low_activity_mask),
+            "clip_percentiles": [5.0, 95.0],
+        }
+
     cfg_dict = {
         "niter": config.niter,
         "burnin": config.burnin,
@@ -288,6 +512,14 @@ def run_pgas_inference(
             "max": float(bm_sigma_max),
         },
     }
+    if sigma2_target_effective is not None:
+        cfg_dict["sigma2_target"] = float(sigma2_target_effective)
+    if sigma2_alpha_effective is not None:
+        cfg_dict["sigma2_alpha"] = float(sigma2_alpha_effective)
+    if sigma2_target_effective is not None:
+        cfg_dict["sigma2_prior_strength"] = float(sigma2_prior_strength_effective)
+    if noise_calibration is not None:
+        cfg_dict["noise_calibration"] = noise_calibration
     if config.edges is not None:
         cfg_dict["edge_hash"] = hash_array(config.edges)
 
@@ -303,6 +535,14 @@ def run_pgas_inference(
                 "bm_sigma_bounds",
                 {"min": float(bm_sigma_min), "max": float(bm_sigma_max)},
             )
+            if sigma2_target_effective is not None:
+                cached.metadata.setdefault("sigma2_target", sigma2_target_effective)
+            if sigma2_alpha_effective is not None:
+                cached.metadata.setdefault("sigma2_alpha", sigma2_alpha_effective)
+            if sigma2_beta_effective is not None:
+                cached.metadata.setdefault("sigma2_beta", sigma2_beta_effective)
+            if noise_calibration is not None:
+                cached.metadata.setdefault("noise_calibration", noise_calibration)
             return cached
 
         # Backwards-compatible cache lookup for older runs (e.g. `results/full_evaluation_by_run/base`)
@@ -394,6 +634,14 @@ def run_pgas_inference(
         "bm_sigma_bounds",
         {"min": float(bm_sigma_min), "max": float(bm_sigma_max)},
     )
+    if sigma2_target_effective is not None:
+        traces.metadata.setdefault("sigma2_target", sigma2_target_effective)
+    if sigma2_alpha_effective is not None:
+        traces.metadata.setdefault("sigma2_alpha", sigma2_alpha_effective)
+    if sigma2_beta_effective is not None:
+        traces.metadata.setdefault("sigma2_beta", sigma2_beta_effective)
+    if noise_calibration is not None:
+        traces.metadata.setdefault("noise_calibration", noise_calibration)
     traces.metadata.setdefault("cache_tag", run_tag)
     save_method_cache("pgas", run_tag, traces, cfg_dict, trace_hash)
     return traces
