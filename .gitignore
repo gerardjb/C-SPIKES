@@ -26,6 +26,7 @@ edges/
 
 # Misc in codebase
 vcpkg/
+/vcpkg
 .vscode/
 src/c_spikes/_version.py
 profiles/
@@ -50,6 +51,8 @@ tests/sample_data/output/
 
 # Ignore slurm output files if any of those get made
 slurm-*.out
+pgas_allan_commit_*.out
+pgas_allan_commit_*.err
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

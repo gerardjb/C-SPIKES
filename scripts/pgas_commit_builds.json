@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "description": "Allan b02 ladder PGAS commit builds. Entries are actual commits only; bundled conceptual ladder steps are recorded in covers.",
+  "builds": [
+    {
+      "run_tag": "m00_main_base",
+      "commit": "b6e7d799f564d567e1273b61ad624c473c5a8fca",
+      "label": "main baseline before calibrate_bm_s2",
+      "covers": [
+        "m00_main_base"
+      ],
+      "features": [
+        "auto_bm"
+      ]
+    },
+    {
+      "run_tag": "a00_b02_base",
+      "commit": "5aba209bbb12f44aee0dc1381a59ab8f27a309c7",
+      "label": "b02 Kalman baseline",
+      "covers": [
+        "a00_b02_base"
+      ],
+      "features": [
+        "auto_bm"
+      ]
+    },
+    {
+      "run_tag": "a03_allan_bounds_cli",
+      "commit": "317141e60e2849fd2514f7c8a74aab59c0683c76",
+      "label": "Expose bm_sigma min/max through API/CLI",
+      "covers": [
+        "a03_allan_bounds_cli"
+      ],
+      "features": [
+        "auto_bm",
+        "bm_bounds"
+      ]
+    },
+    {
+      "run_tag": "a04_allan_calib_provenance",
+      "commit": "59d148a4e091f489010ebc3da08b8ded69abc41e",
+      "label": "BM/sigma2 calibration scaffold, Allan estimator, and sigma2 provenance",
+      "covers": [
+        "a01_b02_calib_scaffold",
+        "a02_b02_allan_calib",
+        "a04_allan_s2_provenance"
+      ],
+      "features": [
+        "auto_bm",
+        "bm_bounds",
+        "low_activity_mask",
+        "sigma2_prior"
+      ]
+    },
+    {
+      "run_tag": "a05_a06_allan_mh_logrw_widths",
+      "commit": "fa25284dcbe49b8e488f70fea758716c69cf61cf",
+      "label": "Log-space MH proposals plus tuned/adaptive widths",
+      "covers": [
+        "a05_allan_mh_logrw",
+        "a06_allan_mh_widths"
+      ],
+      "features": [
+        "auto_bm",
+        "bm_bounds",
+        "low_activity_mask",
+        "sigma2_prior"
+      ]
+    }
+  ]
+}
