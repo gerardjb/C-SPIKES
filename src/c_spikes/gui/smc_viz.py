@@ -143,6 +143,21 @@ def cache_tag_to_dataset_stem(cache_tag: str) -> str:
     return re.sub(r"_epoch\d+$", "", epoch_id)
 
 
+def format_smc_legend_labels(labels: Sequence[str], *, max_len: int = 8) -> List[str]:
+    labels_raw = [str(label) for label in labels]
+    labels_short = [_shorten_middle(label, max_len=max_len) for label in labels_raw]
+    duplicate_short = {label for label in labels_short if labels_short.count(label) > 1}
+    if not duplicate_short:
+        return labels_short
+    out: List[str] = []
+    for idx, (raw, short) in enumerate(zip(labels_raw, labels_short), start=1):
+        if short in duplicate_short:
+            out.append(_shorten_middle(f"{idx}: {raw}", max_len=max_len))
+        else:
+            out.append(short)
+    return out
+
+
 def load_biophys_smc_payload(
     *,
     data_dir: Path,
@@ -283,6 +298,16 @@ def _natural_sort_key(token: str) -> tuple:
         else:
             out.append(part.lower())
     return tuple(out)
+
+
+def _shorten_middle(label: str, *, max_len: int) -> str:
+    text = str(label)
+    if max_len < 8 or len(text) <= max_len:
+        return text
+    keep = max_len - 3
+    left = (keep + 1) // 2
+    right = keep - left
+    return f"{text[:left]}...{text[-right:]}"
 
 
 def _extract_epoch_id_from_tag(cache_tag: str) -> Optional[str]:

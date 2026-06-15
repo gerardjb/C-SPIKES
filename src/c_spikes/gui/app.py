@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 
 import numpy as np
 from c_spikes.tensorflow_env import preload_tensorflow_quietly
@@ -56,6 +57,7 @@ from c_spikes.gui.smc_viz import (
     BiophysSmcPayload,
     PgasCacheEntry,
     cache_tag_to_epoch_id,
+    format_smc_legend_labels,
     list_pgas_cache_entries,
     list_spike_inference_runs,
     load_biophys_smc_payload,
@@ -2913,6 +2915,63 @@ class MainWindow(QtWidgets.QMainWindow):
             arrays = [arr[mask] for arr in arrays]
         return t, arrays
 
+    def _smc_comparison_legend_items(
+        self,
+        payload_items: Sequence[Tuple[str, BiophysSmcPayload]],
+        *,
+        include_dff: bool = False,
+    ) -> List[Tuple[str, str]]:
+        items: List[Tuple[str, str]] = []
+        if include_dff:
+            items.append(("DFF", "black"))
+        seen: set[str] = set()
+        for run_tag, _payload in payload_items:
+            if run_tag in seen:
+                continue
+            seen.add(run_tag)
+            items.append((run_tag, self._smc_run_color(run_tag)))
+        return items
+
+    def _smc_apply_comparison_layout(
+        self,
+        fig: Figure,
+        *,
+        legend_items: Sequence[Tuple[str, str]],
+    ) -> None:
+        try:
+            fig.set_layout_engine(None)
+        except Exception:
+            pass
+        n_items = len(legend_items)
+        ncols = min(4, max(1, n_items))
+        nrows = max(1, (n_items + ncols - 1) // ncols)
+        bottom = min(0.12 + 0.045 * nrows, 0.30)
+        fig.subplots_adjust(left=0.11, right=0.98, top=0.90, bottom=bottom, hspace=0.32)
+
+    def _smc_add_comparison_legend(
+        self,
+        fig: Figure,
+        *,
+        legend_items: Sequence[Tuple[str, str]],
+    ) -> None:
+        if not legend_items:
+            return
+        labels = format_smc_legend_labels([label for label, _color in legend_items], max_len=32)
+        handles = [
+            Line2D([0], [0], color=color, linewidth=1.4)
+            for _label, color in legend_items
+        ]
+        ncols = min(4, max(1, len(legend_items)))
+        fig.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.015),
+            fontsize=8,
+            ncols=ncols,
+            frameon=False,
+        )
+
     def _render_smc_plots(self) -> None:
         self._render_smc_left_plot()
         self._render_smc_right_plot()
@@ -2979,10 +3038,11 @@ class MainWindow(QtWidgets.QMainWindow):
             ax.set_axis_off()
             self._smc_left_canvas.draw()
             return
-        try:
-            fig.set_layout_engine("constrained")
-        except Exception:
-            pass
+        legend_items = self._smc_comparison_legend_items(
+            payload_items,
+            include_dff="DFF/B+C" in rows,
+        )
+        self._smc_apply_comparison_layout(fig, legend_items=legend_items)
         shared_window = self._smc_shared_time_window([payload for _, payload in payload_items])
         axes = []
         primary_payload = payload_items[0][1]
@@ -2996,7 +3056,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     window=shared_window,
                 )
                 if t_dff.size > 0:
-                    ax.plot(t_dff, y_dff, color="black", linewidth=1.0, alpha=0.75, label="DFF")
+                    ax.plot(t_dff, y_dff, color="black", linewidth=1.0, alpha=0.75)
                     self._plot_smc_spikes(ax, t_dff, primary_payload.full_spikes)
                 for run_tag, payload in payload_items:
                     t, [bc] = self._smc_trim_time_series(
@@ -3011,7 +3071,6 @@ class MainWindow(QtWidgets.QMainWindow):
                         bc,
                         color=self._smc_run_color(run_tag),
                         linewidth=1.0,
-                        label=run_tag,
                     )
                 ax.set_ylabel("DFF/B+C")
                 ax.set_title("State Trajectory Plots")
@@ -3073,14 +3132,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     ax.plot(t_gt, y_gt, color="#666666", linewidth=1.0)
                     self._plot_smc_spikes(ax, t_gt, primary_payload.full_spikes)
                 ax.set_ylabel("GT smooth")
-            if row != "GT smooth":
-                handles, labels = ax.get_legend_handles_labels()
-                if handles and labels:
-                    ax.legend(loc="upper right", fontsize=8, ncols=min(3, len(labels)))
             ax.grid(True, alpha=0.2)
         for ax in axes[:-1]:
             ax.tick_params(axis="x", which="both", labelbottom=False)
         axes[-1].set_xlabel("Time (s)")
+        self._smc_add_comparison_legend(fig, legend_items=legend_items)
         self._smc_left_canvas.draw()
 
     def _render_smc_right_plot(self) -> None:
@@ -3149,10 +3205,8 @@ class MainWindow(QtWidgets.QMainWindow):
             ax.set_axis_off()
             self._smc_right_canvas.draw()
             return
-        try:
-            fig.set_layout_engine("constrained")
-        except Exception:
-            pass
+        legend_items = self._smc_comparison_legend_items(payload_items)
+        self._smc_apply_comparison_layout(fig, legend_items=legend_items)
         axes = []
         for i, name in enumerate(selected):
             ax = fig.add_subplot(len(selected), 1, i + 1, sharex=axes[0] if axes else None)
@@ -3185,7 +3239,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     values[:shared_n],
                     color=self._smc_run_color(run_tag),
                     linewidth=0.9,
-                    label=run_tag,
                 )
             primary_payload = payload_items[0][1]
             if primary_payload.burnin > 0 and primary_payload.burnin < shared_n:
@@ -3194,9 +3247,6 @@ class MainWindow(QtWidgets.QMainWindow):
             ax.grid(True, alpha=0.2)
             if i == 0:
                 ax.set_title("Parameter Trace Trajectory")
-                handles, labels = ax.get_legend_handles_labels()
-                if handles and labels:
-                    ax.legend(loc="upper right", fontsize=8, ncols=min(3, len(labels)))
         if axes:
             for ax in axes[:-1]:
                 ax.tick_params(axis="x", which="both", labelbottom=False)
@@ -3205,6 +3255,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ax = fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, "No overlapping parameter data.", ha="center", va="center", transform=ax.transAxes)
             ax.set_axis_off()
+        self._smc_add_comparison_legend(fig, legend_items=legend_items)
         self._smc_right_canvas.draw()
 
     def _plot_mean_std(

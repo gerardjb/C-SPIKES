@@ -3,6 +3,22 @@ import numpy as np
 from c_spikes.gui import smc_viz
 
 
+def test_format_smc_legend_labels_shortens_and_disambiguates():
+    labels = [
+        "very_long_run_tag_with_many_sections_alpha",
+        "very_long_run_tag_with_many_sections_beta",
+        "short",
+    ]
+
+    formatted = smc_viz.format_smc_legend_labels(labels, max_len=18)
+
+    assert len(formatted) == len(labels)
+    assert len(formatted[0]) <= 18
+    assert len(formatted[1]) <= 18
+    assert formatted[0] != formatted[1]
+    assert formatted[2] == "short"
+
+
 def _write_traj(path, b_samples):
     b_arr = np.asarray(b_samples, dtype=np.float64)
     if b_arr.ndim != 2:
