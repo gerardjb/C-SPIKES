@@ -14,6 +14,20 @@ from c_spikes.inference.types import compute_sampling_rate
 from c_spikes.model_eval.model_eval import smooth_spike_train
 
 
+_TRAJ_PLOT_STATS_VERSION = 1
+_TRAJ_PLOT_STATS_ARRAY_KEYS = (
+    "burst_mean",
+    "burst_std",
+    "b_mean",
+    "b_std",
+    "s_mean",
+    "s_std",
+    "c_mean",
+    "c_std",
+)
+_TRAJ_PLOT_STATS_INT_KEYS = ("n_samples", "burnin_eff", "time_len")
+
+
 @dataclass(frozen=True)
 class PgasCacheEntry:
     run_tag: str
@@ -556,7 +570,63 @@ def _slice_run_time_for_trial(
     return t
 
 
-def _load_traj_stats(path: Path, *, burnin: int) -> Dict[str, np.ndarray | int]:
+def _traj_plot_stats_path(path: Path) -> Path:
+    return path.with_name(f"{path.stem}.plot_stats.npz")
+
+
+def _load_cached_traj_stats(path: Path, *, burnin: int) -> Optional[Dict[str, np.ndarray | int]]:
+    cache_path = _traj_plot_stats_path(path)
+    if not cache_path.exists():
+        return None
+    try:
+        stat = path.stat()
+        with np.load(cache_path, allow_pickle=False) as data:
+            version = int(np.asarray(data["version"]).item())
+            source_size = int(np.asarray(data["source_size"]).item())
+            source_mtime_ns = int(np.asarray(data["source_mtime_ns"]).item())
+            cached_burnin = int(np.asarray(data["burnin"]).item())
+            source_name = str(np.asarray(data["source_name"]).item())
+            if (
+                version != _TRAJ_PLOT_STATS_VERSION
+                or source_size != int(stat.st_size)
+                or source_mtime_ns != int(stat.st_mtime_ns)
+                or cached_burnin != int(burnin)
+                or source_name != path.name
+            ):
+                return None
+            out: Dict[str, np.ndarray | int] = {}
+            for key in _TRAJ_PLOT_STATS_INT_KEYS:
+                out[key] = int(np.asarray(data[key]).item())
+            for key in _TRAJ_PLOT_STATS_ARRAY_KEYS:
+                out[key] = np.asarray(data[key], dtype=np.float64)
+            return out
+    except Exception:
+        return None
+
+
+def _save_cached_traj_stats(path: Path, *, burnin: int, stats: Dict[str, np.ndarray | int]) -> None:
+    try:
+        stat = path.stat()
+        cache_path = _traj_plot_stats_path(path)
+        tmp_path = cache_path.with_name(f".{cache_path.name}.tmp.npz")
+        payload: Dict[str, object] = {
+            "version": np.asarray(_TRAJ_PLOT_STATS_VERSION, dtype=np.int64),
+            "source_name": np.asarray(path.name),
+            "source_size": np.asarray(int(stat.st_size), dtype=np.int64),
+            "source_mtime_ns": np.asarray(int(stat.st_mtime_ns), dtype=np.int64),
+            "burnin": np.asarray(int(burnin), dtype=np.int64),
+        }
+        for key in _TRAJ_PLOT_STATS_INT_KEYS:
+            payload[key] = np.asarray(int(stats[key]), dtype=np.int64)
+        for key in _TRAJ_PLOT_STATS_ARRAY_KEYS:
+            payload[key] = np.asarray(stats[key], dtype=np.float64)
+        np.savez_compressed(tmp_path, **payload)
+        tmp_path.replace(cache_path)
+    except Exception:
+        return
+
+
+def _compute_traj_stats_from_dat(path: Path, *, burnin: int) -> Dict[str, np.ndarray | int]:
     data = np.genfromtxt(path, delimiter=",", skip_header=1)
     if data.ndim == 1:
         data = np.asarray([data], dtype=float)
@@ -595,6 +665,15 @@ def _load_traj_stats(path: Path, *, burnin: int) -> Dict[str, np.ndarray | int]:
         "c_mean": np.mean(c_mat[sample_slice], axis=0),
         "c_std": np.std(c_mat[sample_slice], axis=0),
     }
+
+
+def _load_traj_stats(path: Path, *, burnin: int) -> Dict[str, np.ndarray | int]:
+    cached = _load_cached_traj_stats(path, burnin=burnin)
+    if cached is not None:
+        return cached
+    stats = _compute_traj_stats_from_dat(path, burnin=burnin)
+    _save_cached_traj_stats(path, burnin=burnin, stats=stats)
+    return stats
 
 
 def _load_param_traces(path: Path) -> Tuple[List[str], np.ndarray]:
