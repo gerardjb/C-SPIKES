@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -160,7 +161,13 @@ def apply_bandstop_filters(
 
 
 def _default_output_mat(input_mat: Path, epoch: int) -> Path:
-    return input_mat.with_name(f"{input_mat.stem}_psdnotch_epoch{epoch}{input_mat.suffix}")
+    # GUI SMC-viz treats `_epoch\d+` as a formal epoch-id delimiter in cache tags.
+    # Keep generated dataset stems free of that token so cache tags remain parseable.
+    return input_mat.with_name(f"{input_mat.stem}_psdnotch_e{int(epoch):02d}{input_mat.suffix}")
+
+
+def _has_gui_epoch_token(path: Path) -> bool:
+    return re.search(r"_epoch\d+", path.stem) is not None
 
 
 def _write_peaks_csv(path: Path, targets: Sequence[PeakTarget]) -> None:
@@ -267,6 +274,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--min-notch-width-hz", type=float, default=0.25, help="Minimum derived notch width.")
     parser.add_argument("--max-notch-width-hz", type=float, default=1.0, help="Maximum derived notch width.")
     parser.add_argument("--filter-order", type=int, default=4, help="IIR bandstop filter order.")
+    parser.add_argument(
+        "--allow-gui-ambiguous-name",
+        action="store_true",
+        help="Allow output .mat stems containing `_epoch<digits>`, which can confuse BiophysSMC viz cache resolution.",
+    )
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output .mat.")
     return parser.parse_args(argv)
 
@@ -282,6 +294,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     output_mat = (args.output_mat or _default_output_mat(input_mat, args.epoch)).resolve()
+    if _has_gui_epoch_token(output_mat) and not args.allow_gui_ambiguous_name:
+        print(
+            "[error] output .mat stem contains `_epoch<digits>`, which collides with GUI cache-tag parsing. "
+            "Use a stem like `_psdnotch_e01` or pass --allow-gui-ambiguous-name.",
+            file=sys.stderr,
+        )
+        return 2
     plot_dir = (args.plot_dir or output_mat.with_suffix("").with_name(f"{output_mat.stem}_plots")).resolve()
     if output_mat.exists() and not args.overwrite:
         print(f"[error] output exists; pass --overwrite to replace: {output_mat}", file=sys.stderr)
