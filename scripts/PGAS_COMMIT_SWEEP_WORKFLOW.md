@@ -57,6 +57,8 @@ If you need a null edge path, leave `EDGES_PATH` unset or set it to an empty str
 - `PGAS_SIGMA2_TARGET`, `PGAS_SIGMA2_ALPHA`, `PGAS_SIGMA2_PRIOR_STRENGTH`: sigma2 prior knobs passed only where supported.
 - `CONDA_BASE_ENV`: conda env cloned for each build; default is `c_spikes_e`.
 - `KOKKOS_SOURCE_OVERRIDE`: local `kokkos-src` path if auto-discovery under `$REPO_ROOT/build` is insufficient.
+- `REUSE_EXISTING_BUILD`: set to `1` by default. When enabled, the template searches `$RESULTS_PARENT/_builds/*_<commit_short>` for a detached worktree at the requested commit plus a matching `<run_tag>_build` conda env, and reuses it instead of rebuilding.
+- `FORCE_REBUILD`: set to `1` to ignore reusable builds and recreate the requested run-tag build/env.
 
 ## Cache Behavior
 
@@ -72,6 +74,8 @@ Slurm stdout/stderr defaults to `pgas_allan_commit_<jobid>.out/.err` in the subm
 
 The sbatch template resolves `REPO_ROOT` from explicit `REPO_ROOT` first, then from `SLURM_SUBMIT_DIR` when submitted from a git worktree, then from the script path. This avoids Slurm-spooled script paths such as `/var/spool/slurmd` becoming the inferred repository root.
 
+The template reuses existing builds by default. This lets a sweep job for `a04_allan_calib_provenance` reuse an already-built directory such as `$RESULTS_PARENT/_builds/s348_allan_a04_allan_calib_provenance_59d148a4` and its `s348_allan_a04_allan_calib_provenance_build` conda env. To force a clean rebuild, set `FORCE_REBUILD=1` through `--export` or use the sweep wrapper's `--force-rebuild`.
+
 You can test first-trial selection generation without running a build:
 
 ```bash
@@ -80,4 +84,72 @@ DATASET_TAGS="cellA cellB" \
 FIRST_TRIAL_ONLY=1 \
 PGAS_TEMPLATE_TEST_FIRST_TRIAL=1 \
 bash scripts/pgas_sbatch_template.sbatch test_first 5aba209 auto_bm
+```
+
+## Build Once, Run Many
+
+For bm/sigma2 diagnostic sweeps, use `scripts/pgas_inference_sweep.json` plus the sweep submit wrapper. This builds the selected commit once, then runs every config listed in the sweep JSON inside the same job allocation.
+
+Dry-run the current a04 diagnostic sweep:
+
+```bash
+python scripts/submit_pgas_inference_sweep.py --dry-run
+```
+
+Submit it:
+
+```bash
+python scripts/submit_pgas_inference_sweep.py
+```
+
+Force a new build instead of reusing a compatible build:
+
+```bash
+python scripts/submit_pgas_inference_sweep.py --force-rebuild
+```
+
+Resume a partial sweep by excluding completed config tags:
+
+```bash
+python scripts/submit_pgas_inference_sweep.py \
+  --exclude-config-tag bm0p10_s2p0025_p5000
+```
+
+Run only selected configs:
+
+```bash
+python scripts/submit_pgas_inference_sweep.py \
+  --include-config-tag bm0p10_s2p0035_p5000 \
+  --include-config-tag bm0p15_s2p0035_p5000
+```
+
+The default sweep JSON targets `a04_allan_calib_provenance` and writes run roots like:
+
+```text
+sample_data/janelia_8f/excitatory/spike_inference/s348_diag_a04_bm0p10_s2p0025_p5000/
+```
+
+The current exploratory grid covers:
+
+```text
+BM_SIGMA_MAX: 0.10, 0.15
+PGAS_SIGMA2_TARGET: 0.0025, 0.0035
+PGAS_SIGMA2_PRIOR_STRENGTH: 5000, 10000
+```
+
+To run the same JSON against a different compatible build, override the build tag:
+
+```bash
+python scripts/submit_pgas_inference_sweep.py \
+  --build-run-tag a05_a06_allan_mh_logrw_widths \
+  --sweep-base-run-tag s348_diag_a05a06
+```
+
+To inspect commands without Slurm or building:
+
+```bash
+python scripts/run_pgas_inference_sweep.py \
+  --sweep-json scripts/pgas_inference_sweep.json \
+  --features auto_bm,bm_bounds,low_activity_mask,sigma2_prior \
+  --dry-run
 ```

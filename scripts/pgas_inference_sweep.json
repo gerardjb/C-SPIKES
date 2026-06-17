@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "description": "Initial a04 diagnostic sweep for bm_sigma ceiling and sigma2 prior strength.",
+  "build_run_tag": "a04_allan_calib_provenance",
+  "base_run_tag": "s348_diag_a04",
+  "dataset_tags": [
+    "jGCaMP8f_ANM478348_cell01"
+  ],
+  "first_trial_only": true,
+  "trialwise_correlations": true,
+  "smoothing_level": "raw",
+  "bm_sigma": "auto",
+  "bm_sigma_min": 0.0005,
+  "bm_sigma_spike_gap": 0.15,
+  "configs": [
+    {
+      "tag": "bm0p10_s2p0025_p5000",
+      "bm_sigma_max": 0.1,
+      "sigma2_target": 0.0025,
+      "sigma2_prior_strength": 5000
+    },
+    {
+      "tag": "bm0p10_s2p0025_p10000",
+      "bm_sigma_max": 0.1,
+      "sigma2_target": 0.0025,
+      "sigma2_prior_strength": 10000
+    },
+    {
+      "tag": "bm0p10_s2p0035_p5000",
+      "bm_sigma_max": 0.1,
+      "sigma2_target": 0.0035,
+      "sigma2_prior_strength": 5000
+    },
+    {
+      "tag": "bm0p10_s2p0035_p10000",
+      "bm_sigma_max": 0.1,
+      "sigma2_target": 0.0035,
+      "sigma2_prior_strength": 10000
+    },
+    {
+      "tag": "bm0p15_s2p0025_p5000",
+      "bm_sigma_max": 0.15,
+      "sigma2_target": 0.0025,
+      "sigma2_prior_strength": 5000
+    },
+    {
+      "tag": "bm0p15_s2p0025_p10000",
+      "bm_sigma_max": 0.15,
+      "sigma2_target": 0.0025,
+      "sigma2_prior_strength": 10000
+    },
+    {
+      "tag": "bm0p15_s2p0035_p5000",
+      "bm_sigma_max": 0.15,
+      "sigma2_target": 0.0035,
+      "sigma2_prior_strength": 5000
+    },
+    {
+      "tag": "bm0p15_s2p0035_p10000",
+      "bm_sigma_max": 0.15,
+      "sigma2_target": 0.0035,
+      "sigma2_prior_strength": 10000
+    }
+  ]
+}
