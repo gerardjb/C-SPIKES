@@ -32,6 +32,8 @@ PGAS_BM_SIGMA_MAX: float = 5e-1
 PGAS_SIGMA2_TARGET_MIN: float = 5e-6
 PGAS_SIGMA2_TARGET_MAX: float = 8e-2
 PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT: float = 4.0
+PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT: float = 0.0
+PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT: float = 1.0
 PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT: str = "inference"
 PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT: str = "dataset"
 PGAS_NOISE_CALIBRATION_SCOPES: Tuple[str, ...] = ("inference", "full")
@@ -58,6 +60,8 @@ class PgasConfig:
     sigma2_target: Optional[float] = None
     sigma2_alpha: Optional[float] = None
     sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+    likelihood_extra_variance: float = PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT
+    likelihood_variance_scale: float = PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT
     noise_calibration_scope: str = PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
     noise_calibration_granularity: str = PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
     edges: Optional[np.ndarray] = None
@@ -76,6 +80,42 @@ def validate_bm_sigma_bounds(min_sigma: float, max_sigma: float) -> Tuple[float,
             f"bm_sigma maximum must be >= minimum; got min={min_sigma:g}, max={max_sigma:g}."
         )
     return min_sigma, max_sigma
+
+
+def validate_likelihood_variance_controls(
+    extra_variance: float,
+    variance_scale: float,
+) -> Tuple[float, float]:
+    extra_variance = float(extra_variance)
+    variance_scale = float(variance_scale)
+    if not np.isfinite(extra_variance) or extra_variance < 0:
+        raise ValueError(
+            "likelihood_extra_variance must be non-negative and finite; "
+            f"got {extra_variance!r}."
+        )
+    if not np.isfinite(variance_scale) or variance_scale <= 0:
+        raise ValueError(
+            "likelihood_variance_scale must be positive and finite; "
+            f"got {variance_scale!r}."
+        )
+    return extra_variance, variance_scale
+
+
+def likelihood_variance_tag_suffix(
+    *,
+    extra_variance: float = PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT,
+    variance_scale: float = PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT,
+) -> str:
+    extra_variance, variance_scale = validate_likelihood_variance_controls(
+        extra_variance,
+        variance_scale,
+    )
+    tokens: List[str] = []
+    if not np.isclose(extra_variance, PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT):
+        tokens.append(f"lex{format_tag_token(f'{extra_variance:.4g}')}")
+    if not np.isclose(variance_scale, PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT):
+        tokens.append(f"lvs{format_tag_token(f'{variance_scale:.4g}')}")
+    return ("_" + "_".join(tokens)) if tokens else ""
 
 
 def normalize_noise_calibration_scope(scope: str) -> str:
@@ -333,8 +373,16 @@ def prepare_constants_with_params(
     sigma2_target: Optional[float] = None,
     sigma2_alpha: Optional[float] = None,
     sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+    likelihood_extra_variance: float = PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT,
+    likelihood_variance_scale: float = PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT,
 ) -> Path:
     base_constants = Path(base_constants)
+    likelihood_extra_variance, likelihood_variance_scale = (
+        validate_likelihood_variance_controls(
+            likelihood_extra_variance,
+            likelihood_variance_scale,
+        )
+    )
     tokens = [f"ms{maxspikes}"]
     if bm_sigma is not None:
         tokens.append(f"bm{format_tag_token(f'{bm_sigma:.4g}')}")
@@ -345,6 +393,12 @@ def prepare_constants_with_params(
     elif sigma2_target is not None:
         prior_strength = normalize_sigma2_prior_strength(sigma2_prior_strength)
         tokens.append(f"p2{format_tag_token(f'{prior_strength:.4g}')}")
+    likelihood_suffix = likelihood_variance_tag_suffix(
+        extra_variance=likelihood_extra_variance,
+        variance_scale=likelihood_variance_scale,
+    )
+    if likelihood_suffix:
+        tokens.extend(likelihood_suffix.removeprefix("_").split("_"))
     target_path = build_constants_cache_path(base_constants, tokens)
     if target_path.exists():
         return target_path
@@ -370,6 +424,19 @@ def prepare_constants_with_params(
         if not np.isfinite(alpha) or alpha <= 0:
             alpha = 2.0 + PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
         priors["alpha sigma2"] = float(alpha)
+    if (
+        not np.isclose(
+            likelihood_extra_variance,
+            PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT,
+        )
+        or not np.isclose(
+            likelihood_variance_scale,
+            PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT,
+        )
+    ):
+        likelihood = data.setdefault("likelihood", {})
+        likelihood["extra_variance"] = float(likelihood_extra_variance)
+        likelihood["variance_scale"] = float(likelihood_variance_scale)
     with target_path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
     return target_path
@@ -506,6 +573,8 @@ def _build_pgas_noise_settings(
         sigma2_target=sigma2_target_effective,
         sigma2_alpha=sigma2_alpha_effective if config.sigma2_alpha is not None else None,
         sigma2_prior_strength=sigma2_prior_strength_effective,
+        likelihood_extra_variance=config.likelihood_extra_variance,
+        likelihood_variance_scale=config.likelihood_variance_scale,
     )
     noise_calibration = _noise_calibration_metadata(calibration)
 
@@ -521,6 +590,8 @@ def _build_pgas_noise_settings(
         cfg["sigma2_prior_strength"] = float(sigma2_prior_strength_effective)
     if noise_calibration is not None:
         cfg["noise_calibration"] = noise_calibration
+    cfg["likelihood_extra_variance"] = float(config.likelihood_extra_variance)
+    cfg["likelihood_variance_scale"] = float(config.likelihood_variance_scale)
 
     return PgasNoiseSettings(
         bm_sigma=bm_sigma,
@@ -585,6 +656,12 @@ def run_pgas_inference(
         config.bm_sigma_min,
         config.bm_sigma_max,
     )
+    likelihood_extra_variance, likelihood_variance_scale = (
+        validate_likelihood_variance_controls(
+            config.likelihood_extra_variance,
+            config.likelihood_variance_scale,
+        )
+    )
     label_token = format_tag_token(config.downsample_label)
     pgas_resample_token = "raw" if config.resample_fs is None else format_tag_token(f"{config.resample_fs:g}")
     run_tag_base = (
@@ -595,6 +672,10 @@ def run_pgas_inference(
         mode_tag_suffix = f"{mode_tag_suffix}_nc{format_tag_token(noise_scope)}"
     if noise_granularity != PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT:
         mode_tag_suffix = f"{mode_tag_suffix}_ng{format_tag_token(noise_granularity)}"
+    likelihood_tag_suffix = likelihood_variance_tag_suffix(
+        extra_variance=likelihood_extra_variance,
+        variance_scale=likelihood_variance_scale,
+    )
 
     dataset_settings: Optional[PgasNoiseSettings] = None
     trial_settings: Optional[List[PgasNoiseSettings]] = None
@@ -611,7 +692,7 @@ def run_pgas_inference(
             )
             for calibration_trial in calibration_source_trials
         ]
-        run_tag = f"{run_tag_base}_bmtrial{mode_tag_suffix}"
+        run_tag = f"{run_tag_base}_bmtrial{mode_tag_suffix}{likelihood_tag_suffix}"
         bm_sigma_values = [float(setting.bm_sigma) for setting in trial_settings]
         sigma2_target_values = [
             float(setting.sigma2_target)
@@ -672,7 +753,7 @@ def run_pgas_inference(
         elif sigma2_alpha_effective is not None:
             a2_token = format_tag_token(f"{sigma2_alpha_effective:.3g}")
             run_tag = f"{run_tag}_a2{a2_token}"
-        run_tag = f"{run_tag}{mode_tag_suffix}"
+        run_tag = f"{run_tag}{mode_tag_suffix}{likelihood_tag_suffix}"
 
     cfg_dict = {
         "niter": config.niter,
@@ -685,6 +766,8 @@ def run_pgas_inference(
             "min": float(bm_sigma_min),
             "max": float(bm_sigma_max),
         },
+        "likelihood_extra_variance": float(likelihood_extra_variance),
+        "likelihood_variance_scale": float(likelihood_variance_scale),
     }
     if dataset_settings is not None:
         cfg_dict.update(dataset_settings.cfg)
@@ -749,6 +832,8 @@ def run_pgas_inference(
                 cached.metadata.setdefault("noise_calibration", noise_calibration)
             cached.metadata.setdefault("noise_calibration_scope", noise_scope)
             cached.metadata.setdefault("noise_calibration_granularity", noise_granularity)
+            cached.metadata.setdefault("likelihood_extra_variance", likelihood_extra_variance)
+            cached.metadata.setdefault("likelihood_variance_scale", likelihood_variance_scale)
             if trial_settings is not None:
                 cached.metadata.setdefault(
                     "bm_sigma_by_trial",
@@ -775,6 +860,14 @@ def run_pgas_inference(
             config.resample_fs is None
             and noise_scope == PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
             and noise_granularity == PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+            and np.isclose(
+                likelihood_extra_variance,
+                PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT,
+            )
+            and np.isclose(
+                likelihood_variance_scale,
+                PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT,
+            )
         ):
             legacy_tag = f"{config.dataset_tag}_ms{maxspikes}"
             if str(config.downsample_label).strip().lower() == "raw":
@@ -876,6 +969,8 @@ def run_pgas_inference(
         traces.metadata.setdefault("noise_calibration", noise_calibration)
     traces.metadata.setdefault("noise_calibration_scope", noise_scope)
     traces.metadata.setdefault("noise_calibration_granularity", noise_granularity)
+    traces.metadata.setdefault("likelihood_extra_variance", likelihood_extra_variance)
+    traces.metadata.setdefault("likelihood_variance_scale", likelihood_variance_scale)
     if trial_settings is not None:
         traces.metadata.setdefault(
             "bm_sigma_by_trial",

@@ -17,6 +17,23 @@ constpar::constpar(string filename)
 
     // Integrated Brownian motion 
     bm_sigma  = cfg["BM"]["bm_sigma"].asDouble();   
+    if (cfg.isMember("likelihood")) {
+        const Json::Value& likelihood_cfg = cfg["likelihood"];
+        likelihood_extra_variance = likelihood_cfg.get(
+            "extra_variance",
+            likelihood_extra_variance
+        ).asDouble();
+        likelihood_variance_scale = likelihood_cfg.get(
+            "variance_scale",
+            likelihood_variance_scale
+        ).asDouble();
+    }
+    if (!std::isfinite(likelihood_extra_variance) || likelihood_extra_variance < 0.0) {
+        likelihood_extra_variance = 0.0;
+    }
+    if (!std::isfinite(likelihood_variance_scale) || likelihood_variance_scale <= 0.0) {
+        likelihood_variance_scale = 1.0;
+    }
 
     // data
     sampling_frequency = cfg["data"]["sampling_frequency"].asDouble();
@@ -115,6 +132,9 @@ void constpar::print()
     cout << "_____________________________" << endl;
     cout << "Brownian motion" << endl;
     cout << "    sigma = " << bm_sigma << endl;
+    cout << "likelihood" << endl;
+    cout << "    extra_variance = " << likelihood_extra_variance << endl;
+    cout << "    variance_scale = " << likelihood_variance_scale << endl;
     cout << "    sampling frequency = " << sampling_frequency << endl;
     cout << "priors" << endl;
     cout << "    alpha_sigma2 = " << alpha_sigma2 << endl;

@@ -27,6 +27,8 @@ from c_spikes.inference.pgas import (
     PGAS_BM_SIGMA_DEFAULT,
     PGAS_BM_SIGMA_MAX,
     PGAS_BM_SIGMA_MIN,
+    PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT,
+    PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT,
     PGAS_NOISE_CALIBRATION_GRANULARITIES,
     PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT,
     PGAS_NOISE_CALIBRATION_SCOPES,
@@ -202,6 +204,24 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "(alpha = 2 + strength) if --pgas-sigma2-alpha is not set."
         ),
     )
+    parser.add_argument(
+        "--pgas-likelihood-extra-variance",
+        type=float,
+        default=PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT,
+        help=(
+            "Additive variance term used only when evaluating PGAS spike-state "
+            "likelihood weights. Default: 0.0."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-likelihood-variance-scale",
+        type=float,
+        default=PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT,
+        help=(
+            "Multiplicative scale applied to the Kalman observation variance when "
+            "evaluating PGAS spike-state likelihood weights. Default: 1.0."
+        ),
+    )
     parser.add_argument("--pgas-resample-fs", type=float, help="PGAS resample frequency (Hz). (deprecated, kept for compatibility)")
     parser.add_argument(
         "--cascade-resample-fs",
@@ -291,6 +311,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         pgas_sigma2_target=_parse_optional_float(args.pgas_sigma2_target),
         pgas_sigma2_alpha=_parse_optional_float(args.pgas_sigma2_alpha),
         pgas_sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
+        pgas_likelihood_extra_variance=float(args.pgas_likelihood_extra_variance),
+        pgas_likelihood_variance_scale=float(args.pgas_likelihood_variance_scale),
         pgas_noise_calibration_scope=str(args.pgas_noise_calibration_scope),
         pgas_noise_calibration_granularity=str(args.pgas_noise_calibration_granularity),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),

@@ -8,6 +8,7 @@
 #include<ctime>
 #include"include/GCaMP_model.h"
 #include<iomanip>
+#include<algorithm>
 
 
 using namespace std;
@@ -324,19 +325,24 @@ void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, 
     double W[2][2] = {{1-par.wbb[0]*dt, par.wbb[0]*dt},
         {par.wbb[1]*dt, 1-par.wbb[1]*dt}};
 
-    double z[2] = {par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)),
-                   dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2))};
-    double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));
+    const double kalman_variance = par.sigma2+dt*pow(constants->bm_sigma,2);
+    const double likelihood_variance = std::max(
+        constants->likelihood_variance_scale*kalman_variance + constants->likelihood_extra_variance,
+        1e-12
+    );
+    double z[2] = {par.sigma2/kalman_variance,
+                   dt*pow(constants->bm_sigma,2)/kalman_variance};
+    double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/kalman_variance);
     
     arma::vec state_out(12);
     model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
     
     log_probs[0] = log(W[parent.burst][0]);
     log_probs[0] += ns*log(rate[0]) - log(gsl_sf_gamma(ns+1)) -rate[0];
-    log_probs[0] += -0.5/(par.sigma2+dt*pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2);
+    log_probs[0] += -0.5/likelihood_variance*pow(y-ct-parent.B,2);
     log_probs[1] = log(W[parent.burst][1]);
     log_probs[1] += ns*log(rate[1]) - log(gsl_sf_gamma(ns+1)) -rate[1];
-    log_probs[1] += -0.5/(par.sigma2+dt*pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2);
+    log_probs[1] += -0.5/likelihood_variance*pow(y-ct-parent.B,2);
 
     utils::w_from_logW(log_probs,probs,2);
     Z=utils::Z_from_logW(log_probs,2);
@@ -374,8 +380,13 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
     double W[2][2] = {{1-par.wbb[0]*dt, par.wbb[0]*dt},
         {par.wbb[1]*dt, 1-par.wbb[1]*dt}};
     
-    double z[2] = {par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)),
-                   dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2))};
+    const double kalman_variance = par.sigma2+dt*pow(constants->bm_sigma,2);
+    const double likelihood_variance = std::max(
+        constants->likelihood_variance_scale*kalman_variance + constants->likelihood_extra_variance,
+        1e-12
+    );
+    double z[2] = {par.sigma2/kalman_variance,
+                   dt*pow(constants->bm_sigma,2)/kalman_variance};
     //double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));
     
     arma::vec state_out(12); // <xxx flag for removal xxx>
@@ -388,7 +399,7 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
         
         log_probs[i] = log(W[parent.burst][burst]);
         log_probs[i] += ns*log(rate[burst]) - log(tgamma(ns+1)) -rate[burst];
-        log_probs[i] += -0.5/(par.sigma2+dt*pow(constants->bm_sigma,2))*pow(y-ct-parent.B,2); 
+        log_probs[i] += -0.5/likelihood_variance*pow(y-ct-parent.B,2);
         
     } 
 

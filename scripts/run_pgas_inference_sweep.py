@@ -235,6 +235,25 @@ def _build_cli_command(
     elif config.get("sigma2_target") is not None or config.get("sigma2_alpha") is not None:
         print(f"[warn] {run_tag}: commit does not expose sigma2 prior knobs; ignoring.")
 
+    if "likelihood_variance_controls" in features:
+        _add_if_present(
+            cmd,
+            "--pgas-likelihood-extra-variance",
+            config.get("likelihood_extra_variance"),
+        )
+        _add_if_present(
+            cmd,
+            "--pgas-likelihood-variance-scale",
+            config.get("likelihood_variance_scale"),
+        )
+    elif (
+        config.get("likelihood_extra_variance") is not None
+        or config.get("likelihood_variance_scale") is not None
+    ):
+        print(
+            f"[warn] {run_tag}: commit does not expose likelihood variance controls; ignoring."
+        )
+
     if "noise_calibration_modes" in features:
         _add_if_present(
             cmd,

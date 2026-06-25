@@ -23,6 +23,8 @@ from .pgas import (
     PGAS_BM_SIGMA_MIN,
     PGAS_BURNIN,
     PGAS_NITER,
+    PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT,
+    PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT,
     PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT,
     PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT,
     PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
@@ -75,6 +77,8 @@ class DatasetRunConfig:
     pgas_sigma2_target: Optional[float] = None
     pgas_sigma2_alpha: Optional[float] = None
     pgas_sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+    pgas_likelihood_extra_variance: float = PGAS_LIKELIHOOD_EXTRA_VARIANCE_DEFAULT
+    pgas_likelihood_variance_scale: float = PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT
     pgas_noise_calibration_scope: str = PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
     pgas_noise_calibration_granularity: str = PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
     cascade_discretize: bool = True
@@ -238,6 +242,8 @@ def run_inference_for_dataset(
             sigma2_target=cfg.pgas_sigma2_target,
             sigma2_alpha=cfg.pgas_sigma2_alpha,
             sigma2_prior_strength=cfg.pgas_sigma2_prior_strength,
+            likelihood_extra_variance=cfg.pgas_likelihood_extra_variance,
+            likelihood_variance_scale=cfg.pgas_likelihood_variance_scale,
             noise_calibration_scope=cfg.pgas_noise_calibration_scope,
             noise_calibration_granularity=cfg.pgas_noise_calibration_granularity,
             edges=edges_effective,

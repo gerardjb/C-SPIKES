@@ -11,6 +11,8 @@ public:
     void print();
 
     double bm_sigma = 1e-4;
+    double likelihood_extra_variance = 0.0;
+    double likelihood_variance_scale = 1.0;
 
     double alpha_sigma2;
     double beta_sigma2;      // Note that beta in GSL is actually the SCALE, not the rate.

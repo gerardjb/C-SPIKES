@@ -55,6 +55,7 @@ If you need a null edge path, leave `EDGES_PATH` unset or set it to an empty str
 - `BM_SIGMA_MIN` and `BM_SIGMA_MAX`: bounds passed only to commits that expose them.
 - `PGAS_BM_SIGMA_USE_LOW_ACTIVITY_MASK`: set to `1` to pass the low-activity-mask flag where supported.
 - `PGAS_SIGMA2_TARGET`, `PGAS_SIGMA2_ALPHA`, `PGAS_SIGMA2_PRIOR_STRENGTH`: sigma2 prior knobs passed only where supported.
+- `PGAS_LIKELIHOOD_EXTRA_VARIANCE`, `PGAS_LIKELIHOOD_VARIANCE_SCALE`: likelihood-width regularization knobs passed only to commits with `likelihood_variance_controls`.
 - `CONDA_BASE_ENV`: conda env cloned for each build; default is `c_spikes_e`.
 - `KOKKOS_SOURCE_OVERRIDE`: local `kokkos-src` path if auto-discovery under `$REPO_ROOT/build` is insufficient.
 - `REUSE_EXISTING_BUILD`: set to `1` by default. When enabled, the template searches `$RESULTS_PARENT/_builds/*_<commit_short>` for a detached worktree at the requested commit plus a matching `<run_tag>_build` conda env, and reuses it instead of rebuilding.

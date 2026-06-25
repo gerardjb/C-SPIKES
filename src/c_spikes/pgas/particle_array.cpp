@@ -426,11 +426,14 @@ void ParticleArray::move_and_weight(
     Scalar rate[2] = {par.r0*dt,par.r1*dt};
     Scalar W[2][2] = {{1-par.wbb[0]*dt, par.wbb[0]*dt},
         {par.wbb[1]*dt, 1-par.wbb[1]*dt}};
-    Scalar sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));  
-    Scalar z0 = par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2));
-    Scalar z1 = dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2));
-
-    Scalar bm_sigma = constants->bm_sigma;
+    Scalar kalman_variance = par.sigma2+dt*pow(constants->bm_sigma,2);
+    Scalar likelihood_variance = constants->likelihood_variance_scale*kalman_variance + constants->likelihood_extra_variance;
+    if (likelihood_variance < 1e-12) {
+        likelihood_variance = 1e-12;
+    }
+    Scalar sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/kalman_variance);
+    Scalar z0 = par.sigma2/kalman_variance;
+    Scalar z1 = dt*pow(constants->bm_sigma,2)/kalman_variance;
 
     // We don't actually need this value, but we need to pass it to the kernel
     // save_state=false will make sure it isn't written to, which would cause 
@@ -469,7 +472,7 @@ void ParticleArray::move_and_weight(
 
                 Scalar log_prob_tmp = log(W[parent_b][b]);
                 log_prob_tmp += ns*log(rate[b]) - log(tgamma(ns+1)) - rate[b];
-                log_prob_tmp += -0.5/(par.sigma2+dt*pow(bm_sigma,2))*pow(y(t)-ct-parent_B,2);
+                log_prob_tmp += -0.5/likelihood_variance*pow(y(t)-ct-parent_B,2);
                 log_probs(particle_idx, spike_idx) = log_prob_tmp;
 
             });
