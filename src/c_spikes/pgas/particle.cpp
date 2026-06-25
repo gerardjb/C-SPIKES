@@ -3,7 +3,6 @@
 #include"include/utils.h"
 #include<gsl/gsl_sf_gamma.h>
 #include<gsl/gsl_math.h>
-#include<algorithm>
 #include<fstream>
 #include<string>
 #include<ctime>
@@ -12,18 +11,6 @@
 
 
 using namespace std;
-
-namespace {
-constexpr double kMinMhLogSd = 5e-3;
-constexpr double kMaxMhLogSd = 0.25;
-constexpr double kTargetMhAcceptance = 0.35;
-
-double clamp_mh_log_sd(double value) {
-    if (value < kMinMhLogSd) return kMinMhLogSd;
-    if (value > kMaxMhLogSd) return kMaxMhLogSd;
-    return value;
-}
-}
 
 // PARTICLE CLASS
 // -----------------------------------------------------------
@@ -176,7 +163,6 @@ SMC::SMC(string filename, int index, constpar& cst, bool has_header, int seed, u
     constants->sampling_frequency = 1.0 / (tracemat(1, 0)-tracemat(0,0));
     cout << "setting sampling frequency to: "<<constants->sampling_frequency << endl;
     constants->set_time_scales();
-    init_parameter_sampler_state();
 
     // set number of particles
     nparticles=constants->nparticles;
@@ -226,7 +212,6 @@ SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_head
     constants->sampling_frequency = 1.0 / (data_time(2)-data_time(1));
     cout << "setting sampling frequency to: "<<constants->sampling_frequency << endl;
     constants->set_time_scales();
-    init_parameter_sampler_state();
     data_y = data;
 
     // set number of particles
@@ -260,7 +245,6 @@ SMC::SMC(arma::vec &Y, constpar& cst, bool v){
     // The time units here are assumed to be seconds
     if(verbose) cout << "setting sampling frequency to: "<<constants->sampling_frequency << endl;
     constants->set_time_scales();
-    init_parameter_sampler_state();
 
     // set number of particles
     nparticles=constants->nparticles;
@@ -284,83 +268,6 @@ SMC::~SMC() {
     if (rng) {
         gsl_rng_free(rng);
         rng = nullptr;
-    }
-}
-
-void SMC::init_parameter_sampler_state() {
-    const double initial_log_sds[NUM_KINETIC_PARAMS] = {
-        clamp_mh_log_sd(constants->G_tot_prop_sd),
-        clamp_mh_log_sd(constants->gamma_prop_sd),
-        clamp_mh_log_sd(constants->DCaT_prop_sd),
-        clamp_mh_log_sd(constants->Rf_prop_sd),
-        clamp_mh_log_sd(constants->gam_in_prop_sd),
-        clamp_mh_log_sd(constants->gam_out_prop_sd),
-    };
-
-    for (unsigned int i = 0; i < NUM_KINETIC_PARAMS; ++i) {
-        mh_log_prop_sd[i] = initial_log_sds[i];
-        mh_attempts[i] = 0;
-        mh_accepts[i] = 0;
-        mh_window_attempts[i] = 0;
-        mh_window_accepts[i] = 0;
-    }
-
-    mh_total_parameter_proposals = 0;
-    mh_adapt_interval = 25;
-    mh_adapt_warmup_updates = static_cast<unsigned int>(
-        std::max(600.0, std::min(3000.0, 2.0 * std::max(1, constants->niter)))
-    );
-}
-
-void SMC::maybe_adapt_parameter_sampler(unsigned int parameter_index) {
-    if (mh_window_attempts[parameter_index] < mh_adapt_interval) {
-        return;
-    }
-
-    double accept_rate = static_cast<double>(mh_window_accepts[parameter_index]) /
-                         static_cast<double>(mh_window_attempts[parameter_index]);
-    double factor = exp(0.5 * (accept_rate - kTargetMhAcceptance));
-    factor = std::min(1.25, std::max(0.8, factor));
-    mh_log_prop_sd[parameter_index] = clamp_mh_log_sd(mh_log_prop_sd[parameter_index] * factor);
-    mh_window_attempts[parameter_index] = 0;
-    mh_window_accepts[parameter_index] = 0;
-}
-
-void SMC::record_parameter_update(const unsigned int* selected_variables, bool accepted) {
-    mh_total_parameter_proposals++;
-
-    for (unsigned int i = 0; i < NUM_KINETIC_PARAMS; ++i) {
-        if (selected_variables[i] == 0) {
-            continue;
-        }
-        mh_attempts[i]++;
-        mh_window_attempts[i]++;
-        if (accepted) {
-            mh_accepts[i]++;
-            mh_window_accepts[i]++;
-        }
-        if (mh_total_parameter_proposals <= mh_adapt_warmup_updates) {
-            maybe_adapt_parameter_sampler(i);
-        }
-    }
-}
-
-void SMC::print_parameter_sampler_summary() const {
-    const char* parameter_names[NUM_KINETIC_PARAMS] = {
-        "G_tot", "gamma", "DCaT", "Rf", "gam_in", "gam_out"
-    };
-
-    cout << "MH acceptance summary (log-space proposals)" << endl;
-    cout << "  adaptive warmup proposals: " << mh_adapt_warmup_updates
-         << ", window: " << mh_adapt_interval << endl;
-    for (unsigned int i = 0; i < NUM_KINETIC_PARAMS; ++i) {
-        double accept_rate = (mh_attempts[i] > 0)
-            ? static_cast<double>(mh_accepts[i]) / static_cast<double>(mh_attempts[i])
-            : 0.0;
-        cout << "  " << setw(7) << parameter_names[i]
-             << " accept=" << fixed << setprecision(3) << accept_rate
-             << " (" << mh_accepts[i] << "/" << mh_attempts[i] << ")"
-             << ", final_log_sd=" << mh_log_prop_sd[i] << endl;
     }
 }
 
@@ -572,25 +479,19 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
     //double gam_in_test  = pin.gam_in  + var_selec[4]*gsl_ran_gaussian(rng,constants->gam_in_prop_sd);
     //double gam_out_test = pin.gam_out + var_selec[5]*gsl_ran_gaussian(rng,constants->gam_out_prop_sd);
 
-    // Sampling parameters with a fixed-width random walk in log-space:
-    //   log(theta') = log(theta) + N(0, s_j^2)
-    // The width s_j is parameter-specific but not state-dependent, so the proposal
-    // remains symmetric in log-space and only the Jacobian term is needed.
-    const double eps_pos = 1e-12;
-    auto safe_pos = [eps_pos](double x) -> double { return (x > eps_pos) ? x : eps_pos; };
-    auto propose_log_rw = [&](double current, double log_sd) -> double {
-        double cur = safe_pos(current);
-        double log_cur = log(cur);
-        double step = gsl_ran_gaussian(rng, clamp_mh_log_sd(log_sd));
-        return exp(log_cur + step);
-    };
+    // Sampling parameters using gamma multiplicative proposals
+    
+    double proposal_factors[6] = {1,1,1,1,1,1};
+    for(unsigned int i=0; i<6; i++){
+        proposal_factors[i] = gsl_ran_gamma(rng,1000,0.001);
+    }
 
-    double G_tot_test = (var_selec[0] == 1) ? propose_log_rw(pin.G_tot, mh_log_prop_sd[0]) : pin.G_tot;
-    double gamma_test = (var_selec[1] == 1) ? propose_log_rw(pin.gamma, mh_log_prop_sd[1]) : pin.gamma;
-    double DCaT_test = (var_selec[2] == 1) ? propose_log_rw(pin.DCaT, mh_log_prop_sd[2]) : pin.DCaT;
-    double Rf_test = (var_selec[3] == 1) ? propose_log_rw(pin.Rf, mh_log_prop_sd[3]) : pin.Rf;
-    double gam_in_test = (var_selec[4] == 1) ? propose_log_rw(pin.gam_in, mh_log_prop_sd[4]) : pin.gam_in;
-    double gam_out_test = (var_selec[5] == 1) ? propose_log_rw(pin.gam_out, mh_log_prop_sd[5]) : pin.gam_out;
+    double G_tot_test = pin.G_tot*((1-var_selec[0])+var_selec[0]*proposal_factors[0]);
+    double gamma_test = pin.gamma*((1-var_selec[1])+var_selec[1]*proposal_factors[1]);
+    double DCaT_test  = pin.DCaT*((1-var_selec[2])+var_selec[2]*proposal_factors[2]);
+    double Rf_test    = pin.Rf *((1-var_selec[3])+var_selec[3]*proposal_factors[3]);
+    double gam_in_test  = pin.gam_in *((1-var_selec[4])+var_selec[4]*proposal_factors[4]);
+    double gam_out_test = pin.gam_out*((1-var_selec[5])+var_selec[5]*proposal_factors[5]);
     
     arma::vec partest={G_tot_test,gamma_test,DCaT_test,Rf_test,gam_in_test,gam_out_test};
     string parnames[] = {"G_tot", "gamma","DCaT","Rf","gam_in","gam_out"};
@@ -616,22 +517,16 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
                           -0.5*pow((gam_out_test-constants->gam_out_mean)/constants->gam_out_sd,2)+ 0.5*pow((pin.gam_out-constants->gam_out_mean)/constants->gam_out_sd,2) 
                           -0.5*(res_test)/pout.sigma2 + 0.5*(res/pout.sigma2);
 
-    // Jacobian/proposal correction for symmetric RW in log-space when target density
-    // is evaluated in parameter space.
-    if (var_selec[0] == 1) log_alpha_MH += log(safe_pos(G_tot_test)) - log(safe_pos(pin.G_tot));
-    if (var_selec[1] == 1) log_alpha_MH += log(safe_pos(gamma_test)) - log(safe_pos(pin.gamma));
-    if (var_selec[2] == 1) log_alpha_MH += log(safe_pos(DCaT_test)) - log(safe_pos(pin.DCaT));
-    if (var_selec[3] == 1) log_alpha_MH += log(safe_pos(Rf_test)) - log(safe_pos(pin.Rf));
-    if (var_selec[4] == 1) log_alpha_MH += log(safe_pos(gam_in_test)) - log(safe_pos(pin.gam_in));
-    if (var_selec[5] == 1) log_alpha_MH += log(safe_pos(gam_out_test)) - log(safe_pos(pin.gam_out));
+    // add proposal factors
+    for (unsigned int i=0; i<6;i++){
+        //log_alpha_MH += stats::gsl_gamma_logpdf(1.0/proposal_factors[i],100,0.01) - stats::gsl_gamma_logpdf(proposal_factors[i],100,0.01);
+    }
 
     // cout<<"var: "<<setw(6)<<parnames[sampled_variable]<<' '
     //    <<"value: "<<setw(15)<<partest(sampled_variable)<<' '
     //    <<"logAlpha: "<<setw(10)<<log_alpha_MH<<endl;
 
-    bool accepted = false;
-    if (log_alpha_MH >= 0.0 || log(gsl_rng_uniform(rng)) < log_alpha_MH) {
-        accepted = true;
+    if(gsl_rng_uniform(rng) < exp(log_alpha_MH)) {
         pout.G_tot  = G_tot_test;
         pout.gamma  = gamma_test;
         pout.DCaT   = DCaT_test;
@@ -648,7 +543,6 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
         pout.gam_out= pin.gam_out;
     }
 
-    record_parameter_update(var_selec, accepted);
 
 }
 

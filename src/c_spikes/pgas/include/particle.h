@@ -57,7 +57,6 @@ class Trajectory
 
 class SMC{
     public:
-        static constexpr unsigned int NUM_KINETIC_PARAMS = 6;
 
         SMC(string,int,constpar&,bool,int seed=0, unsigned int maxlen=0, string GParam_file=""); 
         SMC(arma::vec,arma::vec,int,constpar&,bool,int seed=0, unsigned int maxlen=0, string GParam_file=""); 
@@ -77,7 +76,6 @@ class SMC{
         void MCMC(int iterations);
 
         void sampleParameters(const param&, param &, Trajectory&);
-        void print_parameter_sampler_summary() const;
 
         unsigned int nparticles;
         unsigned int TIME;
@@ -90,21 +88,10 @@ class SMC{
         GCaMP* model;
 
     private:
-        void init_parameter_sampler_state();
-        void maybe_adapt_parameter_sampler(unsigned int parameter_index);
-        void record_parameter_update(const unsigned int* selected_variables, bool accepted);
         gsl_rng *rng;
         arma::mat tracemat;
         constpar *constants;
         bool verbose;
-        double mh_log_prop_sd[NUM_KINETIC_PARAMS];
-        unsigned int mh_attempts[NUM_KINETIC_PARAMS];
-        unsigned int mh_accepts[NUM_KINETIC_PARAMS];
-        unsigned int mh_window_attempts[NUM_KINETIC_PARAMS];
-        unsigned int mh_window_accepts[NUM_KINETIC_PARAMS];
-        unsigned int mh_total_parameter_proposals;
-        unsigned int mh_adapt_warmup_updates;
-        unsigned int mh_adapt_interval;
 
 };
 

@@ -208,10 +208,6 @@ void Analyzer::run() {
         if (verbose) cout << "iteration:" << setw(5) << i << ", spikes: " << setw(5) << arma::accu(traj_sam1.S) << '\r' << flush;
     }
 
-    if (constants.SAMPLE_PARAMETERS) {
-        sampler.print_parameter_sampler_summary();
-    }
-
     parsamples.close();
     trajsamples.close();
 
