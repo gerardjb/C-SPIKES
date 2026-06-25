@@ -27,6 +27,10 @@ from c_spikes.inference.pgas import (
     PGAS_BM_SIGMA_DEFAULT,
     PGAS_BM_SIGMA_MAX,
     PGAS_BM_SIGMA_MIN,
+    PGAS_NOISE_CALIBRATION_GRANULARITIES,
+    PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT,
+    PGAS_NOISE_CALIBRATION_SCOPES,
+    PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT,
     PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
 )
 
@@ -151,6 +155,26 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="When auto-calibrating bm_sigma, estimate from low-activity regions masked around spikes.",
     )
     parser.add_argument(
+        "--pgas-noise-calibration-scope",
+        choices=PGAS_NOISE_CALIBRATION_SCOPES,
+        default=PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT,
+        help=(
+            "Data used when auto-calibrating PGAS bm/sigma2. 'inference' uses the "
+            "same edge-trimmed windows passed to PGAS; 'full' uses the full selected "
+            "epochs/trials while inference and evaluation still use --edges-path."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-noise-calibration-granularity",
+        choices=PGAS_NOISE_CALIBRATION_GRANULARITIES,
+        default=PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT,
+        help=(
+            "Granularity for auto-calibrating PGAS bm/sigma2. 'dataset' writes one "
+            "constants file shared by all selected trials; 'trial' writes per-trial "
+            "constants and requires --pgas-bm-sigma=auto."
+        ),
+    )
+    parser.add_argument(
         "--pgas-sigma2-target",
         type=str,
         default=None,
@@ -267,6 +291,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         pgas_sigma2_target=_parse_optional_float(args.pgas_sigma2_target),
         pgas_sigma2_alpha=_parse_optional_float(args.pgas_sigma2_alpha),
         pgas_sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
+        pgas_noise_calibration_scope=str(args.pgas_noise_calibration_scope),
+        pgas_noise_calibration_granularity=str(args.pgas_noise_calibration_granularity),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),
         run_tag=args.run_tag,
         trialwise_correlations=bool(args.trialwise_correlations),

@@ -235,6 +235,25 @@ def _build_cli_command(
     elif config.get("sigma2_target") is not None or config.get("sigma2_alpha") is not None:
         print(f"[warn] {run_tag}: commit does not expose sigma2 prior knobs; ignoring.")
 
+    if "noise_calibration_modes" in features:
+        _add_if_present(
+            cmd,
+            "--pgas-noise-calibration-scope",
+            config.get("noise_calibration_scope"),
+        )
+        _add_if_present(
+            cmd,
+            "--pgas-noise-calibration-granularity",
+            config.get("noise_calibration_granularity"),
+        )
+    elif (
+        config.get("noise_calibration_scope") is not None
+        or config.get("noise_calibration_granularity") is not None
+    ):
+        print(
+            f"[warn] {run_tag}: commit does not expose noise-calibration modes; ignoring."
+        )
+
     _add_if_present(cmd, "--pgas-resample-fs", config.get("pgas_resample_fs"))
     _add_if_present(cmd, "--pgas-maxspikes", config.get("pgas_maxspikes"))
     if _as_bool(config.get("pgas_c0_first_y"), default=False):

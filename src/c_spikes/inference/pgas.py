@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import re
@@ -32,6 +32,10 @@ PGAS_BM_SIGMA_MAX: float = 5e-1
 PGAS_SIGMA2_TARGET_MIN: float = 5e-6
 PGAS_SIGMA2_TARGET_MAX: float = 8e-2
 PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT: float = 4.0
+PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT: str = "inference"
+PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT: str = "dataset"
+PGAS_NOISE_CALIBRATION_SCOPES: Tuple[str, ...] = ("inference", "full")
+PGAS_NOISE_CALIBRATION_GRANULARITIES: Tuple[str, ...] = ("dataset", "trial")
 
 
 @dataclass
@@ -54,6 +58,8 @@ class PgasConfig:
     sigma2_target: Optional[float] = None
     sigma2_alpha: Optional[float] = None
     sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+    noise_calibration_scope: str = PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
+    noise_calibration_granularity: str = PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
     edges: Optional[np.ndarray] = None
     use_cache: bool = True
 
@@ -72,6 +78,26 @@ def validate_bm_sigma_bounds(min_sigma: float, max_sigma: float) -> Tuple[float,
     return min_sigma, max_sigma
 
 
+def normalize_noise_calibration_scope(scope: str) -> str:
+    token = str(scope).strip().lower()
+    if token not in PGAS_NOISE_CALIBRATION_SCOPES:
+        raise ValueError(
+            "noise_calibration_scope must be one of "
+            f"{PGAS_NOISE_CALIBRATION_SCOPES}; got {scope!r}."
+        )
+    return token
+
+
+def normalize_noise_calibration_granularity(granularity: str) -> str:
+    token = str(granularity).strip().lower()
+    if token not in PGAS_NOISE_CALIBRATION_GRANULARITIES:
+        raise ValueError(
+            "noise_calibration_granularity must be one of "
+            f"{PGAS_NOISE_CALIBRATION_GRANULARITIES}; got {granularity!r}."
+        )
+    return token
+
+
 @dataclass
 class PgasNoiseCalibration:
     bm_sigma: float
@@ -81,6 +107,19 @@ class PgasNoiseCalibration:
     qdt: float
     n_samples: int
     used_low_activity_mask: bool
+
+
+@dataclass
+class PgasNoiseSettings:
+    bm_sigma: float
+    sigma2_target: Optional[float]
+    sigma2_alpha: Optional[float]
+    sigma2_beta: Optional[float]
+    sigma2_prior_strength: float
+    constants_path: Path
+    calibration: Optional[PgasNoiseCalibration]
+    noise_calibration: Optional[Dict[str, object]]
+    cfg: Dict[str, object]
 
 
 def maxspikes_for_rate(target_fs: Optional[float], native_fs: float) -> int:
@@ -393,42 +432,36 @@ def estimate_noise_calibration_for_trials(
     )
 
 
-def run_pgas_inference(
-    trials: Sequence[TrialSeries],
-    raw_fs: float,
-    spike_times: np.ndarray,
+def _noise_calibration_metadata(
+    calibration: Optional[PgasNoiseCalibration],
+) -> Optional[Dict[str, object]]:
+    if calibration is None:
+        return None
+    return {
+        "method": "two_timescale_robust_diff",
+        "diff_var": float(calibration.diff_var),
+        "diff2_var": float(calibration.diff2_var),
+        "qdt": float(calibration.qdt),
+        "n_samples": int(calibration.n_samples),
+        "used_low_activity_mask": bool(calibration.used_low_activity_mask),
+        "clip_percentiles": [5.0, 95.0],
+    }
+
+
+def _build_pgas_noise_settings(
+    *,
     config: PgasConfig,
-) -> MethodResult:
-    trials_for_pgas: Sequence[TrialSeries]
-    if config.edges is not None:
-        trials_for_pgas = trim_trials_by_edges(trials, config.edges)
-    else:
-        trials_for_pgas = list(trials)
-
-    resample_fs_val = config.resample_fs if config.resample_fs is not None else raw_fs
-
-    if config.resample_fs is not None:
-        trials_resampled = resample_trials_to_fs(trials_for_pgas, config.resample_fs)
-    else:
-        trials_resampled = list(trials_for_pgas)
-    from .types import flatten_trials
-
-    time_flat, trace_flat = flatten_trials(trials_resampled)
-    trace_hash = hash_series(time_flat, trace_flat)
-    input_fs = compute_sampling_rate(time_flat)
-    maxspikes = (
-        config.maxspikes
-        if config.maxspikes is not None
-        else maxspikes_for_rate(input_fs, raw_fs)
-    )
-    bm_sigma_min, bm_sigma_max = validate_bm_sigma_bounds(
-        config.bm_sigma_min,
-        config.bm_sigma_max,
-    )
+    maxspikes: int,
+    calibration_trials: Sequence[TrialSeries],
+    spike_times: np.ndarray,
+    input_fs: float,
+    bm_sigma_min: float,
+    bm_sigma_max: float,
+) -> PgasNoiseSettings:
     calibration: Optional[PgasNoiseCalibration] = None
     if config.bm_sigma is None:
         calibration = estimate_noise_calibration_for_trials(
-            trials_for_pgas,
+            calibration_trials,
             spike_times,
             input_fs,
             config.bm_sigma_gap_s,
@@ -439,6 +472,7 @@ def run_pgas_inference(
         bm_sigma = float(calibration.bm_sigma)
     else:
         bm_sigma = float(config.bm_sigma)
+
     sigma2_target = (
         float(config.sigma2_target)
         if config.sigma2_target is not None
@@ -448,7 +482,11 @@ def run_pgas_inference(
     sigma2_alpha_effective: Optional[float] = None
     sigma2_beta_effective: Optional[float] = None
     if sigma2_target is not None:
-        sigma2_target_effective, sigma2_alpha_effective, sigma2_beta_effective = map_sigma2_target_to_ig_params(
+        (
+            sigma2_target_effective,
+            sigma2_alpha_effective,
+            sigma2_beta_effective,
+        ) = map_sigma2_target_to_ig_params(
             sigma2_target,
             sigma2_alpha=config.sigma2_alpha,
             sigma2_prior_strength=config.sigma2_prior_strength,
@@ -469,57 +507,223 @@ def run_pgas_inference(
         sigma2_alpha=sigma2_alpha_effective if config.sigma2_alpha is not None else None,
         sigma2_prior_strength=sigma2_prior_strength_effective,
     )
+    noise_calibration = _noise_calibration_metadata(calibration)
+
+    cfg: Dict[str, object] = {
+        "constants_file": str(constants_path),
+        "bm_sigma": bm_sigma,
+    }
+    if sigma2_target_effective is not None:
+        cfg["sigma2_target"] = float(sigma2_target_effective)
+    if sigma2_alpha_effective is not None:
+        cfg["sigma2_alpha"] = float(sigma2_alpha_effective)
+    if sigma2_target_effective is not None:
+        cfg["sigma2_prior_strength"] = float(sigma2_prior_strength_effective)
+    if noise_calibration is not None:
+        cfg["noise_calibration"] = noise_calibration
+
+    return PgasNoiseSettings(
+        bm_sigma=bm_sigma,
+        sigma2_target=sigma2_target_effective,
+        sigma2_alpha=sigma2_alpha_effective,
+        sigma2_beta=sigma2_beta_effective,
+        sigma2_prior_strength=sigma2_prior_strength_effective,
+        constants_path=constants_path,
+        calibration=calibration,
+        noise_calibration=noise_calibration,
+        cfg=cfg,
+    )
+
+
+def run_pgas_inference(
+    trials: Sequence[TrialSeries],
+    raw_fs: float,
+    spike_times: np.ndarray,
+    config: PgasConfig,
+) -> MethodResult:
+    trials_input = list(trials)
+    noise_scope = normalize_noise_calibration_scope(config.noise_calibration_scope)
+    noise_granularity = normalize_noise_calibration_granularity(
+        config.noise_calibration_granularity
+    )
+    if noise_granularity == "trial" and config.bm_sigma is not None:
+        raise ValueError(
+            "per-trial PGAS noise calibration requires --pgas-bm-sigma=auto "
+            "(PgasConfig.bm_sigma=None)."
+        )
+
+    trials_for_pgas: Sequence[TrialSeries]
+    if config.edges is not None:
+        trials_for_pgas = trim_trials_by_edges(trials_input, config.edges)
+    else:
+        trials_for_pgas = list(trials_input)
+
+    calibration_source_trials = (
+        trials_for_pgas if noise_scope == "inference" else trials_input
+    )
+    if len(calibration_source_trials) != len(trials_for_pgas):
+        raise ValueError(
+            "PGAS calibration and inference trial counts differ. "
+            f"calibration={len(calibration_source_trials)}, inference={len(trials_for_pgas)}"
+        )
+
+    if config.resample_fs is not None:
+        trials_resampled = resample_trials_to_fs(trials_for_pgas, config.resample_fs)
+    else:
+        trials_resampled = list(trials_for_pgas)
+    from .types import flatten_trials
+
+    time_flat, trace_flat = flatten_trials(trials_resampled)
+    trace_hash = hash_series(time_flat, trace_flat)
+    input_fs = compute_sampling_rate(time_flat)
+    maxspikes = (
+        config.maxspikes
+        if config.maxspikes is not None
+        else maxspikes_for_rate(input_fs, raw_fs)
+    )
+    bm_sigma_min, bm_sigma_max = validate_bm_sigma_bounds(
+        config.bm_sigma_min,
+        config.bm_sigma_max,
+    )
     label_token = format_tag_token(config.downsample_label)
     pgas_resample_token = "raw" if config.resample_fs is None else format_tag_token(f"{config.resample_fs:g}")
-    bm_token = format_tag_token(f"{bm_sigma:.3g}")
-    run_tag = f"{config.dataset_tag}_s{label_token}_ms{maxspikes}_rs{pgas_resample_token}_bm{bm_token}"
-    if sigma2_target_effective is not None:
-        s2_token = format_tag_token(f"{sigma2_target_effective:.3g}")
-        run_tag = f"{run_tag}_s2{s2_token}"
-        if config.sigma2_alpha is not None:
+    run_tag_base = (
+        f"{config.dataset_tag}_s{label_token}_ms{maxspikes}_rs{pgas_resample_token}"
+    )
+    mode_tag_suffix = ""
+    if noise_scope != PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT:
+        mode_tag_suffix = f"{mode_tag_suffix}_nc{format_tag_token(noise_scope)}"
+    if noise_granularity != PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT:
+        mode_tag_suffix = f"{mode_tag_suffix}_ng{format_tag_token(noise_granularity)}"
+
+    dataset_settings: Optional[PgasNoiseSettings] = None
+    trial_settings: Optional[List[PgasNoiseSettings]] = None
+    if noise_granularity == "trial":
+        trial_settings = [
+            _build_pgas_noise_settings(
+                config=config,
+                maxspikes=maxspikes,
+                calibration_trials=[calibration_trial],
+                spike_times=spike_times,
+                input_fs=input_fs,
+                bm_sigma_min=bm_sigma_min,
+                bm_sigma_max=bm_sigma_max,
+            )
+            for calibration_trial in calibration_source_trials
+        ]
+        run_tag = f"{run_tag_base}_bmtrial{mode_tag_suffix}"
+        bm_sigma_values = [float(setting.bm_sigma) for setting in trial_settings]
+        sigma2_target_values = [
+            float(setting.sigma2_target)
+            for setting in trial_settings
+            if setting.sigma2_target is not None
+        ]
+        sigma2_alpha_values = [
+            float(setting.sigma2_alpha)
+            for setting in trial_settings
+            if setting.sigma2_alpha is not None
+        ]
+        sigma2_beta_values = [
+            float(setting.sigma2_beta)
+            for setting in trial_settings
+            if setting.sigma2_beta is not None
+        ]
+        bm_sigma = float(np.median(bm_sigma_values))
+        sigma2_target_effective = (
+            float(np.median(sigma2_target_values)) if sigma2_target_values else None
+        )
+        sigma2_alpha_effective = (
+            float(np.median(sigma2_alpha_values)) if sigma2_alpha_values else None
+        )
+        sigma2_beta_effective = (
+            float(np.median(sigma2_beta_values)) if sigma2_beta_values else None
+        )
+        sigma2_prior_strength_effective = normalize_sigma2_prior_strength(
+            config.sigma2_prior_strength
+        )
+        noise_calibration = None
+    else:
+        dataset_settings = _build_pgas_noise_settings(
+            config=config,
+            maxspikes=maxspikes,
+            calibration_trials=calibration_source_trials,
+            spike_times=spike_times,
+            input_fs=input_fs,
+            bm_sigma_min=bm_sigma_min,
+            bm_sigma_max=bm_sigma_max,
+        )
+        bm_sigma = dataset_settings.bm_sigma
+        sigma2_target_effective = dataset_settings.sigma2_target
+        sigma2_alpha_effective = dataset_settings.sigma2_alpha
+        sigma2_beta_effective = dataset_settings.sigma2_beta
+        sigma2_prior_strength_effective = dataset_settings.sigma2_prior_strength
+        noise_calibration = dataset_settings.noise_calibration
+        bm_token = format_tag_token(f"{bm_sigma:.3g}")
+        run_tag = f"{run_tag_base}_bm{bm_token}"
+        if sigma2_target_effective is not None:
+            s2_token = format_tag_token(f"{sigma2_target_effective:.3g}")
+            run_tag = f"{run_tag}_s2{s2_token}"
+            if config.sigma2_alpha is not None:
+                a2_token = format_tag_token(f"{sigma2_alpha_effective:.3g}")
+                run_tag = f"{run_tag}_a2{a2_token}"
+            else:
+                p2_token = format_tag_token(f"{sigma2_prior_strength_effective:.3g}")
+                run_tag = f"{run_tag}_p2{p2_token}"
+        elif sigma2_alpha_effective is not None:
             a2_token = format_tag_token(f"{sigma2_alpha_effective:.3g}")
             run_tag = f"{run_tag}_a2{a2_token}"
-        else:
-            p2_token = format_tag_token(f"{sigma2_prior_strength_effective:.3g}")
-            run_tag = f"{run_tag}_p2{p2_token}"
-    elif sigma2_alpha_effective is not None:
-        a2_token = format_tag_token(f"{sigma2_alpha_effective:.3g}")
-        run_tag = f"{run_tag}_a2{a2_token}"
-
-    noise_calibration = None
-    if calibration is not None:
-        noise_calibration = {
-            "method": "two_timescale_robust_diff",
-            "diff_var": float(calibration.diff_var),
-            "diff2_var": float(calibration.diff2_var),
-            "qdt": float(calibration.qdt),
-            "n_samples": int(calibration.n_samples),
-            "used_low_activity_mask": bool(calibration.used_low_activity_mask),
-            "clip_percentiles": [5.0, 95.0],
-        }
+        run_tag = f"{run_tag}{mode_tag_suffix}"
 
     cfg_dict = {
         "niter": config.niter,
         "burnin": config.burnin,
         "downsample_target": config.downsample_label,
-        "constants_file": str(constants_path),
         "gparam_file": str(config.gparam_file),
         "maxspikes": maxspikes,
         "input_resample_fs": float(input_fs),
-        "bm_sigma": bm_sigma,
         "bm_sigma_bounds": {
             "min": float(bm_sigma_min),
             "max": float(bm_sigma_max),
         },
     }
-    if sigma2_target_effective is not None:
-        cfg_dict["sigma2_target"] = float(sigma2_target_effective)
-    if sigma2_alpha_effective is not None:
-        cfg_dict["sigma2_alpha"] = float(sigma2_alpha_effective)
-    if sigma2_target_effective is not None:
-        cfg_dict["sigma2_prior_strength"] = float(sigma2_prior_strength_effective)
-    if noise_calibration is not None:
-        cfg_dict["noise_calibration"] = noise_calibration
+    if dataset_settings is not None:
+        cfg_dict.update(dataset_settings.cfg)
+    else:
+        cfg_dict["constants_file"] = "per-trial"
+        cfg_dict["bm_sigma"] = bm_sigma
+        cfg_dict["bm_sigma_by_trial"] = [
+            float(setting.bm_sigma) for setting in trial_settings or []
+        ]
+        sigma2_by_trial = [
+            (
+                float(setting.sigma2_target)
+                if setting.sigma2_target is not None
+                else None
+            )
+            for setting in trial_settings or []
+        ]
+        cfg_dict["sigma2_target_by_trial"] = sigma2_by_trial
+        cfg_dict["trial_noise_calibration"] = [
+            {
+                "trial_index": int(idx),
+                **ensure_serializable(setting.cfg),
+            }
+            for idx, setting in enumerate(trial_settings or [])
+        ]
+        if sigma2_target_effective is not None:
+            cfg_dict["sigma2_target"] = float(sigma2_target_effective)
+        if sigma2_alpha_effective is not None:
+            cfg_dict["sigma2_alpha"] = float(sigma2_alpha_effective)
+        if sigma2_target_effective is not None:
+            cfg_dict["sigma2_prior_strength"] = float(
+                sigma2_prior_strength_effective
+            )
+    if (
+        noise_scope != PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
+        or noise_granularity != PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+    ):
+        cfg_dict["noise_calibration_scope"] = noise_scope
+        cfg_dict["noise_calibration_granularity"] = noise_granularity
     if config.edges is not None:
         cfg_dict["edge_hash"] = hash_array(config.edges)
 
@@ -543,13 +747,35 @@ def run_pgas_inference(
                 cached.metadata.setdefault("sigma2_beta", sigma2_beta_effective)
             if noise_calibration is not None:
                 cached.metadata.setdefault("noise_calibration", noise_calibration)
+            cached.metadata.setdefault("noise_calibration_scope", noise_scope)
+            cached.metadata.setdefault("noise_calibration_granularity", noise_granularity)
+            if trial_settings is not None:
+                cached.metadata.setdefault(
+                    "bm_sigma_by_trial",
+                    [float(setting.bm_sigma) for setting in trial_settings],
+                )
+                cached.metadata.setdefault(
+                    "sigma2_target_by_trial",
+                    [
+                        (
+                            float(setting.sigma2_target)
+                            if setting.sigma2_target is not None
+                            else None
+                        )
+                        for setting in trial_settings
+                    ],
+                )
             return cached
 
         # Backwards-compatible cache lookup for older runs (e.g. `results/full_evaluation_by_run/base`)
         # whose PGAS caches were stored under `<dataset>_ms{maxspikes}` with numeric downsample targets.
         #
         # This keeps `--use-cache` effective even if the tagging/config signature evolved.
-        if config.resample_fs is None:
+        if (
+            config.resample_fs is None
+            and noise_scope == PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
+            and noise_granularity == PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+        ):
             legacy_tag = f"{config.dataset_tag}_ms{maxspikes}"
             if str(config.downsample_label).strip().lower() == "raw":
                 legacy_downsample = "raw"
@@ -593,10 +819,16 @@ def run_pgas_inference(
     trial_list = list(trials_resampled)
     for trial_idx, trial in enumerate(trial_list):
         tag = f"{run_tag}_trial{trial_idx}"
+        if trial_settings is not None:
+            constants_for_trial = trial_settings[trial_idx].constants_path
+        elif dataset_settings is not None:
+            constants_for_trial = dataset_settings.constants_path
+        else:
+            raise RuntimeError("PGAS noise settings were not initialized.")
         analyzer = pgas_mod.Analyzer(
             time=np.ascontiguousarray(trial.times, dtype=np.float64),
             data=np.ascontiguousarray(trial.values, dtype=np.float64),
-            constants_file=str(constants_path),
+            constants_file=str(constants_for_trial),
             output_folder=str(output_root),
             column=1,
             tag=tag,
@@ -642,6 +874,24 @@ def run_pgas_inference(
         traces.metadata.setdefault("sigma2_beta", sigma2_beta_effective)
     if noise_calibration is not None:
         traces.metadata.setdefault("noise_calibration", noise_calibration)
+    traces.metadata.setdefault("noise_calibration_scope", noise_scope)
+    traces.metadata.setdefault("noise_calibration_granularity", noise_granularity)
+    if trial_settings is not None:
+        traces.metadata.setdefault(
+            "bm_sigma_by_trial",
+            [float(setting.bm_sigma) for setting in trial_settings],
+        )
+        traces.metadata.setdefault(
+            "sigma2_target_by_trial",
+            [
+                (
+                    float(setting.sigma2_target)
+                    if setting.sigma2_target is not None
+                    else None
+                )
+                for setting in trial_settings
+            ],
+        )
     traces.metadata.setdefault("cache_tag", run_tag)
     save_method_cache("pgas", run_tag, traces, cfg_dict, trace_hash)
     return traces
