@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import re
@@ -987,8 +987,23 @@ def run_pgas_inference(
                 for setting in trial_settings
             ],
         )
+    traces.metadata.setdefault("pgas_samples_cached", True)
+    traces.metadata.setdefault("pgas_samples_schema_version", 1)
     traces.metadata.setdefault("cache_tag", run_tag)
-    save_method_cache("pgas", run_tag, traces, cfg_dict, trace_hash)
+    pgas_cache_payload = build_pgas_output_cache_payload(
+        trials=trial_list,
+        dataset_tag=run_tag,
+        output_root=output_root,
+        burnin=config.burnin,
+    )
+    save_method_cache(
+        "pgas",
+        run_tag,
+        traces,
+        cfg_dict,
+        trace_hash,
+        extra_payload=pgas_cache_payload,
+    )
     return traces
 
 
@@ -1104,6 +1119,177 @@ def load_pgas_component_series(
         "burst_mean": burst,
         "calcium_mean": calcium,
         "spikes_map": map_values,
+    }
+
+
+def _as_row_object_array(items: Sequence[Dict[str, Any]]) -> np.ndarray:
+    arr = np.empty((1, len(items)), dtype=object)
+    for idx, item in enumerate(items):
+        arr[0, idx] = item
+    return arr
+
+
+def _read_pgas_trajectory_file(dat_file: Path, burnin: int) -> Dict[str, Any]:
+    with dat_file.open("r", encoding="utf-8") as fh:
+        header = fh.readline().strip()
+    columns = [token.strip() for token in header.split(",") if token.strip()]
+    data = np.genfromtxt(dat_file, delimiter=",", skip_header=1)
+    if data.ndim == 1:
+        data = np.asarray([data], dtype=np.float64)
+    data = np.asarray(data, dtype=np.float64)
+    if data.size == 0 or data.shape[1] < 5:
+        raise ValueError(f"PGAS trajectory file has too few columns: {dat_file}")
+
+    index = data[:, 0]
+    time_bins = int(np.sum(index == 0))
+    if time_bins <= 0:
+        raise ValueError(f"PGAS trajectory file has no TIME axis: {dat_file}")
+    n_samples = int(data.shape[0] // time_bins)
+    if n_samples <= 0 or n_samples * time_bins != data.shape[0]:
+        raise ValueError(
+            f"PGAS trajectory rows {data.shape[0]} are not divisible by TIME={time_bins}: {dat_file}"
+        )
+    matrices: Dict[str, np.ndarray] = {}
+    for col_idx, name in enumerate(columns):
+        if col_idx >= data.shape[1]:
+            continue
+        matrices[name] = data[:, col_idx].reshape((n_samples, time_bins))
+    if "Y" not in matrices:
+        matrices["Y"] = np.full((n_samples, time_bins), np.nan, dtype=np.float64)
+
+    burnin_eff = int(max(0, min(int(burnin), n_samples - 1)))
+    sample_slice = slice(burnin_eff, None)
+    post_mean = {
+        name: values[sample_slice, :].mean(axis=0)
+        for name, values in matrices.items()
+        if name != "index"
+    }
+    baseline_matrix = matrices.get("B", np.full((n_samples, time_bins), np.nan))
+    calcium_matrix = matrices.get("C", np.full((n_samples, time_bins), np.nan))
+    reconstruction_mean = calcium_matrix[sample_slice, :].mean(axis=0) + baseline_matrix[
+        sample_slice, :
+    ].mean(axis=0)
+    return {
+        "path": str(dat_file),
+        "columns": np.asarray(columns, dtype=object),
+        "n_samples": np.asarray([[n_samples]], dtype=np.int64),
+        "n_time": np.asarray([[time_bins]], dtype=np.int64),
+        "burnin": np.asarray([[burnin_eff]], dtype=np.int64),
+        "index": matrices.get("index", np.empty((n_samples, time_bins))),
+        "burst": matrices.get("burst", np.full((n_samples, time_bins), np.nan)),
+        "baseline": matrices.get("B", np.full((n_samples, time_bins), np.nan)),
+        "spikes": matrices.get("S", np.full((n_samples, time_bins), np.nan)),
+        "calcium": matrices.get("C", np.full((n_samples, time_bins), np.nan)),
+        "observation": matrices.get("Y", np.full((n_samples, time_bins), np.nan)),
+        "post_burnin_mean": {
+            "burst": post_mean.get("burst", np.full(time_bins, np.nan)),
+            "baseline": post_mean.get("B", np.full(time_bins, np.nan)),
+            "spikes": post_mean.get("S", np.full(time_bins, np.nan)),
+            "calcium": post_mean.get("C", np.full(time_bins, np.nan)),
+            "reconstruction": reconstruction_mean,
+            "observation": post_mean.get("Y", np.full(time_bins, np.nan)),
+        },
+    }
+
+
+def _read_pgas_param_file(param_file: Path, burnin: int) -> Dict[str, Any]:
+    with param_file.open("r", encoding="utf-8") as fh:
+        header = fh.readline().strip()
+    columns = [token.strip() for token in header.split(",") if token.strip()]
+    data = np.genfromtxt(param_file, delimiter=",", skip_header=1)
+    data = np.atleast_2d(np.asarray(data, dtype=np.float64))
+    if data.size == 0:
+        data = np.empty((0, len(columns)), dtype=np.float64)
+    n_samples = int(data.shape[0])
+    burnin_eff = int(max(0, min(int(burnin), n_samples - 1))) if n_samples else 0
+    post = data[burnin_eff:, :] if n_samples else data
+    return {
+        "path": str(param_file),
+        "columns": np.asarray(columns, dtype=object),
+        "values": data,
+        "burnin": np.asarray([[burnin_eff]], dtype=np.int64),
+        "post_burnin_mean": post.mean(axis=0) if post.size else np.full(len(columns), np.nan),
+    }
+
+
+def _read_pgas_logp_file(log_file: Path, burnin: int) -> Dict[str, Any]:
+    values = np.atleast_1d(np.genfromtxt(log_file))
+    values = np.asarray(values, dtype=np.float64).ravel()
+    n_samples = int(values.size)
+    burnin_eff = int(max(0, min(int(burnin), n_samples - 1))) if n_samples else 0
+    post = values[burnin_eff:] if n_samples else values
+    if post.size:
+        map_offset = int(np.argmax(post))
+        map_index = int(map_offset + burnin_eff)
+        map_logp = float(values[map_index])
+    else:
+        map_index = -1
+        map_logp = np.nan
+    return {
+        "path": str(log_file),
+        "values": values,
+        "burnin": np.asarray([[burnin_eff]], dtype=np.int64),
+        "post_burnin_mean": np.asarray([[float(post.mean()) if post.size else np.nan]]),
+        "post_burnin_max": np.asarray([[map_logp]]),
+        "map_sample_index": np.asarray([[map_index]], dtype=np.int64),
+    }
+
+
+def build_pgas_output_cache_payload(
+    trials: Sequence[TrialSeries],
+    dataset_tag: str,
+    output_root: Path,
+    burnin: int,
+) -> Dict[str, Any]:
+    trajectory_items: List[Dict[str, Any]] = []
+    parameter_items: List[Dict[str, Any]] = []
+    logp_items: List[Dict[str, Any]] = []
+    for trial_idx, trial in enumerate(trials):
+        tag = f"{dataset_tag}_trial{trial_idx}"
+        traj_file = output_root / f"traj_samples_{tag}.dat"
+        param_file = output_root / f"param_samples_{tag}.dat"
+        log_file = output_root / f"logp_{tag}.dat"
+        if not traj_file.exists() or not param_file.exists() or not log_file.exists():
+            raise FileNotFoundError(
+                "Missing PGAS output files for cache payload. Expected "
+                f"{traj_file}, {param_file}, and {log_file}."
+            )
+        trajectory = _read_pgas_trajectory_file(traj_file, burnin)
+        trajectory["tag"] = tag
+        trajectory["trial_index"] = np.asarray([[trial_idx]], dtype=np.int64)
+        trajectory["time_stamps"] = np.asarray(trial.times, dtype=np.float64)
+        parameters = _read_pgas_param_file(param_file, burnin)
+        parameters["tag"] = tag
+        parameters["trial_index"] = np.asarray([[trial_idx]], dtype=np.int64)
+        logp = _read_pgas_logp_file(log_file, burnin)
+        logp["tag"] = tag
+        logp["trial_index"] = np.asarray([[trial_idx]], dtype=np.int64)
+        map_idx = int(np.asarray(logp["map_sample_index"]).squeeze())
+        n_samples = int(np.asarray(trajectory["n_samples"]).squeeze())
+        if 0 <= map_idx < n_samples:
+            trajectory["map"] = {
+                "sample_index": np.asarray([[map_idx]], dtype=np.int64),
+                "logp": np.asarray([[float(np.asarray(logp["post_burnin_max"]).squeeze())]]),
+                "burst": trajectory["burst"][map_idx, :],
+                "baseline": trajectory["baseline"][map_idx, :],
+                "spikes": trajectory["spikes"][map_idx, :],
+                "calcium": trajectory["calcium"][map_idx, :],
+                "reconstruction": trajectory["calcium"][map_idx, :] + trajectory["baseline"][map_idx, :],
+                "observation": trajectory["observation"][map_idx, :],
+            }
+
+        trajectory_items.append(trajectory)
+        parameter_items.append(parameters)
+        logp_items.append(logp)
+
+    return {
+        "pgas_samples": {
+            "schema_version": np.asarray([[1]], dtype=np.int64),
+            "description": "Full PGAS .dat outputs packed into MATLAB structs; trajectory matrices are n_samples x n_time.",
+            "trajectory_samples": _as_row_object_array(trajectory_items),
+            "parameter_samples": _as_row_object_array(parameter_items),
+            "logp": _as_row_object_array(logp_items),
+        }
     }
 
 

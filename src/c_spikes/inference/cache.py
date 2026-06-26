@@ -47,6 +47,7 @@ def save_method_cache(
     trace_hash: str,
     *,
     cache_root: Optional[Path] = None,
+    extra_payload: Optional[Mapping[str, Any]] = None,
 ) -> None:
     config_hash, config_ser = compute_config_signature(dict(config))
     mat_path, meta_path = get_cache_paths(method, dataset_tag, config_hash, cache_root=cache_root)
@@ -58,6 +59,8 @@ def save_method_cache(
         payload["reconstruction"] = np.asarray(result.reconstruction)
     if result.discrete_spikes is not None:
         payload["discrete_spikes"] = np.asarray(result.discrete_spikes)
+    if extra_payload:
+        payload.update(dict(extra_payload))
     sio.savemat(mat_path, payload, do_compression=True)
     meta = {
         "dataset": dataset_tag,
