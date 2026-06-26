@@ -10,6 +10,7 @@ import numpy as np
 import scipy.io as sio
 
 from c_spikes.gui.data import DataManager, EpochRef
+from c_spikes.inference.pgas_cache import PgasSamplesCache, load_pgas_samples_from_cache
 from c_spikes.inference.types import compute_sampling_rate
 from c_spikes.model_eval.model_eval import smooth_spike_train
 
@@ -168,37 +169,54 @@ def load_biophys_smc_payload(
         dtype=np.float64,
     ).ravel()
 
-    fallback_output_root = Path(data_dir) / "spike_inference" / entry.run_tag / "pgas_output"
-    output_root_raw = str(metadata.get("output_root") or "").strip()
-    output_root = Path(output_root_raw) if output_root_raw else fallback_output_root
-    if not output_root.exists():
-        output_root = fallback_output_root
-    traj_file = _pick_trial_file(
-        output_root,
-        prefix="traj_samples",
-        cache_tag=cache_tag,
-        trial_index=entry.trial_index,
+    samples_cache = _load_pgas_samples_cache(entry.mat_path)
+    traj_sample = _select_cache_item(
+        samples_cache.trajectory_samples if samples_cache is not None else (),
+        entry.trial_index,
     )
-    param_file = _pick_trial_file(
-        output_root,
-        prefix="param_samples",
-        cache_tag=cache_tag,
-        trial_index=entry.trial_index,
+    param_sample = _select_cache_item(
+        samples_cache.parameter_samples if samples_cache is not None else (),
+        entry.trial_index,
     )
-    if traj_file is None:
-        trial_suffix = "" if entry.trial_index is None else f" (trial {entry.trial_index})"
-        raise FileNotFoundError(
-            f"No trajectory file found for cache tag '{cache_tag}'{trial_suffix} in {output_root}"
-        )
-    if param_file is None:
-        trial_suffix = "" if entry.trial_index is None else f" (trial {entry.trial_index})"
-        raise FileNotFoundError(
-            f"No parameter trace file found for cache tag '{cache_tag}'{trial_suffix} in {output_root}"
-        )
 
-    traj = _load_traj_stats(traj_file, burnin=burnin)
-    mat_data = sio.loadmat(entry.mat_path, squeeze_me=True)
-    run_time = np.asarray(mat_data.get("time_stamps", []), dtype=np.float64).ravel()
+    output_root = _entry_output_root(Path(data_dir), entry, metadata)
+    if traj_sample is not None:
+        traj = _load_traj_stats_from_cache(traj_sample, burnin=burnin)
+    else:
+        traj_file = _pick_trial_file(
+            output_root,
+            prefix="traj_samples",
+            cache_tag=cache_tag,
+            trial_index=entry.trial_index,
+        )
+        if traj_file is None:
+            trial_suffix = "" if entry.trial_index is None else f" (trial {entry.trial_index})"
+            raise FileNotFoundError(
+                f"No trajectory file found for cache tag '{cache_tag}'{trial_suffix} in {output_root}"
+            )
+        traj = _load_traj_stats(traj_file, burnin=burnin)
+
+    if param_sample is not None:
+        param_names, param_values = list(param_sample.columns), param_sample.values
+    else:
+        param_file = _pick_trial_file(
+            output_root,
+            prefix="param_samples",
+            cache_tag=cache_tag,
+            trial_index=entry.trial_index,
+        )
+        if param_file is None:
+            trial_suffix = "" if entry.trial_index is None else f" (trial {entry.trial_index})"
+            raise FileNotFoundError(
+                f"No parameter trace file found for cache tag '{cache_tag}'{trial_suffix} in {output_root}"
+            )
+        param_names, param_values = _load_param_traces(param_file)
+
+    if traj_sample is not None and traj_sample.time_stamps.size:
+        run_time = np.asarray(traj_sample.time_stamps, dtype=np.float64).ravel()
+    else:
+        mat_data = sio.loadmat(entry.mat_path, squeeze_me=True)
+        run_time = np.asarray(mat_data.get("time_stamps", []), dtype=np.float64).ravel()
     if run_time.size == 0:
         run_time = np.asarray(full_time, dtype=np.float64).ravel()
     elif entry.trial_index is not None:
@@ -231,7 +249,6 @@ def load_biophys_smc_payload(
     bc_mean = b_mean + c_mean
 
     gt_smooth_time, gt_smooth = _smooth_ground_truth(full_time, full_spikes)
-    param_names, param_values = _load_param_traces(param_file)
 
     return BiophysSmcPayload(
         run_tag=entry.run_tag,
@@ -367,6 +384,18 @@ def _trial_indices_from_output(output_root: Path, cache_tag: str) -> List[int]:
     return sorted(out)
 
 
+def _trial_indices_from_cache(entry: PgasCacheEntry) -> List[int]:
+    samples = _load_pgas_samples_cache(entry.mat_path)
+    if samples is None:
+        return []
+    out = {
+        int(item.trial_index)
+        for item in samples.trajectory_samples
+        if item.trial_index is not None
+    }
+    return sorted(out)
+
+
 def _single_epoch_id_for_dataset(dataset_stem: str, epoch_refs: Sequence[EpochRef]) -> Optional[str]:
     matches = [ref for ref in epoch_refs if ref.file_path.stem == dataset_stem]
     if len(matches) == 1:
@@ -402,6 +431,8 @@ def _expand_entry_for_trials(
     metadata = _load_entry_metadata(entry)
     output_root = _entry_output_root(data_dir, entry, metadata)
     trial_indices = _trial_indices_from_output(output_root, entry.cache_tag)
+    if not trial_indices:
+        trial_indices = _trial_indices_from_cache(entry)
     dataset_stem = cache_tag_to_dataset_stem(entry.cache_tag)
 
     if not trial_indices:
@@ -597,6 +628,54 @@ def _load_traj_stats(path: Path, *, burnin: int) -> Dict[str, np.ndarray | int]:
     }
 
 
+def _load_traj_stats_from_cache(traj: object, *, burnin: int) -> Dict[str, np.ndarray | int]:
+    values = getattr(traj, "values")
+    burst_mat = _cache_matrix(values, "burst")
+    b_mat = _cache_matrix(values, "baseline")
+    s_mat = _cache_matrix(values, "spikes")
+    c_mat = _cache_matrix(values, "calcium")
+    n_samples = int(getattr(traj, "n_samples") or _first_nonempty_rows(burst_mat, b_mat, s_mat, c_mat))
+    time_len = int(getattr(traj, "n_time") or _first_nonempty_cols(burst_mat, b_mat, s_mat, c_mat))
+    if n_samples <= 0 or time_len <= 0:
+        raise ValueError(f"No PGAS trajectory samples found in cache for tag '{getattr(traj, 'tag', '')}'.")
+    burnin_eff = int(max(0, min(int(burnin), n_samples - 1)))
+    sample_slice = slice(burnin_eff, None)
+    return {
+        "n_samples": n_samples,
+        "burnin_eff": burnin_eff,
+        "time_len": time_len,
+        "burst_mean": np.mean(burst_mat[sample_slice], axis=0),
+        "burst_std": np.std(burst_mat[sample_slice], axis=0),
+        "b_mean": np.mean(b_mat[sample_slice], axis=0),
+        "b_std": np.std(b_mat[sample_slice], axis=0),
+        "s_mean": np.mean(s_mat[sample_slice], axis=0),
+        "s_std": np.std(s_mat[sample_slice], axis=0),
+        "c_mean": np.mean(c_mat[sample_slice], axis=0),
+        "c_std": np.std(c_mat[sample_slice], axis=0),
+    }
+
+
+def _cache_matrix(values: Dict[str, np.ndarray], key: str) -> np.ndarray:
+    arr = np.asarray(values.get(key, np.empty((0, 0))), dtype=np.float64)
+    if arr.ndim == 1:
+        arr = arr.reshape((1, -1))
+    return arr
+
+
+def _first_nonempty_rows(*arrays: np.ndarray) -> int:
+    for arr in arrays:
+        if arr.ndim == 2 and arr.shape[0] > 0:
+            return int(arr.shape[0])
+    return 0
+
+
+def _first_nonempty_cols(*arrays: np.ndarray) -> int:
+    for arr in arrays:
+        if arr.ndim == 2 and arr.shape[1] > 0:
+            return int(arr.shape[1])
+    return 0
+
+
 def _load_param_traces(path: Path) -> Tuple[List[str], np.ndarray]:
     data = np.genfromtxt(path, delimiter=",", names=True, dtype=float)
     if data.size == 0:
@@ -613,6 +692,24 @@ def _load_param_traces(path: Path) -> Tuple[List[str], np.ndarray]:
     cols = [np.asarray(data[name], dtype=np.float64).ravel() for name in names]
     values = np.column_stack(cols) if cols else np.zeros((0, 0), dtype=np.float64)
     return names, values
+
+
+def _load_pgas_samples_cache(mat_path: Path) -> Optional[PgasSamplesCache]:
+    try:
+        return load_pgas_samples_from_cache(mat_path)
+    except Exception:
+        return None
+
+
+def _select_cache_item(items: Sequence[object], trial_index: Optional[int]) -> Optional[object]:
+    if not items:
+        return None
+    if trial_index is None:
+        return items[0] if len(items) == 1 else None
+    for item in items:
+        if getattr(item, "trial_index", None) == int(trial_index):
+            return item
+    return None
 
 
 def _smooth_ground_truth(time: np.ndarray, spike_times: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:

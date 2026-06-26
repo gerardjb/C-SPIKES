@@ -60,11 +60,13 @@ from c_spikes.gui.smc_viz import (
     list_spike_inference_runs,
     load_biophys_smc_payload,
 )
+from c_spikes.inference.pgas_cache import has_pgas_samples
 from c_spikes.inference.pgas import (
     PGAS_BM_SIGMA_MAX,
     PGAS_BM_SIGMA_MIN,
     PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
 )
+from c_spikes.inference.types import MethodResult, compute_config_signature
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -73,6 +75,42 @@ ENS2_ROOT = REPO_ROOT / "Pretrained_models" / "ENS2"
 BIOPHYS_ROOT = REPO_ROOT / "Pretrained_models" / "BiophysML"
 PGAS_PARAMS_ROOT = REPO_ROOT / "parameter_files"
 PGAS_GPARAM_ROOT = REPO_ROOT / "src" / "c_spikes" / "pgas"
+
+
+def _pgas_cache_mat_for_result(
+    *,
+    context: RunContext,
+    fallback_tag: str,
+    result: Optional[MethodResult],
+) -> Optional[Path]:
+    if result is None:
+        return None
+    metadata = result.metadata if isinstance(result.metadata, dict) else {}
+    config = metadata.get("config")
+    if not isinstance(config, dict):
+        return None
+    cache_key, _config_ser = compute_config_signature(config)
+    cache_tag = str(metadata.get("cache_tag") or fallback_tag).strip()
+    if not cache_tag:
+        cache_tag = fallback_tag
+    mat_path = context.cache_root / "pgas" / cache_tag / f"{cache_key}.mat"
+    if not mat_path.exists():
+        return None
+    try:
+        if not has_pgas_samples(mat_path):
+            return None
+    except Exception:
+        return None
+    return mat_path
+
+
+def _param_samples_source_exists(path: Path) -> bool:
+    text = str(path)
+    for marker in ("#trial=", "::trial"):
+        if marker in text:
+            text = text.rsplit(marker, 1)[0]
+            break
+    return Path(text).exists()
 
 
 def _edges_for_epoch(
@@ -196,6 +234,15 @@ class BioMlPgasWorker(QtCore.QThread):
             )
             if "pgas" in run_errors:
                 errors[epoch.epoch_id] = run_errors["pgas"]
+                continue
+            cache_mat = _pgas_cache_mat_for_result(
+                context=self._context,
+                fallback_tag=epoch.epoch_id,
+                result=results.get("pgas"),
+            )
+            if cache_mat is not None:
+                param_paths[epoch.epoch_id] = str(cache_mat)
+                self.status.emit(f"[biophys_ml] PGAS cache: {cache_mat.name}")
                 continue
             try:
                 matches = sorted(
@@ -1826,7 +1873,7 @@ class MainWindow(QtWidgets.QMainWindow):
             loaded: Dict[str, str] = {}
             for epoch_id, param_path in params.items():
                 p = Path(str(param_path))
-                if p.exists():
+                if _param_samples_source_exists(p):
                     loaded[str(epoch_id)] = str(p)
             self._bio_param_samples_by_epoch = loaded
             self._log(f"[biophys_ml] Loaded {len(loaded)} cached param_samples entries.")
@@ -1849,7 +1896,7 @@ class MainWindow(QtWidgets.QMainWindow):
             path = self._bio_param_samples_by_epoch.get(epoch.epoch_id)
             if path:
                 p = Path(path)
-                if p.exists():
+                if _param_samples_source_exists(p):
                     param_paths.append(p)
         if not param_paths:
             if self._bio_use_cache_check.isChecked():

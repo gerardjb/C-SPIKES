@@ -9,6 +9,7 @@ import re
 
 from .cache import load_method_cache, save_method_cache
 from .eval import segment_indices
+from .pgas_cache import PgasSamplesCache, load_pgas_samples_from_cache
 from .smoothing import resample_trials_to_fs
 from .types import (
     MethodResult,
@@ -1050,7 +1051,16 @@ def load_pgas_component_series(
     dataset_tag: str,
     output_root: Path,
     burnin: int,
+    *,
+    cache_mat_path: Optional[Path] = None,
+    samples_cache: Optional[PgasSamplesCache] = None,
 ) -> Dict[str, np.ndarray]:
+    if samples_cache is None and cache_mat_path is not None:
+        try:
+            samples_cache = load_pgas_samples_from_cache(cache_mat_path)
+        except Exception:
+            samples_cache = None
+
     spike_segments: List[np.ndarray] = []
     time_segments: List[np.ndarray] = []
     baseline_segments: List[np.ndarray] = []
@@ -1058,12 +1068,33 @@ def load_pgas_component_series(
     burst_segments: List[np.ndarray] = []
     map_segments: List[np.ndarray] = []
     for trial_idx, trial in enumerate(trials):
+        cache_components = _load_pgas_trial_components_from_cache(
+            samples_cache,
+            trial_idx=trial_idx,
+            burnin=burnin,
+        )
+        if cache_components is not None:
+            trial_times = cache_components["time_stamps"]
+            if trial_times.size == 0:
+                trial_times = trial.times.copy()
+            time_segments.append(np.asarray(trial_times, dtype=np.float64).ravel())
+            spike_segments.append(cache_components["spikes_mean"])
+            baseline_segments.append(cache_components["baseline_mean"])
+            calcium_segments.append(cache_components["calcium_mean"])
+            burst_segments.append(cache_components["burst_mean"])
+            map_segments.append(cache_components["spikes_map"])
+            continue
+
         tag = f"{dataset_tag}_trial{trial_idx}"
         dat_file = output_root / f"traj_samples_{tag}.dat"
         log_file = output_root / f"logp_{tag}.dat"
         if not dat_file.exists() or not log_file.exists():
+            cache_suffix = (
+                "" if cache_mat_path is None else f" or embedded PGAS samples in {cache_mat_path}"
+            )
             raise FileNotFoundError(
-                f"Missing PGAS output files for tag '{tag}'. Expected {dat_file} and {log_file}."
+                f"Missing PGAS output files for tag '{tag}'. Expected {dat_file} and {log_file}"
+                f"{cache_suffix}."
             )
         (
             burst_mean,
@@ -1120,6 +1151,85 @@ def load_pgas_component_series(
         "calcium_mean": calcium,
         "spikes_map": map_values,
     }
+
+
+def _load_pgas_trial_components_from_cache(
+    samples_cache: Optional[PgasSamplesCache],
+    *,
+    trial_idx: int,
+    burnin: int,
+) -> Optional[Dict[str, np.ndarray]]:
+    if samples_cache is None:
+        return None
+    traj = samples_cache.trajectory_for_trial(trial_idx)
+    if traj is None and len(samples_cache.trajectory_samples) == 1 and trial_idx == 0:
+        traj = samples_cache.trajectory_samples[0]
+    if traj is None:
+        return None
+
+    burst_mat = _cache_matrix(traj.values, "burst")
+    baseline_mat = _cache_matrix(traj.values, "baseline")
+    spikes_mat = _cache_matrix(traj.values, "spikes")
+    calcium_mat = _cache_matrix(traj.values, "calcium")
+    n_samples = int(traj.n_samples or _first_nonempty_rows(burst_mat, baseline_mat, spikes_mat, calcium_mat))
+    n_time = int(traj.n_time or _first_nonempty_cols(burst_mat, baseline_mat, spikes_mat, calcium_mat))
+    if n_samples <= 0 or n_time <= 0:
+        return None
+
+    burnin_eff = int(max(0, min(int(burnin), n_samples - 1)))
+    sample_slice = slice(burnin_eff, None)
+    baseline_mean = baseline_mat[sample_slice, :].mean(axis=0)
+    calcium_state_mean = calcium_mat[sample_slice, :].mean(axis=0)
+    spikes_map = _cache_spikes_map(samples_cache, trial_idx, traj)
+    if spikes_map is None:
+        spikes_map = np.asarray(spikes_mat[sample_slice, :].mean(axis=0), dtype=np.float64)
+    return {
+        "time_stamps": np.asarray(traj.time_stamps, dtype=np.float64).ravel(),
+        "spikes_mean": np.asarray(spikes_mat[sample_slice, :].mean(axis=0), dtype=np.float64),
+        "baseline_mean": np.asarray(baseline_mean, dtype=np.float64),
+        "burst_mean": np.asarray(burst_mat[sample_slice, :].mean(axis=0), dtype=np.float64),
+        "calcium_mean": np.asarray(calcium_state_mean + baseline_mean, dtype=np.float64),
+        "spikes_map": np.asarray(spikes_map, dtype=np.float64).ravel(),
+    }
+
+
+def _cache_spikes_map(
+    samples_cache: PgasSamplesCache,
+    trial_idx: int,
+    traj: object,
+) -> Optional[np.ndarray]:
+    mapped = getattr(traj, "map", {}).get("spikes")
+    if mapped is not None:
+        arr = np.asarray(mapped, dtype=np.float64).ravel()
+        if arr.size:
+            return arr
+    logp = samples_cache.logp_for_trial(trial_idx)
+    map_idx = None if logp is None else logp.map_sample_index
+    spikes_mat = _cache_matrix(getattr(traj, "values"), "spikes")
+    if map_idx is None or map_idx < 0 or map_idx >= spikes_mat.shape[0]:
+        return None
+    return np.asarray(spikes_mat[int(map_idx), :], dtype=np.float64)
+
+
+def _cache_matrix(values: Dict[str, np.ndarray], key: str) -> np.ndarray:
+    arr = np.asarray(values.get(key, np.empty((0, 0))), dtype=np.float64)
+    if arr.ndim == 1:
+        arr = arr.reshape((1, -1))
+    return arr
+
+
+def _first_nonempty_rows(*arrays: np.ndarray) -> int:
+    for arr in arrays:
+        if arr.ndim == 2 and arr.shape[0] > 0:
+            return int(arr.shape[0])
+    return 0
+
+
+def _first_nonempty_cols(*arrays: np.ndarray) -> int:
+    for arr in arrays:
+        if arr.ndim == 2 and arr.shape[1] > 0:
+            return int(arr.shape[1])
+    return 0
 
 
 def _as_row_object_array(items: Sequence[Dict[str, Any]]) -> np.ndarray:
@@ -1299,8 +1409,18 @@ def load_pgas_method_result(
     output_root: Path,
     burnin: int,
     metadata: Optional[Dict[str, object]] = None,
+    *,
+    cache_mat_path: Optional[Path] = None,
+    samples_cache: Optional[PgasSamplesCache] = None,
 ) -> MethodResult:
-    traces = load_pgas_component_series(trials, dataset_tag, output_root, burnin)
+    traces = load_pgas_component_series(
+        trials,
+        dataset_tag,
+        output_root,
+        burnin,
+        cache_mat_path=cache_mat_path,
+        samples_cache=samples_cache,
+    )
     fs_est = compute_sampling_rate(traces["time_stamps"])
     meta = dict(metadata) if metadata else {}
     return MethodResult(

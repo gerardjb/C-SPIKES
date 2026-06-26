@@ -5,6 +5,8 @@ from typing import Dict, Iterable, Optional, Sequence, Union
 
 import numpy as np
 
+from c_spikes.inference.pgas_cache import load_pgas_samples_from_cache
+
 from .synth_gen import synth_gen
 
 
@@ -27,13 +29,13 @@ def build_synthetic_ground_truth_from_pgas(
     run_tag: Optional[str] = None,
 ) -> np.ndarray:
     """
-    Convenience helper: take a PGAS param_samples*.dat file and generate a
-    CASCADE/ENS2-compatible synthetic ground-truth dataset.
+    Convenience helper: take a PGAS param_samples*.dat file or PGAS cache .mat
+    file and generate a CASCADE/ENS2-compatible synthetic ground-truth dataset.
 
     Returns:
         np.ndarray: Mean cell parameters (Cparams) used for synthesis.
     """
-    param_samples_path = Path(param_samples_path)
+    param_samples_path, param_trial_index = _parse_param_samples_source(param_samples_path)
     gparam_path = Path(gparam_path)
     output_root = Path(output_root)
 
@@ -42,10 +44,10 @@ def build_synthetic_ground_truth_from_pgas(
     if not gparam_path.exists():
         raise FileNotFoundError(gparam_path)
 
-    # Load parameter samples: CSV with header line
-    samples = np.loadtxt(param_samples_path, delimiter=",", skiprows=1)
-    if samples.ndim == 1:
-        samples = samples[None, :]
+    samples, source_tag = _load_pgas_parameter_samples(
+        param_samples_path,
+        trial_index=param_trial_index,
+    )
 
     if burnin < 0:
         burnin = 0
@@ -69,9 +71,7 @@ def build_synthetic_ground_truth_from_pgas(
         noise_dir = Path(noise_dir)
 
     if tag is None:
-        # Strip leading "param_samples_" if present to keep dataset stem
-        stem = param_samples_path.stem
-        tag = stem.replace("param_samples_", "")
+        tag = source_tag
 
     synth_dir = output_root / "Ground_truth" / f"synth_{tag}"
     existing = list(synth_dir.glob("*.mat")) if synth_dir.exists() else []
@@ -148,6 +148,45 @@ def build_synthetic_ground_truth_from_pgas(
 __all__ = ["synth_gen", "build_synthetic_ground_truth_from_pgas", "build_synthetic_ground_truth_batch"]
 
 
+def _parse_param_samples_source(source: Path | str) -> tuple[Path, Optional[int]]:
+    text = str(source)
+    trial_index: Optional[int] = None
+    for marker in ("#trial=", "::trial"):
+        if marker in text:
+            text, trial_text = text.rsplit(marker, 1)
+            trial_index = int(trial_text)
+            break
+    return Path(text), trial_index
+
+
+def _load_pgas_parameter_samples(
+    source_path: Path,
+    *,
+    trial_index: Optional[int],
+) -> tuple[np.ndarray, str]:
+    if source_path.suffix.lower() == ".mat":
+        samples_cache = load_pgas_samples_from_cache(source_path, require=True)
+        if trial_index is None:
+            if not samples_cache.parameter_samples:
+                raise ValueError(f"No PGAS parameter samples found in cache: {source_path}")
+            param_samples = samples_cache.parameter_samples[0]
+        else:
+            param_samples = samples_cache.parameters_for_trial(trial_index)
+            if param_samples is None:
+                raise ValueError(
+                    f"No PGAS parameter samples for trial {trial_index} in cache: {source_path}"
+                )
+        samples = np.asarray(param_samples.values, dtype=np.float64)
+        tag = str(param_samples.tag or source_path.stem).replace("param_samples_", "")
+        return np.atleast_2d(samples), tag
+
+    samples = np.loadtxt(source_path, delimiter=",", skiprows=1)
+    if samples.ndim == 1:
+        samples = samples[None, :]
+    tag = source_path.stem.replace("param_samples_", "")
+    return np.asarray(samples, dtype=np.float64), tag
+
+
 def build_synthetic_ground_truth_batch(
     param_specs: Sequence[Dict[str, object]],
     *,
@@ -159,10 +198,10 @@ def build_synthetic_ground_truth_batch(
     seed_spikes: bool = True,
 ) -> Dict[str, np.ndarray]:
     """
-    Batch helper to generate multiple synthetic datasets from multiple PGAS param_samples inputs.
+    Batch helper to generate multiple synthetic datasets from multiple PGAS parameter inputs.
 
     Each element of param_specs can contain:
-        - param_samples_path (required)
+        - param_samples_path (required; param_samples*.dat or PGAS cache .mat)
         - burnin (int)
         - spike_rate (float)
         - spike_params (Sequence[float])
