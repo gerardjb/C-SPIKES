@@ -81,6 +81,7 @@ class DatasetRunConfig:
     pgas_likelihood_variance_scale: float = PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT
     pgas_noise_calibration_scope: str = PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
     pgas_noise_calibration_granularity: str = PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+    pgas_keep_output_dat_files: bool = False
     cascade_discretize: bool = True
     cascade_model_name: str = "universal_p_cascade_exc_30"
     trialwise_correlations: bool = False
@@ -248,6 +249,7 @@ def run_inference_for_dataset(
             noise_calibration_granularity=cfg.pgas_noise_calibration_granularity,
             edges=edges_effective,
             use_cache=cfg.use_cache,
+            keep_output_dat_files=cfg.pgas_keep_output_dat_files,
         )
         pgas_result = run_pgas_inference(
             trials_for_methods,

@@ -67,6 +67,7 @@ class PgasConfig:
     noise_calibration_granularity: str = PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
     edges: Optional[np.ndarray] = None
     use_cache: bool = True
+    keep_output_dat_files: bool = False
 
 
 def validate_bm_sigma_bounds(min_sigma: float, max_sigma: float) -> Tuple[float, float]:
@@ -990,6 +991,11 @@ def run_pgas_inference(
         )
     traces.metadata.setdefault("pgas_samples_cached", True)
     traces.metadata.setdefault("pgas_samples_schema_version", 1)
+    traces.metadata.setdefault("pgas_output_dat_files_kept", bool(config.keep_output_dat_files))
+    traces.metadata.setdefault(
+        "pgas_output_dat_cleanup_policy",
+        "keep" if config.keep_output_dat_files else "delete_after_cache_write",
+    )
     traces.metadata.setdefault("cache_tag", run_tag)
     pgas_cache_payload = build_pgas_output_cache_payload(
         trials=trial_list,
@@ -1005,6 +1011,12 @@ def run_pgas_inference(
         trace_hash,
         extra_payload=pgas_cache_payload,
     )
+    if not config.keep_output_dat_files:
+        cleanup_pgas_output_dat_files(
+            output_root=output_root,
+            dataset_tag=run_tag,
+            n_trials=len(trial_list),
+        )
     return traces
 
 
@@ -1401,6 +1413,33 @@ def build_pgas_output_cache_payload(
             "logp": _as_row_object_array(logp_items),
         }
     }
+
+
+def cleanup_pgas_output_dat_files(
+    *,
+    output_root: Path,
+    dataset_tag: str,
+    n_trials: int,
+) -> List[Path]:
+    """Remove raw PGAS sample dumps after the cache .mat has been written.
+
+    ``last_params_*.dat`` files are intentionally preserved because they are
+    small and useful for partial-progress recovery/debugging if a run fails.
+    """
+
+    removed: List[Path] = []
+    for trial_idx in range(int(n_trials)):
+        tag = f"{dataset_tag}_trial{trial_idx}"
+        for prefix in ("traj_samples", "param_samples", "logp"):
+            path = Path(output_root) / f"{prefix}_{tag}.dat"
+            if not path.exists():
+                continue
+            try:
+                path.unlink()
+                removed.append(path)
+            except OSError as exc:
+                print(f"[PGAS cache] Warning: could not remove raw output {path}: {exc}")
+    return removed
 
 
 def load_pgas_method_result(

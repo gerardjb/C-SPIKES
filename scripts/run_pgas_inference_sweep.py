@@ -273,6 +273,12 @@ def _build_cli_command(
             f"[warn] {run_tag}: commit does not expose noise-calibration modes; ignoring."
         )
 
+    if "pgas_output_cleanup" in features:
+        if _as_bool(config.get("keep_output_dat_files"), default=False):
+            cmd.append("--pgas-keep-output-dat-files")
+    elif _as_bool(config.get("keep_output_dat_files"), default=False):
+        print(f"[warn] {run_tag}: commit does not expose PGAS output cleanup controls; ignoring.")
+
     _add_if_present(cmd, "--pgas-resample-fs", config.get("pgas_resample_fs"))
     _add_if_present(cmd, "--pgas-maxspikes", config.get("pgas_maxspikes"))
     if _as_bool(config.get("pgas_c0_first_y"), default=False):

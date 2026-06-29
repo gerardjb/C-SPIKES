@@ -153,8 +153,8 @@ PYTHONPATH=src python scripts/export_downsampled_mat_dir.py \
   --edges-path results/excitatory_time_stamp_edges.npy
 ```
 
-## PGAS on your data (produce `param_samples_*.dat`)
-To run PGAS and write its output files (including `param_samples_*.dat` used for distillation), the easiest entrypoint is `scripts/demo_compare_methods.py` with ENS2/CASCADE disabled:
+## PGAS on your data
+To run PGAS and write cached inference outputs, the easiest entrypoint is `scripts/demo_compare_methods.py` with ENS2/CASCADE disabled:
 
 ```bash
 python scripts/demo_compare_methods.py \
@@ -171,10 +171,12 @@ Notes:
 - Auto-calibrated `bm_sigma` is clipped with `--pgas-bm-sigma-min` and `--pgas-bm-sigma-max`.
 - Auto-calibrated sigma2 can seed the inverse-gamma prior; override it with `--pgas-sigma2-target`, set the shape with `--pgas-sigma2-alpha`, or use `--pgas-sigma2-prior-strength` when alpha is implicit. The target is the prior mode, so `beta = target * (alpha + 1)`. The structure allows for different distributions for the sigma2 prior.
 - PGAS spike-state likelihood weights can be widened without changing the B-state Kalman update using `--pgas-likelihood-extra-variance` and `--pgas-likelihood-variance-scale`.
+- PGAS trajectory, log-probability, and parameter samples are packed into the inference cache `.mat`. After that cache write succeeds, the large raw `traj_samples_*.dat`, `param_samples_*.dat`, and `logp_*.dat` dumps are deleted by default. Pass `--pgas-keep-output-dat-files` to retain them for debugging; `last_params_*.dat` files are preserved either way for partial-progress inspection.
 
 Where outputs go:
-- `results/pgas_output/<run>/traj_samples_<tag>.dat` + `logp_<tag>.dat` (PGAS trajectories)
-- `results/pgas_output/<run>/param_samples_<tag>.dat` (parameter samples; pass these into `demo_pgas_to_ens2.py`)
+- `results/inference_cache/pgas/<cache_tag>/<cache_key>.mat` (method output plus embedded PGAS trajectory/logp/parameter samples)
+- `results/pgas_output/<run>/last_params_<tag>.dat` (small partial-progress/debug snapshot)
+- `results/pgas_output/<run>/traj_samples_<tag>.dat`, `logp_<tag>.dat`, and `param_samples_<tag>.dat` only if `--pgas-keep-output-dat-files` is used or a run fails before cache finalization
 
 `<tag>` is the per-trial PGAS tag and typically ends in `_trial0`, `_trial1`, … (and also includes smoothing/resample/bm_sigma tokens).
 
@@ -198,11 +200,11 @@ Notes:
 - If your CASCADE models live outside `results/Pretrained_models`, set `--cascade-model-root Pretrained_models`.
 
 ## Distill PGAS → custom ENS2 (synthetic training)
-Once you have one or more `param_samples_*.dat` files, you can generate synthetic ground-truth datasets and train a custom ENS2 checkpoint:
+Once you have one or more PGAS cache `.mat` files or legacy `param_samples_*.dat` files, you can generate synthetic ground-truth datasets and train a custom ENS2 checkpoint:
 
 ```bash
 python scripts/demo_pgas_to_ens2.py \
-  --param-samples results/pgas_output/my_run/param_samples_<tag>.dat \
+  --param-samples results/inference_cache/pgas/<cache_tag>/<cache_key>.mat \
   --model-root Pretrained_models \
   --model-name ens2_custom_my_run \
   --train-ens2

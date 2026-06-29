@@ -77,6 +77,7 @@ class RunConfig:
     pgas_likelihood_variance_scale: float = PGAS_LIKELIHOOD_VARIANCE_SCALE_DEFAULT
     pgas_noise_calibration_scope: str = PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
     pgas_noise_calibration_granularity: str = PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+    pgas_keep_output_dat_files: bool = False
     run_tag: Optional[str] = None  # optional override
     pgas_c0_first_y: bool = False
     trialwise_correlations: bool = False
@@ -409,6 +410,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 pgas_likelihood_variance_scale=cfg.pgas_likelihood_variance_scale,
                 pgas_noise_calibration_scope=cfg.pgas_noise_calibration_scope,
                 pgas_noise_calibration_granularity=cfg.pgas_noise_calibration_granularity,
+                pgas_keep_output_dat_files=cfg.pgas_keep_output_dat_files,
                 cascade_discretize=bool(cfg.cascade_discretize),
                 cascade_model_name=str(cfg.cascade_model_name),
                 trialwise_correlations=bool(cfg.trialwise_correlations),

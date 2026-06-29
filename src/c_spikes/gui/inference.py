@@ -55,6 +55,7 @@ class InferenceSettings:
     pgas_sigma2_target: Optional[float] = None
     pgas_sigma2_alpha: Optional[float] = None
     pgas_sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+    pgas_keep_output_dat_files: bool = False
 
 
 @dataclass(frozen=True)
@@ -143,6 +144,7 @@ def run_inference_for_epoch(
             sigma2_prior_strength=settings.pgas_sigma2_prior_strength,
             edges=edges,
             use_cache=settings.use_cache,
+            keep_output_dat_files=settings.pgas_keep_output_dat_files,
         )
         results["pgas"] = run_pgas_inference(
             trials=trials,
@@ -279,6 +281,7 @@ def run_inference_for_epoch_safe(
                 sigma2_prior_strength=settings.pgas_sigma2_prior_strength,
                 edges=edges,
                 use_cache=settings.use_cache,
+                keep_output_dat_files=settings.pgas_keep_output_dat_files,
             )
             results["pgas"] = run_pgas_inference(
                 trials=trials,

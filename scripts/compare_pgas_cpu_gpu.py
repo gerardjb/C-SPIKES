@@ -492,6 +492,7 @@ def _worker_main(args: argparse.Namespace) -> None:
         sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
         edges=None,
         use_cache=args.use_cache,
+        keep_output_dat_files=True,
     )
 
     # Patch backend module into the import path expected by run_pgas_inference.

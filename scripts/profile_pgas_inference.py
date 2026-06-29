@@ -192,6 +192,7 @@ def _run_backend(
         sigma2_prior_strength=sigma2_prior_strength,
         edges=None,
         use_cache=use_cache,
+        keep_output_dat_files=True,
     )
 
     start = time.perf_counter()

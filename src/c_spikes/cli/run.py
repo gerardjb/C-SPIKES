@@ -222,6 +222,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "evaluating PGAS spike-state likelihood weights. Default: 1.0."
         ),
     )
+    parser.add_argument(
+        "--pgas-keep-output-dat-files",
+        action="store_true",
+        help=(
+            "Keep raw PGAS traj_samples/param_samples/logp .dat files after the "
+            "cache .mat is successfully written. By default these large raw dumps "
+            "are removed; last_params_*.dat is still preserved."
+        ),
+    )
     parser.add_argument("--pgas-resample-fs", type=float, help="PGAS resample frequency (Hz). (deprecated, kept for compatibility)")
     parser.add_argument(
         "--cascade-resample-fs",
@@ -315,6 +324,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         pgas_likelihood_variance_scale=float(args.pgas_likelihood_variance_scale),
         pgas_noise_calibration_scope=str(args.pgas_noise_calibration_scope),
         pgas_noise_calibration_granularity=str(args.pgas_noise_calibration_granularity),
+        pgas_keep_output_dat_files=bool(args.pgas_keep_output_dat_files),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),
         run_tag=args.run_tag,
         trialwise_correlations=bool(args.trialwise_correlations),

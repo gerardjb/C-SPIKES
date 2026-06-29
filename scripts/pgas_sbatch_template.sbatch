@@ -99,6 +99,7 @@ PGAS_LIKELIHOOD_EXTRA_VARIANCE="${PGAS_LIKELIHOOD_EXTRA_VARIANCE:-0}"
 PGAS_LIKELIHOOD_VARIANCE_SCALE="${PGAS_LIKELIHOOD_VARIANCE_SCALE:-1}"
 PGAS_NOISE_CALIBRATION_SCOPE="${PGAS_NOISE_CALIBRATION_SCOPE:-inference}"
 PGAS_NOISE_CALIBRATION_GRANULARITY="${PGAS_NOISE_CALIBRATION_GRANULARITY:-dataset}"
+PGAS_KEEP_OUTPUT_DAT_FILES="${PGAS_KEEP_OUTPUT_DAT_FILES:-0}"
 PGAS_RESAMPLE_FS="${PGAS_RESAMPLE_FS:-}"
 PGAS_MAXSPIKES="${PGAS_MAXSPIKES:-}"
 PGAS_C0_FIRST_Y="${PGAS_C0_FIRST_Y:-0}"
@@ -145,8 +146,8 @@ fi
 if [[ "${PGAS_TEMPLATE_TEST_FIRST_TRIAL:-0}" == "1" ]]; then
   mkdir -p "$RUN_ROOT/slurm"
   TEST_DATASET_TAGS=()
-  if [[ -n "$DATASET_TAGS" ]]; then
-    read -r -a TEST_DATASET_TAGS <<< "$DATASET_TAGS"
+  if [[ ${#DATASET_TAGS[@]} -gt 0 ]]; then
+    TEST_DATASET_TAGS=("${DATASET_TAGS[@]}")
   fi
   if [[ ${#TEST_DATASET_TAGS[@]} -eq 0 ]]; then
     echo "[error] Set DATASET_TAGS for PGAS_TEMPLATE_TEST_FIRST_TRIAL." >&2
@@ -373,8 +374,8 @@ if [[ -n "$SWEEP_JSON" ]]; then
 fi
 
 RESOLVED_DATASET_TAGS=()
-if [[ -n "$DATASET_TAGS" ]]; then
-  read -r -a RESOLVED_DATASET_TAGS <<< "$DATASET_TAGS"
+if [[ ${#DATASET_TAGS[@]} -gt 0 ]]; then
+  RESOLVED_DATASET_TAGS=("${DATASET_TAGS[@]}")
 elif [[ -n "$EFFECTIVE_TRIAL_SELECTION_PATH" ]]; then
   if [[ ! -f "$EFFECTIVE_TRIAL_SELECTION_PATH" ]]; then
     echo "[error] TRIAL_SELECTION_PATH not found: $EFFECTIVE_TRIAL_SELECTION_PATH" >&2
@@ -417,7 +418,7 @@ export DATASET_TAGS SMOOTHING_LEVEL FIRST_TRIAL_ONLY
 export BM_SIGMA BM_SIGMA_MIN BM_SIGMA_MAX BM_SIGMA_GAP_S PGAS_BM_SIGMA_USE_LOW_ACTIVITY_MASK
 export PGAS_SIGMA2_TARGET PGAS_SIGMA2_ALPHA PGAS_SIGMA2_PRIOR_STRENGTH
 export PGAS_LIKELIHOOD_EXTRA_VARIANCE PGAS_LIKELIHOOD_VARIANCE_SCALE
-export PGAS_NOISE_CALIBRATION_SCOPE PGAS_NOISE_CALIBRATION_GRANULARITY PGAS_RESAMPLE_FS
+export PGAS_NOISE_CALIBRATION_SCOPE PGAS_NOISE_CALIBRATION_GRANULARITY PGAS_KEEP_OUTPUT_DAT_FILES PGAS_RESAMPLE_FS
 python - "$MANIFEST_PATH" <<'PY'
 import json
 import os
@@ -454,6 +455,7 @@ keys = [
     "PGAS_LIKELIHOOD_VARIANCE_SCALE",
     "PGAS_NOISE_CALIBRATION_SCOPE",
     "PGAS_NOISE_CALIBRATION_GRANULARITY",
+    "PGAS_KEEP_OUTPUT_DAT_FILES",
     "PGAS_RESAMPLE_FS",
 ]
 payload = {
@@ -520,6 +522,14 @@ if feature_enabled likelihood_variance_controls; then
   CMD+=(--pgas-likelihood-variance-scale "$PGAS_LIKELIHOOD_VARIANCE_SCALE")
 elif [[ "$PGAS_LIKELIHOOD_EXTRA_VARIANCE" != "0" || "$PGAS_LIKELIHOOD_VARIANCE_SCALE" != "1" ]]; then
   echo "[warn] Commit does not expose likelihood variance controls; ignoring likelihood overrides."
+fi
+
+if feature_enabled pgas_output_cleanup; then
+  if bool_enabled "$PGAS_KEEP_OUTPUT_DAT_FILES"; then
+    CMD+=(--pgas-keep-output-dat-files)
+  fi
+elif bool_enabled "$PGAS_KEEP_OUTPUT_DAT_FILES"; then
+  echo "[warn] Commit does not expose PGAS output cleanup controls; raw .dat files will follow commit behavior."
 fi
 
 if [[ -n "$PGAS_RESAMPLE_FS" ]]; then
