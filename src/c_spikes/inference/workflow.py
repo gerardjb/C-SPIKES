@@ -12,6 +12,7 @@ from .cascade import CASCADE_RESAMPLE_FS, CascadeConfig, run_cascade_inference
 from .ens2 import Ens2Config, run_ens2_inference
 from .eval import (
     build_ground_truth_series,
+    compute_epochwise_counts,
     compute_correlations,
     compute_correlations_windowed,
     compute_trialwise_correlations,
@@ -337,6 +338,11 @@ def run_inference_for_dataset(
             trial_windows = [(float(s), float(e)) for s, e in edges_effective]
         else:
             trial_windows = [(float(tr.times[0]), float(tr.times[-1])) for tr in trials_trimmed]
+    epoch_windows = (
+        [(float(s), float(e)) for s, e in windows]
+        if windows
+        else [(float(tr.times[0]), float(tr.times[-1])) for tr in trials_trimmed]
+    )
 
     def _mask_method_to_windows(result: MethodResult, win: Optional[List[Tuple[float, float]]]) -> MethodResult:
         if not win:
@@ -392,6 +398,7 @@ def run_inference_for_dataset(
             reference_fs=ref_fs,
             sigma_ms=cfg.corr_sigma_ms,
         )
+    epochwise_counts = compute_epochwise_counts(masked_methods_seq, spike_times, epoch_windows)
 
     spike_times_dict: Dict[str, np.ndarray] = {}
     for label, result in methods.items():
@@ -403,13 +410,15 @@ def run_inference_for_dataset(
         "smoothing": cfg.smoothing.label,
         "downsample_target": downsample_label,
         "correlations": {k: float(v) for k, v in correlations.items()},
+        "epoch_windows_s": epoch_windows,
+        "epochwise_counts": epochwise_counts,
         "trial_windows_s": trial_windows,
         "trialwise_correlations": trialwise,
         "pgas_input_resample_fs": PGAS_RESAMPLE_FS if pgas_result is not None else None,
         "cascade_input_resample_fs": (
             cascade_result.metadata.get("input_resample_fs") if cascade_result is not None else None
         ),
-        "gt_count": int(spike_times.size),
+        "gt_count": int(sum(epochwise_counts.get("gt_count", []))),
     }
     if pgas_result is not None:
         summary.update(

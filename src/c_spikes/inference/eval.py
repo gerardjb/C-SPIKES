@@ -341,6 +341,75 @@ def compute_trialwise_correlations_windowed(
     return out
 
 
+def count_ground_truth_windowed(
+    spike_times: np.ndarray,
+    trial_windows: Sequence[Tuple[float, float]],
+) -> List[int]:
+    """Count ground-truth spikes inside each evaluation window."""
+    spikes = np.asarray(spike_times, dtype=np.float64).ravel()
+    spikes = spikes[np.isfinite(spikes)]
+    counts: List[int] = []
+    for start, end in trial_windows:
+        if not np.isfinite(start) or not np.isfinite(end) or end < start:
+            counts.append(0)
+            continue
+        mask = (spikes >= float(start)) & (spikes <= float(end))
+        counts.append(int(np.count_nonzero(mask)))
+    return counts
+
+
+def _count_discrete_values(values: np.ndarray) -> int:
+    arr = np.asarray(values, dtype=np.float64).ravel()
+    if arr.size == 0:
+        return 0
+    total = float(np.nansum(arr))
+    if not np.isfinite(total):
+        return 0
+    return int(total)
+
+
+def count_method_samples_windowed(
+    methods: Sequence[MethodResult],
+    trial_windows: Sequence[Tuple[float, float]],
+) -> Dict[str, List[int]]:
+    """Count discrete inferred spikes for each method inside each evaluation window."""
+    out: Dict[str, List[int]] = {}
+    for method in methods:
+        method_counts: List[int] = []
+        if method.discrete_spikes is None:
+            out[method.name] = [0 for _ in trial_windows]
+            continue
+        times = np.asarray(method.time_stamps, dtype=np.float64).ravel()
+        values = np.asarray(method.discrete_spikes, dtype=np.float64).ravel()
+        if times.size != values.size:
+            n = min(times.size, values.size)
+            times = times[:n]
+            values = values[:n]
+        finite_base = np.isfinite(times)
+        for start, end in trial_windows:
+            if not np.isfinite(start) or not np.isfinite(end) or end < start:
+                method_counts.append(0)
+                continue
+            mask = finite_base & (times >= float(start)) & (times <= float(end))
+            method_counts.append(_count_discrete_values(values[mask]))
+        out[method.name] = method_counts
+    return out
+
+
+def compute_epochwise_counts(
+    methods: Sequence[MethodResult],
+    spike_times: np.ndarray,
+    trial_windows: Sequence[Tuple[float, float]],
+) -> Dict[str, List[int]]:
+    """Return GT and method inferred counts using the same windows as evaluation."""
+    counts: Dict[str, List[int]] = {
+        "gt_count": count_ground_truth_windowed(spike_times, trial_windows)
+    }
+    for method, values in count_method_samples_windowed(methods, trial_windows).items():
+        counts[f"{method}_samples"] = values
+    return counts
+
+
 def compute_trialwise_correlations(
     methods: Sequence[MethodResult],
     reference_time: np.ndarray,
