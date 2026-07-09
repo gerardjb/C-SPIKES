@@ -58,6 +58,7 @@ class RunConfig:
     cascade_model_name: str = "universal_p_cascade_exc_30"
     pgas_maxspikes: Optional[int] = None
     pgas_fixed_bm_sigma: Optional[float] = PGAS_BM_SIGMA_DEFAULT
+    pgas_keep_output_dat_files: bool = False
     run_tag: Optional[str] = None  # optional override
     pgas_c0_first_y: bool = False
     trialwise_correlations: bool = False
@@ -380,6 +381,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 pgas_resample_fs=cfg.pgas_resample_fs,
                 cascade_resample_fs=cfg.cascade_resample_fs,
                 pgas_fixed_bm_sigma=cfg.pgas_fixed_bm_sigma,
+                pgas_keep_output_dat_files=cfg.pgas_keep_output_dat_files,
                 cascade_discretize=bool(cfg.cascade_discretize),
                 cascade_model_name=str(cfg.cascade_model_name),
                 trialwise_correlations=bool(cfg.trialwise_correlations),

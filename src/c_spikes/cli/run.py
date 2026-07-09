@@ -128,6 +128,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=str(PGAS_BM_SIGMA_DEFAULT),
         help="Fixed PGAS bm_sigma value, or 'auto' to estimate from data (default: fixed).",
     )
+    parser.add_argument(
+        "--pgas-keep-output-dat-files",
+        action="store_true",
+        help=(
+            "Keep raw PGAS traj_samples/param_samples/logp .dat files after the cache .mat is "
+            "successfully written. By default these large raw dumps are removed; last_params_*.dat "
+            "is still preserved."
+        ),
+    )
     parser.add_argument("--pgas-resample-fs", type=float, help="PGAS resample frequency (Hz). (deprecated, kept for compatibility)")
     parser.add_argument(
         "--cascade-resample-fs",
@@ -211,6 +220,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         cascade_model_name=str(args.cascade_model_name),
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+        pgas_keep_output_dat_files=bool(args.pgas_keep_output_dat_files),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),
         run_tag=args.run_tag,
         trialwise_correlations=bool(args.trialwise_correlations),

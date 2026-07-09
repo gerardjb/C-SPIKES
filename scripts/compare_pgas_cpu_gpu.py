@@ -418,6 +418,7 @@ def _worker_main(args: argparse.Namespace) -> None:
         bm_sigma_gap_s=args.bm_sigma_gap_s,
         edges=None,
         use_cache=args.use_cache,
+        keep_output_dat_files=True,
     )
 
     # Patch backend module into the import path expected by run_pgas_inference.

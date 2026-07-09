@@ -177,6 +177,7 @@ def _run_backend(
         bm_sigma_gap_s=bm_sigma_gap_s,
         edges=None,
         use_cache=use_cache,
+        keep_output_dat_files=True,
     )
 
     start = time.perf_counter()

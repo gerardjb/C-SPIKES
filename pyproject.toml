@@ -93,6 +93,7 @@ dependencies = [
  ]
  markers = [
    "slow: long-running integration or inference checks (run with -m slow)",
+   "port_parity: temporary parity checks for main_cache_noise_port; delete after port validation",
    "requires_torch: requires PyTorch to be installed",
    "requires_tensorflow: requires TensorFlow to be installed",
  ]

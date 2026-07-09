@@ -64,6 +64,7 @@ class DatasetRunConfig:
     pgas_resample_fs: Optional[float] = None  # None => use raw/native
     cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)
     pgas_fixed_bm_sigma: Optional[float] = None  # Optional fixed bm_sigma (skip tuning)
+    pgas_keep_output_dat_files: bool = False
     cascade_discretize: bool = True
     cascade_model_name: str = "universal_p_cascade_exc_30"
     trialwise_correlations: bool = False
@@ -221,6 +222,7 @@ def run_inference_for_dataset(
             bm_sigma_gap_s=cfg.bm_sigma_gap_s,
             edges=edges_effective,
             use_cache=cfg.use_cache,
+            keep_output_dat_files=cfg.pgas_keep_output_dat_files,
         )
         pgas_result = run_pgas_inference(
             trials_for_methods,
