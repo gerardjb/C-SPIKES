@@ -226,6 +226,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                     print(f"[eval-only] Missing {summary_path} or {manifest_path}; skipping.")
                     continue
                 from c_spikes.inference.eval import (
+                    compute_epochwise_counts,
                     compute_correlations_windowed,
                     compute_trialwise_correlations_windowed,
                 )
@@ -336,6 +337,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                     reference_fs=reference_fs,
                     sigma_ms=corr_sigma_ms,
                 )
+                epochwise_counts = compute_epochwise_counts(list(loaded.values()), spike_times, windows)
                 summary = json.loads(summary_path.read_text(encoding="utf-8"))
                 if not isinstance(summary, dict):
                     print(f"[eval-only] Failed to read summary json: {summary_path}")
@@ -348,6 +350,14 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 else:
                     summary["correlations"] = ensure_serializable(correlations)
                 summary["corr_sigma_ms"] = float(corr_sigma_ms)
+                summary["epoch_windows_s"] = ensure_serializable(windows)
+                summary["epochwise_counts"] = ensure_serializable(epochwise_counts)
+                summary["gt_count"] = int(sum(epochwise_counts.get("gt_count", [])))
+                for method_name, result in loaded.items():
+                    count_key = f"{method_name}_samples"
+                    values = epochwise_counts.get(count_key)
+                    if values is not None:
+                        summary[count_key] = int(sum(values))
                 if cfg.trialwise_correlations:
                     trialwise = compute_trialwise_correlations_windowed(
                         list(loaded.values()),
@@ -425,6 +435,19 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                     summary["trialwise_correlations"] = ensure_serializable(extra_summary.get("trialwise_correlations"))
                 if extra_summary.get("trial_windows_s") is not None:
                     summary["trial_windows_s"] = ensure_serializable(extra_summary.get("trial_windows_s"))
+                if extra_summary.get("epochwise_counts") is not None:
+                    summary["epochwise_counts"] = ensure_serializable(extra_summary.get("epochwise_counts"))
+                if extra_summary.get("epoch_windows_s") is not None:
+                    summary["epoch_windows_s"] = ensure_serializable(extra_summary.get("epoch_windows_s"))
+            epochwise_counts = extra_summary.get("epochwise_counts", {}) if isinstance(extra_summary, dict) else {}
+
+            def summary_sample_count(method_name: str, result: MethodResult) -> int:
+                if isinstance(epochwise_counts, dict):
+                    values = epochwise_counts.get(f"{method_name}_samples")
+                    if values is not None:
+                        return int(sum(values))
+                return _count_samples(result.discrete_spikes)
+
             if "pgas" in methods:
                 pgas_result = methods["pgas"]
                 summary.update(
@@ -433,7 +456,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                         "pgas_maxspikes": pgas_result.metadata.get("maxspikes"),
                         "pgas_maxspikes_per_bin": pgas_result.metadata.get("maxspikes_per_bin"),
                         "pgas_input_resample_fs": pgas_result.metadata.get("input_resample_fs"),
-                        "pgas_samples": _count_samples(pgas_result.discrete_spikes),
+                        "pgas_samples": summary_sample_count("pgas", pgas_result),
                     }
                 )
             if "ens2" in methods:
@@ -441,7 +464,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 summary.update(
                     {
                         "ens2_cache": ens2_result.metadata.get("config", {}),
-                        "ens2_samples": _count_samples(ens2_result.discrete_spikes),
+                        "ens2_samples": summary_sample_count("ens2", ens2_result),
                     }
                 )
             if "cascade" in methods:
@@ -452,7 +475,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                         "cascade_input_resample_fs": cascade_result.metadata.get(
                             "input_resample_fs", CASCADE_RESAMPLE_FS
                         ),
-                        "cascade_samples": _count_samples(cascade_result.discrete_spikes),
+                        "cascade_samples": summary_sample_count("cascade", cascade_result),
                     }
                 )
             summary["gt_count"] = int(outputs.get("summary", {}).get("gt_count", 0))
