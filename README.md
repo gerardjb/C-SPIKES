@@ -193,6 +193,8 @@ python scripts/demo_compare_methods.py \
 Notes:
 - Windowing: restrict PGAS (and correlations) to a time window using either `--start-time/--end-time` or an `--edges-file`.
 - Sensor parameters: for new sensors (e.g. jGCaMP8m), point PGAS at your sensor-specific files via `--pgas-constants` and `--pgas-gparam`.
+- Auto-calibrated `bm_sigma` is clipped with `--pgas-bm-sigma-min` and `--pgas-bm-sigma-max`.
+- Auto-calibrated sigma2 can seed the inverse-gamma prior; override it with `--pgas-sigma2-target`, set the shape with `--pgas-sigma2-alpha`, or use `--pgas-sigma2-prior-strength` when alpha is implicit. The target is the prior mode, so `beta = target * (alpha + 1)`. The structure allows for different distributions for the sigma2 prior.
 
 Where outputs go:
 - `results/pgas_output/<run>/traj_samples_<tag>.dat` + `logp_<tag>.dat` (PGAS trajectories)

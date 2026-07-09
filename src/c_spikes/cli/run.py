@@ -23,7 +23,16 @@ preload_tensorflow_quietly()
 
 from c_spikes.inference.cache import set_cache_root
 from c_spikes.pipeline import RunConfig, run_batch
-from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
+from c_spikes.inference.pgas import (
+    PGAS_BM_SIGMA_DEFAULT,
+    PGAS_BM_SIGMA_MAX,
+    PGAS_BM_SIGMA_MIN,
+    PGAS_NOISE_CALIBRATION_GRANULARITIES,
+    PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT,
+    PGAS_NOISE_CALIBRATION_SCOPES,
+    PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT,
+    PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+)
 
 
 def _parse_dataset_list(path: Path) -> List[str]:
@@ -129,6 +138,71 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Fixed PGAS bm_sigma value, or 'auto' to estimate from data (default: fixed).",
     )
     parser.add_argument(
+        "--pgas-bm-sigma-min",
+        type=float,
+        default=PGAS_BM_SIGMA_MIN,
+        help="Minimum bm_sigma allowed when --pgas-bm-sigma=auto.",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-max",
+        type=float,
+        default=PGAS_BM_SIGMA_MAX,
+        help="Maximum bm_sigma allowed when --pgas-bm-sigma=auto.",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-use-low-activity-mask",
+        action="store_true",
+        help="When auto-calibrating bm_sigma, estimate from low-activity regions masked around spikes.",
+    )
+    parser.add_argument(
+        "--pgas-noise-calibration-scope",
+        choices=PGAS_NOISE_CALIBRATION_SCOPES,
+        default=PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT,
+        help=(
+            "Data used when auto-calibrating PGAS bm/sigma2. 'inference' uses the "
+            "same edge-trimmed windows passed to PGAS; 'full' uses the full selected "
+            "epochs/trials while inference and evaluation still use --edges-path."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-noise-calibration-granularity",
+        choices=PGAS_NOISE_CALIBRATION_GRANULARITIES,
+        default=PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT,
+        help=(
+            "Granularity for auto-calibrating PGAS bm/sigma2. 'dataset' writes one "
+            "constants file shared by all selected trials; 'trial' writes per-trial "
+            "constants and requires --pgas-bm-sigma=auto."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-sigma2-target",
+        type=str,
+        default=None,
+        help=(
+            "Optional sigma2 mode target used to deterministically set inverse-gamma prior "
+            "(beta = target * (alpha + 1)). Use 'none' for default behavior "
+            "(calibrated target when bm_sigma is auto; disabled otherwise)."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-sigma2-alpha",
+        type=str,
+        default=None,
+        help=(
+            "Optional inverse-gamma alpha for sigma2 prior. If omitted and --pgas-sigma2-target "
+            "is set, alpha is derived from --pgas-sigma2-prior-strength."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-sigma2-prior-strength",
+        type=float,
+        default=PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+        help=(
+            "Strength knob used when mapping sigma2 target to IG prior alpha "
+            "(alpha = 2 + strength) if --pgas-sigma2-alpha is not set."
+        ),
+    )
+    parser.add_argument(
         "--pgas-keep-output-dat-files",
         action="store_true",
         help=(
@@ -220,7 +294,15 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         cascade_model_name=str(args.cascade_model_name),
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+        pgas_bm_sigma_min=float(args.pgas_bm_sigma_min),
+        pgas_bm_sigma_max=float(args.pgas_bm_sigma_max),
         pgas_keep_output_dat_files=bool(args.pgas_keep_output_dat_files),
+        pgas_bm_sigma_use_low_activity_mask=bool(args.pgas_bm_sigma_use_low_activity_mask),
+        pgas_sigma2_target=_parse_optional_float(args.pgas_sigma2_target),
+        pgas_sigma2_alpha=_parse_optional_float(args.pgas_sigma2_alpha),
+        pgas_sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
+        pgas_noise_calibration_scope=str(args.pgas_noise_calibration_scope),
+        pgas_noise_calibration_granularity=str(args.pgas_noise_calibration_granularity),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),
         run_tag=args.run_tag,
         trialwise_correlations=bool(args.trialwise_correlations),

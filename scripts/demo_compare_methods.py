@@ -23,7 +23,12 @@ from c_spikes.inference.workflow import (
     SmoothingLevel,
     run_inference_for_dataset,
 )
-from c_spikes.inference.pgas import PGAS_BM_SIGMA_DEFAULT
+from c_spikes.inference.pgas import (
+    PGAS_BM_SIGMA_DEFAULT,
+    PGAS_BM_SIGMA_MAX,
+    PGAS_BM_SIGMA_MIN,
+    PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+)
 from c_spikes.utils import load_Janelia_data
 
 
@@ -63,6 +68,51 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=str(PGAS_BM_SIGMA_DEFAULT),
         help="Fixed PGAS bm_sigma value, or 'auto' to estimate from data (default: fixed).",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-min",
+        type=float,
+        default=PGAS_BM_SIGMA_MIN,
+        help="Minimum bm_sigma allowed when --pgas-bm-sigma=auto.",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-max",
+        type=float,
+        default=PGAS_BM_SIGMA_MAX,
+        help="Maximum bm_sigma allowed when --pgas-bm-sigma=auto.",
+    )
+    parser.add_argument(
+        "--pgas-bm-sigma-use-low-activity-mask",
+        action="store_true",
+        help="When auto-calibrating bm_sigma, estimate from low-activity regions masked around spikes.",
+    )
+    parser.add_argument(
+        "--pgas-sigma2-target",
+        type=str,
+        default=None,
+        help=(
+            "Optional sigma2 mode target used to set the inverse-gamma prior "
+            "(beta = target * (alpha + 1)). Use 'none' for default behavior "
+            "(calibrated target when bm_sigma is auto; disabled otherwise)."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-sigma2-alpha",
+        type=str,
+        default=None,
+        help=(
+            "Optional inverse-gamma alpha for sigma2 prior. If omitted and --pgas-sigma2-target "
+            "is set, alpha is derived from --pgas-sigma2-prior-strength."
+        ),
+    )
+    parser.add_argument(
+        "--pgas-sigma2-prior-strength",
+        type=float,
+        default=PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
+        help=(
+            "Strength knob used when mapping sigma2 target to IG prior alpha "
+            "(alpha = 2 + strength) if --pgas-sigma2-alpha is not set."
+        ),
     )
     parser.add_argument("--pgas-resample", type=float, default=None, help="PGAS resample Hz (None=use native).")
     parser.add_argument(
@@ -239,6 +289,12 @@ def main() -> None:
         pgas_resample_fs=args.pgas_resample,
         cascade_resample_fs=args.cascade_resample,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+        pgas_bm_sigma_min=float(args.pgas_bm_sigma_min),
+        pgas_bm_sigma_max=float(args.pgas_bm_sigma_max),
+        pgas_bm_sigma_use_low_activity_mask=bool(args.pgas_bm_sigma_use_low_activity_mask),
+        pgas_sigma2_target=_parse_optional_float(args.pgas_sigma2_target),
+        pgas_sigma2_alpha=_parse_optional_float(args.pgas_sigma2_alpha),
+        pgas_sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
         cascade_discretize=bool(not args.cascade_no_discrete),
         trialwise_correlations=bool(args.trialwise_correlations),
     )
@@ -270,6 +326,12 @@ def main() -> None:
             pgas_resample_fs=args.pgas_resample,
             cascade_resample_fs=args.cascade_resample,
             pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
+            pgas_bm_sigma_min=float(args.pgas_bm_sigma_min),
+            pgas_bm_sigma_max=float(args.pgas_bm_sigma_max),
+            pgas_bm_sigma_use_low_activity_mask=bool(args.pgas_bm_sigma_use_low_activity_mask),
+            pgas_sigma2_target=_parse_optional_float(args.pgas_sigma2_target),
+            pgas_sigma2_alpha=_parse_optional_float(args.pgas_sigma2_alpha),
+            pgas_sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
             cascade_discretize=bool(not args.cascade_no_discrete),
         )
         custom_outputs = run_inference_for_dataset(
