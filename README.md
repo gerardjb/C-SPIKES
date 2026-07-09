@@ -195,10 +195,11 @@ Notes:
 - Sensor parameters: for new sensors (e.g. jGCaMP8m), point PGAS at your sensor-specific files via `--pgas-constants` and `--pgas-gparam`.
 - Auto-calibrated `bm_sigma` is clipped with `--pgas-bm-sigma-min` and `--pgas-bm-sigma-max`.
 - Auto-calibrated sigma2 can seed the inverse-gamma prior; override it with `--pgas-sigma2-target`, set the shape with `--pgas-sigma2-alpha`, or use `--pgas-sigma2-prior-strength` when alpha is implicit. The target is the prior mode, so `beta = target * (alpha + 1)`. The structure allows for different distributions for the sigma2 prior.
+- Auto calibration uses robust differences by default. Use `--pgas-noise-calibration-method psd` to estimate sigma2 from Welch PSD after excluding narrowband peaks; this does not notch-filter the inference input.
 
 Where outputs go:
-- `results/pgas_output/<run>/traj_samples_<tag>.dat` + `logp_<tag>.dat` (PGAS trajectories)
-- `results/pgas_output/<run>/param_samples_<tag>.dat` (parameter samples; pass these into `demo_pgas_to_ens2.py`)
+- `results/inference_cache/pgas/<cache_tag>/<cache_key>.mat` stores PGAS trajectories, parameter samples, logp, post-burnin means, and MAP metadata.
+- `results/pgas_output/<run>/traj_samples_<tag>.dat`, `param_samples_<tag>.dat`, and `logp_<tag>.dat` are transient by default; pass `--pgas-keep-output-dat-files` if you need the legacy raw dumps.
 
 `<tag>` is the per-trial PGAS tag and typically ends in `_trial0`, `_trial1`, … (and also includes smoothing/resample/bm_sigma tokens).
 

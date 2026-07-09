@@ -21,6 +21,7 @@ from c_spikes.inference.pgas import (
     PGAS_BM_SIGMA_DEFAULT,
     PGAS_BM_SIGMA_MAX,
     PGAS_BM_SIGMA_MIN,
+    PGAS_NOISE_CALIBRATION_METHOD_DEFAULT,
     PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT,
     PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT,
     PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
@@ -74,6 +75,7 @@ class RunConfig:
     pgas_sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
     pgas_noise_calibration_scope: str = PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
     pgas_noise_calibration_granularity: str = PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+    pgas_noise_calibration_method: str = PGAS_NOISE_CALIBRATION_METHOD_DEFAULT
     run_tag: Optional[str] = None  # optional override
     pgas_c0_first_y: bool = False
     trialwise_correlations: bool = False
@@ -415,6 +417,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 pgas_sigma2_prior_strength=cfg.pgas_sigma2_prior_strength,
                 pgas_noise_calibration_scope=cfg.pgas_noise_calibration_scope,
                 pgas_noise_calibration_granularity=cfg.pgas_noise_calibration_granularity,
+                pgas_noise_calibration_method=cfg.pgas_noise_calibration_method,
                 cascade_discretize=bool(cfg.cascade_discretize),
                 cascade_model_name=str(cfg.cascade_model_name),
                 trialwise_correlations=bool(cfg.trialwise_correlations),

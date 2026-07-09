@@ -24,6 +24,7 @@ from .pgas import (
     PGAS_BM_SIGMA_MIN,
     PGAS_BURNIN,
     PGAS_NITER,
+    PGAS_NOISE_CALIBRATION_METHOD_DEFAULT,
     PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT,
     PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT,
     PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
@@ -79,6 +80,7 @@ class DatasetRunConfig:
     pgas_sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
     pgas_noise_calibration_scope: str = PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
     pgas_noise_calibration_granularity: str = PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+    pgas_noise_calibration_method: str = PGAS_NOISE_CALIBRATION_METHOD_DEFAULT
     cascade_discretize: bool = True
     cascade_model_name: str = "universal_p_cascade_exc_30"
     trialwise_correlations: bool = False
@@ -242,6 +244,7 @@ def run_inference_for_dataset(
             sigma2_prior_strength=cfg.pgas_sigma2_prior_strength,
             noise_calibration_scope=cfg.pgas_noise_calibration_scope,
             noise_calibration_granularity=cfg.pgas_noise_calibration_granularity,
+            noise_calibration_method=cfg.pgas_noise_calibration_method,
             edges=edges_effective,
             use_cache=cfg.use_cache,
             keep_output_dat_files=cfg.pgas_keep_output_dat_files,

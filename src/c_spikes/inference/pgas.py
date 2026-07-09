@@ -9,6 +9,7 @@ import re
 
 from .cache import load_method_cache, save_method_cache
 from .eval import segment_indices
+from .noise_calibration import estimate_observation_noise_psd
 from .pgas_cache import PgasSamplesCache, load_pgas_samples_from_cache
 from .smoothing import resample_trials_to_fs
 from .types import (
@@ -37,6 +38,8 @@ PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT: str = "inference"
 PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT: str = "dataset"
 PGAS_NOISE_CALIBRATION_SCOPES: Tuple[str, ...] = ("inference", "full")
 PGAS_NOISE_CALIBRATION_GRANULARITIES: Tuple[str, ...] = ("dataset", "trial")
+PGAS_NOISE_CALIBRATION_METHOD_DEFAULT: str = "diff"
+PGAS_NOISE_CALIBRATION_METHODS: Tuple[str, ...] = ("diff", "psd")
 
 
 @dataclass
@@ -61,6 +64,7 @@ class PgasConfig:
     sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
     noise_calibration_scope: str = PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
     noise_calibration_granularity: str = PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+    noise_calibration_method: str = PGAS_NOISE_CALIBRATION_METHOD_DEFAULT
     edges: Optional[np.ndarray] = None
     use_cache: bool = True
     keep_output_dat_files: bool = False
@@ -100,6 +104,16 @@ def normalize_noise_calibration_granularity(granularity: str) -> str:
     return token
 
 
+def normalize_noise_calibration_method(method: str) -> str:
+    token = str(method).strip().lower()
+    if token not in PGAS_NOISE_CALIBRATION_METHODS:
+        raise ValueError(
+            "noise_calibration_method must be one of "
+            f"{PGAS_NOISE_CALIBRATION_METHODS}; got {method!r}."
+        )
+    return token
+
+
 @dataclass
 class PgasNoiseCalibration:
     bm_sigma: float
@@ -113,6 +127,12 @@ class PgasNoiseCalibration:
     qdt: float
     n_samples: int
     used_low_activity_mask: bool
+    method: str = PGAS_NOISE_CALIBRATION_METHOD_DEFAULT
+    psd_sigma2_target: Optional[float] = None
+    psd_level: Optional[float] = None
+    psd_peak_frequencies_hz: Optional[List[float]] = None
+    psd_excluded_bands_hz: Optional[List[List[float]]] = None
+    psd_n_excluded_bins: Optional[int] = None
 
 
 @dataclass
@@ -419,7 +439,9 @@ def estimate_noise_calibration_for_trials(
     use_low_activity_mask: bool = False,
     min_bm_sigma: float = PGAS_BM_SIGMA_MIN,
     max_bm_sigma: float = PGAS_BM_SIGMA_MAX,
+    method: str = PGAS_NOISE_CALIBRATION_METHOD_DEFAULT,
 ) -> PgasNoiseCalibration:
+    method = normalize_noise_calibration_method(method)
     resampled = resample_trials_to_fs(trials, resample_fs)
     from .types import flatten_trials
 
@@ -436,7 +458,7 @@ def estimate_noise_calibration_for_trials(
     else:
         sigma_times = sigma_time_flat
         sigma_values = sigma_trace_flat
-    return derive_bm_sigma_and_sigma2(
+    calibration = derive_bm_sigma_and_sigma2(
         sigma_times,
         sigma_values,
         target_fs=resample_fs,
@@ -444,6 +466,37 @@ def estimate_noise_calibration_for_trials(
         min_bm_sigma=min_bm_sigma,
         max_bm_sigma=max_bm_sigma,
     )
+    calibration.method = method
+    if method == "psd":
+        psd_estimate = estimate_observation_noise_psd(
+            sigma_values,
+            fs_hz=resample_fs,
+        )
+        sigma2_unclipped = float(psd_estimate.variance)
+        sigma2_target = float(
+            np.clip(
+                sigma2_unclipped,
+                PGAS_SIGMA2_TARGET_MIN,
+                PGAS_SIGMA2_TARGET_MAX,
+            )
+        )
+        calibration.sigma2_target = sigma2_target
+        calibration.sigma2_target_unclipped = sigma2_unclipped
+        calibration.clipped_sigma2_target = not np.isclose(
+            sigma2_unclipped,
+            sigma2_target,
+        )
+        calibration.psd_sigma2_target = float(psd_estimate.variance)
+        calibration.psd_level = float(psd_estimate.psd_level)
+        calibration.psd_peak_frequencies_hz = [
+            float(peak.frequency_hz) for peak in psd_estimate.peaks
+        ]
+        calibration.psd_excluded_bands_hz = [
+            [float(peak.band_low_hz), float(peak.band_high_hz)]
+            for peak in psd_estimate.peaks
+        ]
+        calibration.psd_n_excluded_bins = int(psd_estimate.n_excluded_bins)
+    return calibration
 
 
 def _noise_calibration_metadata(
@@ -452,7 +505,7 @@ def _noise_calibration_metadata(
     if calibration is None:
         return None
     return {
-        "method": "two_timescale_robust_diff",
+        "method": str(calibration.method),
         "diff_var": float(calibration.diff_var),
         "diff2_var": float(calibration.diff2_var),
         "qdt": float(calibration.qdt),
@@ -463,6 +516,17 @@ def _noise_calibration_metadata(
         "n_samples": int(calibration.n_samples),
         "used_low_activity_mask": bool(calibration.used_low_activity_mask),
         "clip_percentiles": [5.0, 95.0],
+        **(
+            {
+                "psd_sigma2_target": float(calibration.psd_sigma2_target),
+                "psd_level": float(calibration.psd_level),
+                "psd_peak_frequencies_hz": list(calibration.psd_peak_frequencies_hz or []),
+                "psd_excluded_bands_hz": list(calibration.psd_excluded_bands_hz or []),
+                "psd_n_excluded_bins": int(calibration.psd_n_excluded_bins or 0),
+            }
+            if calibration.method == "psd"
+            else {}
+        ),
     }
 
 
@@ -486,6 +550,7 @@ def _build_pgas_noise_settings(
             min_bm_sigma=bm_sigma_min,
             max_bm_sigma=bm_sigma_max,
             use_low_activity_mask=config.bm_sigma_use_low_activity_mask,
+            method=config.noise_calibration_method,
         )
         bm_sigma = float(calibration.bm_sigma)
     else:
@@ -564,6 +629,7 @@ def run_pgas_inference(
     noise_granularity = normalize_noise_calibration_granularity(
         config.noise_calibration_granularity
     )
+    noise_method = normalize_noise_calibration_method(config.noise_calibration_method)
     if noise_granularity == "trial" and config.bm_sigma is not None:
         raise ValueError(
             "per-trial PGAS noise calibration requires --pgas-bm-sigma=auto "
@@ -739,9 +805,11 @@ def run_pgas_inference(
     if (
         noise_scope != PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
         or noise_granularity != PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+        or noise_method != PGAS_NOISE_CALIBRATION_METHOD_DEFAULT
     ):
         cfg_dict["noise_calibration_scope"] = noise_scope
         cfg_dict["noise_calibration_granularity"] = noise_granularity
+        cfg_dict["noise_calibration_method"] = noise_method
     if config.edges is not None:
         cfg_dict["edge_hash"] = hash_array(config.edges)
 
@@ -767,6 +835,7 @@ def run_pgas_inference(
                 cached.metadata.setdefault("noise_calibration", noise_calibration)
             cached.metadata.setdefault("noise_calibration_scope", noise_scope)
             cached.metadata.setdefault("noise_calibration_granularity", noise_granularity)
+            cached.metadata.setdefault("noise_calibration_method", noise_method)
             if trial_settings is not None:
                 cached.metadata.setdefault(
                     "bm_sigma_by_trial",
@@ -901,6 +970,7 @@ def run_pgas_inference(
         traces.metadata.setdefault("noise_calibration", noise_calibration)
     traces.metadata.setdefault("noise_calibration_scope", noise_scope)
     traces.metadata.setdefault("noise_calibration_granularity", noise_granularity)
+    traces.metadata.setdefault("noise_calibration_method", noise_method)
     if trial_settings is not None:
         traces.metadata.setdefault(
             "bm_sigma_by_trial",

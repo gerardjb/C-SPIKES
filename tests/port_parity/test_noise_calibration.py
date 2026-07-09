@@ -19,6 +19,7 @@ from c_spikes.inference.pgas import (
     derive_bm_sigma_and_sigma2,
     map_sigma2_target_to_ig_params,
     normalize_noise_calibration_granularity,
+    normalize_noise_calibration_method,
     normalize_noise_calibration_scope,
 )
 from c_spikes.inference.types import TrialSeries
@@ -121,6 +122,7 @@ def test_sigma2_target_mapping_and_calibration_normalizers():
     assert normalize_noise_calibration_scope("FULL") == "full"
     assert normalize_noise_calibration_scope(None or PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT) == "inference"
     assert normalize_noise_calibration_granularity("TRIAL") == "trial"
+    assert normalize_noise_calibration_method("PSD") == "psd"
     assert (
         normalize_noise_calibration_granularity(PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT)
         == "dataset"
@@ -130,6 +132,8 @@ def test_sigma2_target_mapping_and_calibration_normalizers():
         normalize_noise_calibration_scope("edges")
     with pytest.raises(ValueError):
         normalize_noise_calibration_granularity("epoch")
+    with pytest.raises(ValueError):
+        normalize_noise_calibration_method("allan")
 
 
 def test_derive_bm_sigma_and_sigma2_reports_sigma2_clipping():

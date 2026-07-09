@@ -27,6 +27,8 @@ from c_spikes.inference.pgas import (
     PGAS_BM_SIGMA_DEFAULT,
     PGAS_BM_SIGMA_MAX,
     PGAS_BM_SIGMA_MIN,
+    PGAS_NOISE_CALIBRATION_METHOD_DEFAULT,
+    PGAS_NOISE_CALIBRATION_METHODS,
     PGAS_NOISE_CALIBRATION_GRANULARITIES,
     PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT,
     PGAS_NOISE_CALIBRATION_SCOPES,
@@ -175,6 +177,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--pgas-noise-calibration-method",
+        choices=PGAS_NOISE_CALIBRATION_METHODS,
+        default=PGAS_NOISE_CALIBRATION_METHOD_DEFAULT,
+        help=(
+            "Auto-calibration estimator. 'diff' uses robust first/second differences; "
+            "'psd' estimates sigma2 from Welch PSD after excluding detected narrowband peaks."
+        ),
+    )
+    parser.add_argument(
         "--pgas-sigma2-target",
         type=str,
         default=None,
@@ -303,6 +314,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         pgas_sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
         pgas_noise_calibration_scope=str(args.pgas_noise_calibration_scope),
         pgas_noise_calibration_granularity=str(args.pgas_noise_calibration_granularity),
+        pgas_noise_calibration_method=str(args.pgas_noise_calibration_method),
         pgas_c0_first_y=bool(args.pgas_c0_first_y),
         run_tag=args.run_tag,
         trialwise_correlations=bool(args.trialwise_correlations),
