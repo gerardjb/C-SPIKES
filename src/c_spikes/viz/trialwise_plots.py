@@ -26,6 +26,7 @@ DEFAULT_COLORS: Dict[str, str] = {
     "ens2": "#A6780C",
     "biophys_ml": "#007755",
     "mlspike": "#0072B2",
+    "pgbar": "#4A4A4A",
 }
 
 DEFAULT_LABELS: Dict[str, str] = {
@@ -34,6 +35,7 @@ DEFAULT_LABELS: Dict[str, str] = {
     "ens2": r"ENS$^2$",
     "mlspike": "MLspike",
     "biophys_ml": r"Biophys$_{ML}$",
+    "pgbar": "PGBAR",
 }
 
 

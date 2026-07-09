@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 End-to-end demo:
-  1) Take one or more PGAS param_samples files.
+  1) Take one or more PGAS parameter sample files or cache .mat files.
   2) Generate synthetic ground-truth datasets via syn_gen (with manifest logging).
   3) Train a custom ENS2 model on the combined synthetic datasets (with manifest logging).
   4) Optionally run demo_compare_methods.py against the trained ENS2.
@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         action="append",
         required=True,
-        help="Path to a PGAS param_samples_*.dat file (repeatable).",
+        help="Path to a PGAS param_samples_*.dat file or cache .mat with embedded samples (repeatable).",
     )
     p.add_argument("--burnin", type=int, default=100, help="Burn-in rows to discard from each param_samples file.")
     p.add_argument(

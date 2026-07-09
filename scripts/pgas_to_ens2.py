@@ -19,14 +19,14 @@ def _parse_csv_floats(text: str) -> List[float]:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Generate synthetic datasets from PGAS param_samples and train ENS2 models."
+        description="Generate synthetic datasets from PGAS parameter samples and train ENS2 models."
     )
     p.add_argument(
         "--param-samples",
         type=Path,
         action="append",
         required=True,
-        help="Path to param_samples_*.dat (repeatable).",
+        help="Path to param_samples_*.dat or a PGAS cache .mat with embedded samples (repeatable).",
     )
     p.add_argument("--run-root", type=Path, required=True, help="Run root directory.")
     p.add_argument("--run-tag", type=str, required=True, help="Run tag for naming.")
@@ -103,4 +103,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
