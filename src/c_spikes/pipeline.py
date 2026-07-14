@@ -17,6 +17,7 @@ from typing import Dict, Iterable, List, Optional, Sequence
 import numpy as np
 
 from c_spikes.inference.cascade import CASCADE_RESAMPLE_FS
+from c_spikes.inference.cache import get_cache_root
 from c_spikes.inference.pgas import (
     PGAS_BM_SIGMA_DEFAULT,
     PGAS_BM_SIGMA_MAX,
@@ -302,7 +303,8 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                     else:
                         windows = [(float(tr.times[0]), float(tr.times[-1])) for tr in trials]
 
-                # Load cached method outputs from inference_cache.
+                # Load cached method outputs from the configured inference cache root.
+                cache_root = get_cache_root()
                 loaded: Dict[str, MethodResult] = {}
                 for entry in entries:
                     if not isinstance(entry, dict):
@@ -322,7 +324,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                             cache_key, _ = compute_config_signature(cfg_dict)
                     if not cache_key:
                         continue
-                    mat_path = Path("results/inference_cache") / method_name / cache_tag / f"{cache_key}.mat"
+                    mat_path = cache_root / method_name / cache_tag / f"{cache_key}.mat"
                     if not mat_path.exists():
                         print(f"[eval-only] Missing cache mat: {mat_path}")
                         continue
