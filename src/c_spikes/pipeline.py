@@ -333,6 +333,16 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                     data = sio.loadmat(mat_path)
                     time_arr = np.asarray(data.get("time_stamps")).squeeze()
                     prob_arr = np.asarray(data.get("spike_prob")).squeeze()
+                    reconstruction_arr = data.get("reconstruction")
+                    reconstruction_arr = (
+                        None
+                        if reconstruction_arr is None
+                        else np.asarray(reconstruction_arr).squeeze()
+                    )
+                    discrete_arr = data.get("discrete_spikes")
+                    discrete_arr = (
+                        None if discrete_arr is None else np.asarray(discrete_arr).squeeze()
+                    )
                     sampling_rate = float(entry.get("sampling_rate", 0.0) or 0.0)
                     if sampling_rate <= 0:
                         sampling_rate = float(compute_sampling_rate(np.asarray(time_arr, dtype=np.float64).ravel()))
@@ -341,7 +351,9 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                         time_stamps=time_arr,
                         spike_prob=prob_arr,
                         sampling_rate=sampling_rate,
-                        metadata={},
+                        metadata={"cache_tag": cache_tag, "cache_key": cache_key},
+                        reconstruction=reconstruction_arr,
+                        discrete_spikes=discrete_arr,
                     )
                 if not loaded:
                     print(f"[eval-only] No cached methods loaded for {summary_dir}; skipping.")
