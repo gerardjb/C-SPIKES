@@ -4,12 +4,17 @@
 from __future__ import annotations
 
 import os
+import json
 
 import numpy as np
 import pytest
 import scipy.io as sio
 
-from c_spikes.inference.cache import load_method_cache, save_method_cache
+from c_spikes.inference.cache import (
+    load_method_cache,
+    load_method_cache_legacy_compatible,
+    save_method_cache,
+)
 from c_spikes.inference.pgas import build_pgas_output_cache_payload, cleanup_pgas_output_dat_files
 from c_spikes.inference.types import MethodResult, TrialSeries
 
@@ -94,3 +99,74 @@ def test_method_cache_loads_without_embedded_pgas_samples(tmp_path):
     np.testing.assert_allclose(loaded.time_stamps, result.time_stamps)
     np.testing.assert_allclose(loaded.spike_prob, result.spike_prob)
     np.testing.assert_allclose(loaded.discrete_spikes, result.discrete_spikes)
+
+
+def test_legacy_compatible_cache_load_ignores_absolute_path_config_mismatch(tmp_path):
+    cache_dir = tmp_path / "pgas" / "cell_sraw_ms2_rsraw_bm0p05"
+    cache_dir.mkdir(parents=True)
+    mat_path = cache_dir / "legacy.mat"
+    sio.savemat(
+        mat_path,
+        {
+            "time_stamps": np.asarray([0.0, 1.0]),
+            "spike_prob": np.asarray([0.25, 0.75]),
+            "discrete_spikes": np.asarray([0.0, 1.0]),
+        },
+    )
+    legacy_config = {
+        "niter": 200,
+        "burnin": 100,
+        "downsample_target": "raw",
+        "constants_file": "/old/worktree/constants.json",
+        "gparam_file": "/old/build/20230525_gold.dat",
+        "maxspikes": 2,
+        "bm_sigma": 0.05,
+        "edge_hash": "edge123",
+    }
+    (cache_dir / "legacy.json").write_text(
+        json.dumps(
+            {
+                "dataset": "cell_sraw_ms2_rsraw_bm0p05",
+                "method": "pgas",
+                "config": legacy_config,
+                "trace_hash": "trace123",
+                "sampling_rate": 1.0,
+                "metadata": {"cache_tag": "cell_sraw_ms2_rsraw_bm0p05"},
+                "cache_key": "legacy",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    current_config = {
+        "niter": 200,
+        "burnin": 100,
+        "downsample_target": "raw",
+        "constants_file": "/new/worktree/constants.json",
+        "gparam_file": "/new/build/20230525_gold.dat",
+        "maxspikes": 2,
+        "bm_sigma": 0.05,
+        "edge_hash": "edge123",
+    }
+    loaded = load_method_cache_legacy_compatible(
+        "pgas",
+        ["cell_sraw_ms2_rsraw_bm0p05"],
+        current_config,
+        "trace123",
+        stable_config_keys=["niter", "burnin", "downsample_target", "maxspikes", "bm_sigma", "edge_hash"],
+        cache_root=tmp_path,
+    )
+
+    assert loaded is not None
+    assert loaded.metadata["cache_style"] == "legacy_path_compatible"
+    np.testing.assert_allclose(loaded.discrete_spikes, np.asarray([0.0, 1.0]))
+
+    missed = load_method_cache_legacy_compatible(
+        "pgas",
+        ["cell_sraw_ms2_rsraw_bm0p05"],
+        {**current_config, "edge_hash": "different"},
+        "trace123",
+        stable_config_keys=["niter", "burnin", "downsample_target", "maxspikes", "bm_sigma", "edge_hash"],
+        cache_root=tmp_path,
+    )
+    assert missed is None

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import re
 
-from .cache import load_method_cache, save_method_cache
+from .cache import load_method_cache, load_method_cache_legacy_compatible, save_method_cache
 from .eval import segment_indices
 from .noise_calibration import estimate_observation_noise_psd
 from .pgas_cache import PgasSamplesCache, load_pgas_samples_from_cache
@@ -862,6 +862,7 @@ def run_pgas_inference(
             config.resample_fs is None
             and noise_scope == PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
             and noise_granularity == PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
+            and noise_method == PGAS_NOISE_CALIBRATION_METHOD_DEFAULT
         ):
             legacy_tag = f"{config.dataset_tag}_ms{maxspikes}"
             if str(config.downsample_label).strip().lower() == "raw":
@@ -893,6 +894,26 @@ def run_pgas_inference(
                 legacy_cached.metadata.setdefault("maxspikes", maxspikes)
                 legacy_cached.metadata.setdefault("cache_style", "legacy")
                 return legacy_cached
+
+            stable_keys = ["niter", "burnin", "downsample_target", "maxspikes", "bm_sigma"]
+            if "edge_hash" in cfg_dict:
+                stable_keys.append("edge_hash")
+            legacy_path_cached = load_method_cache_legacy_compatible(
+                "pgas",
+                [run_tag, legacy_tag],
+                cfg_dict,
+                trace_hash,
+                stable_config_keys=stable_keys,
+            )
+            if legacy_path_cached:
+                legacy_path_cached.metadata.setdefault("maxspikes_per_bin", config.maxspikes_per_bin)
+                legacy_path_cached.metadata.setdefault("maxspikes", maxspikes)
+                legacy_path_cached.metadata.setdefault("bm_sigma", bm_sigma)
+                legacy_path_cached.metadata.setdefault(
+                    "bm_sigma_bounds",
+                    {"min": float(bm_sigma_min), "max": float(bm_sigma_max)},
+                )
+                return legacy_path_cached
 
     try:
         pgas_mod = __import__("c_spikes.pgas.pgas_bound", fromlist=["Analyzer"])
