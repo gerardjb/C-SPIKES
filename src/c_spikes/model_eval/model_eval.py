@@ -1,7 +1,15 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-def smooth_spike_train(spike_times, sampling_rate, duration=None, sigma_ms=50, binning="linear"):
+def smooth_spike_train(
+    spike_times,
+    sampling_rate,
+    duration=None,
+    sigma_ms=50,
+    binning="linear",
+    *,
+    n_samples=None,
+):
     """
     Bin spike times into a high-resolution array and apply Gaussian smoothing.
     Args:
@@ -14,13 +22,20 @@ def smooth_spike_train(spike_times, sampling_rate, duration=None, sigma_ms=50, b
               based on its fractional index (reduces timing-quantization error at low Fs).
             - "round": assign each spike to the nearest bin.
             - "floor": assign each spike to the left bin (legacy behavior).
+        n_samples (int, optional): Explicit output length. This lets callers that construct an
+            exact-rate time grid guarantee that the smoothed trace has the same length.
     Returns:
         np.ndarray: Smoothed spike-rate array (length = duration * sampling_rate).
     """
     spike_times = np.asarray(spike_times)
     if duration is None:
         duration = spike_times.max() if spike_times.size > 0 else 0
-    N = int(np.ceil(duration * sampling_rate)) + 1
+    if n_samples is None:
+        N = int(np.ceil(duration * sampling_rate)) + 1
+    else:
+        N = int(n_samples)
+        if N <= 0 or N != n_samples:
+            raise ValueError("n_samples must be a positive integer.")
     spike_array = np.zeros(N, dtype=float)
     pos = spike_times * float(sampling_rate)
     if binning == "floor":

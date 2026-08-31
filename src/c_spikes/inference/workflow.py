@@ -13,9 +13,7 @@ from .ens2 import Ens2Config, run_ens2_inference
 from .eval import (
     build_ground_truth_series,
     compute_epochwise_counts,
-    compute_correlations,
     compute_correlations_windowed,
-    compute_trialwise_correlations,
     compute_trialwise_correlations_windowed,
 )
 from .pgas import (
@@ -329,16 +327,13 @@ def run_inference_for_dataset(
     elif pgas_result is not None:
         windows = pgas_windows_from_result(pgas_result)
 
-    trial_windows: Optional[List[Tuple[float, float]]] = None
-    if cfg.trialwise_correlations:
-        if edges_effective is not None:
-            trial_windows = [(float(s), float(e)) for s, e in edges_effective]
-        else:
-            trial_windows = [(float(tr.times[0]), float(tr.times[-1])) for tr in trials_trimmed]
     epoch_windows = (
         [(float(s), float(e)) for s, e in windows]
         if windows
         else [(float(tr.times[0]), float(tr.times[-1])) for tr in trials_trimmed]
+    )
+    trial_windows: Optional[List[Tuple[float, float]]] = (
+        list(epoch_windows) if cfg.trialwise_correlations else None
     )
 
     def _mask_method_to_windows(result: MethodResult, win: Optional[List[Tuple[float, float]]]) -> MethodResult:
@@ -369,22 +364,13 @@ def run_inference_for_dataset(
 
     masked_methods_seq = [_mask_method_to_windows(m, windows) for m in methods.values()]
     methods = {m.name: m for m in masked_methods_seq}
-    if windows:
-        correlations = compute_correlations_windowed(
-            masked_methods_seq,
-            spike_times,
-            windows,
-            reference_fs=ref_fs,
-            sigma_ms=cfg.corr_sigma_ms,
-        )
-    else:
-        correlations = compute_correlations(
-            masked_methods_seq,
-            ref_time,
-            ref_trace,
-            sigma_ms=cfg.corr_sigma_ms,
-            windows=windows,
-        )
+    correlations = compute_correlations_windowed(
+        masked_methods_seq,
+        spike_times,
+        epoch_windows,
+        reference_fs=ref_fs,
+        sigma_ms=cfg.corr_sigma_ms,
+    )
 
     trialwise: Optional[Dict[str, List[float]]] = None
     if trial_windows is not None:

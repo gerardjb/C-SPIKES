@@ -417,6 +417,9 @@ python run_pipeline.py \
 - PGAS resample: `None` uses native sampling; set explicitly (e.g., 120) to force resampling.
 - CASCADE resample: defaults to the input sampling rate (no forced resampling); use `--cascade-resample` (demo) or `--cascade-resample-fs` (batch CLI) to force a specific Hz.
 - ENS2 uses your provided traces as-is; choose `neuron_type` (`Exc`/`Inh`) to select the checkpoint.
+- Correlations use exact `1 / reference_fs` ground-truth grids anchored independently to each
+  evaluation epoch. Aggregate correlations concatenate the aligned epoch samples before computing
+  Pearson correlation; they are not the arithmetic mean of trial-wise correlations.
 
 ## Where to look next
 - `c_spikes/inference/workflow.py` for the end-to-end runner.

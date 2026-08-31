@@ -22,10 +22,14 @@ def build_ground_truth_series(
     duration = float(global_end - global_start)
     if duration <= 0:
         raise ValueError("global_end must exceed global_start when building ground truth.")
+    reference_fs = float(reference_fs)
+    if not np.isfinite(reference_fs) or reference_fs <= 0:
+        raise ValueError("reference_fs must be positive and finite.")
 
-    # Match the length convention used by smooth_spike_train (ceil instead of round).
-    n_samples = int(np.ceil(duration * reference_fs)) + 1
-    time_grid = np.linspace(global_start, global_end, n_samples, dtype=np.float64)
+    # Use the nearest nominal sample count and exact 1 / reference_fs spacing. Endpoint-stretched
+    # linspace grids make correlation depend on tiny floating-point changes in an estimated rate.
+    n_samples = max(2, int(np.rint(duration * reference_fs)) + 1)
+    time_grid = float(global_start) + np.arange(n_samples, dtype=np.float64) / reference_fs
     if spikes.size == 0:
         return time_grid, np.zeros_like(time_grid)
 
@@ -39,12 +43,8 @@ def build_ground_truth_series(
         duration=duration,
         sigma_ms=sigma_ms,
         binning=binning,
+        n_samples=n_samples,
     )
-    # smooth_spike_train derives length from the provided duration; if rounding differs,
-    # interpolate to align with the reference grid.
-    if smoothed.size != time_grid.size:
-        smoothed_time = np.linspace(global_start, global_end, smoothed.size, dtype=np.float64)
-        smoothed = np.interp(time_grid, smoothed_time, smoothed)
     return time_grid, smoothed
 
 
