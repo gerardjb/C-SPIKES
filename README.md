@@ -103,6 +103,15 @@ To launch the desktop GUI:
 python scripts/c_spikes_gui.py
 ```
 
+The launcher publishes its checkout through `C_SPIKES_PROJECT_ROOT`. This keeps non-editable
+installs pointed at the checkout's `Pretrained_models/`, `parameter_files/`, and PGAS parameter
+data instead of deriving those paths from `site-packages`. Set the variable explicitly before
+launching to use a different complete checkout:
+
+```bash
+C_SPIKES_PROJECT_ROOT=/path/to/C-SPIKES python scripts/c_spikes_gui.py
+```
+
 ### Spike Inference tab
 This tab contains panels that allow selection of which methods (i.e., BiophysSMC, BiophysML, CASCADE, ENS2) you'd like to run on your data as well as panels for selecting specific Pretrained models for the supervised methods (BiophysML, CASCADE, ENS2) and hyperparameters for the BiophyhsSMC method.
 - **Dataset**: select a directory containing `.mat` files.

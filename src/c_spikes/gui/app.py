@@ -51,6 +51,7 @@ from c_spikes.gui.models import (
     list_cascade_local_models,
     list_ens2_model_dirs,
 )
+from c_spikes.gui.paths import resolve_project_root
 from c_spikes.gui.plotting import METHOD_ORDER, plot_epoch
 from c_spikes.gui.slurm import default_slurm_profile, normalize_slurm_profile, render_sbatch_script
 from c_spikes.gui.smc_viz import (
@@ -71,7 +72,7 @@ from c_spikes.inference.pgas import (
 from c_spikes.inference.types import MethodResult, compute_config_signature
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = resolve_project_root(module_file=__file__)
 CASCADE_ROOT = REPO_ROOT / "Pretrained_models" / "CASCADE"
 ENS2_ROOT = REPO_ROOT / "Pretrained_models" / "ENS2"
 BIOPHYS_ROOT = REPO_ROOT / "Pretrained_models" / "BiophysML"
