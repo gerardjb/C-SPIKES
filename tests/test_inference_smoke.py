@@ -20,7 +20,7 @@ def _repo_root() -> Path:
 @pytest.mark.requires_tensorflow
 def test_cascade_inference_smoke(tmp_path, monkeypatch):
     repo_root = _repo_root()
-    model_dir = repo_root / "Pretrained_models"
+    model_dir = repo_root / "Pretrained_models" / "CASCADE"
     model_path = model_dir / "Cascade_Universal_30Hz"
     assert model_path.exists(), f"Missing CASCADE model folder: {model_path}"
 
@@ -59,7 +59,7 @@ def test_cascade_inference_smoke(tmp_path, monkeypatch):
 @pytest.mark.requires_torch
 def test_ens2_inference_smoke(tmp_path, monkeypatch):
     repo_root = _repo_root()
-    pretrained_dir = repo_root / "Pretrained_models" / "ens2_published"
+    pretrained_dir = repo_root / "Pretrained_models" / "ENS2" / "ens2_published"
     assert pretrained_dir.exists(), f"Missing ENS2 pretrained dir: {pretrained_dir}"
 
     rng = np.random.default_rng(1)

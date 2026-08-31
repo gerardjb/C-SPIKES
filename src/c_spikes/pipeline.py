@@ -224,6 +224,13 @@ def run_batch(cfg: RunConfig) -> List[Path]:
             selected_trial_indices = trial_selection_lookup.get(dataset_tag)
             if selected_trial_indices is None:
                 continue
+        if cfg.first_trial_only:
+            selected_trial_indices = (
+                selected_trial_indices[:1]
+                if selected_trial_indices is not None
+                else [0]
+            )
+        if selected_trial_indices is not None:
             selected_trial_set = set(selected_trial_indices)
         for label, target in smoothing_levels:
             selection = MethodSelection(

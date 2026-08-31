@@ -107,7 +107,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "cached method outputs referenced by each comparison.json (no inference runs)."
         ),
     )
-    parser.add_argument("--first-trial-only", action="store_true", help="Restrict processing to the first trial/window.")
+    parser.add_argument(
+        "--first-trial-only",
+        action="store_true",
+        help=(
+            "Restrict each dataset to trial 0, or to the lowest selected trial when "
+            "--trial-selection-path is supplied."
+        ),
+    )
     parser.add_argument("--bm-sigma-spike-gap", type=float, default=0.15, help="Gap around spikes when estimating PGAS bm_sigma.")
     parser.add_argument(
         "--corr-sigma-ms",
