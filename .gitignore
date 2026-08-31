@@ -22,6 +22,8 @@ data/
 # Gui output dirs
 spike_inference/
 biophys_ml/
+!src/c_spikes/biophys_ml/
+!src/c_spikes/biophys_ml/**
 edges/
 
 # Misc in codebase
@@ -31,6 +33,8 @@ src/c_spikes/_version.py
 profiles/
 results/
 gt_noise_dir/
+!src/c_spikes/syn_gen/gt_noise_dir/
+!src/c_spikes/syn_gen/gt_noise_dir/**
 gt_data/
 logs/
 tmp/
