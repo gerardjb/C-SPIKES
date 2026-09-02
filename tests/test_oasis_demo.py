@@ -25,6 +25,9 @@ def test_demo_keeps_oasis_opt_in_and_automatic_ar1_defaults():
     assert demo._resolve_oasis_g(args.oasis_ar_order, args.oasis_g) == (None,)
     assert args.oasis_penalty == 1
     assert args.oasis_decimate == 1
+    assert args.oasis_discrete_mode == "none"
+    assert args.oasis_event_threshold is None
+    assert args.oasis_threshold_units == "absolute"
 
 
 def test_demo_parses_fixed_ar2_configuration():
@@ -51,6 +54,12 @@ def test_demo_parses_fixed_ar2_configuration():
             "0",
             "--oasis-decimate",
             "2",
+            "--oasis-discrete-mode",
+            "support",
+            "--oasis-event-threshold",
+            "2.5",
+            "--oasis-threshold-units",
+            "noise_scaled",
         ]
     )
 
@@ -61,6 +70,9 @@ def test_demo_parses_fixed_ar2_configuration():
     assert args.oasis_sn == pytest.approx(0.05)
     assert args.oasis_baseline == pytest.approx(-0.1)
     assert args.oasis_allow_negative_baseline is True
+    assert args.oasis_discrete_mode == "support"
+    assert args.oasis_event_threshold == pytest.approx(2.5)
+    assert args.oasis_threshold_units == "noise_scaled"
     demo._validate_oasis_args(args)
 
 
@@ -78,4 +90,29 @@ def test_demo_rejects_ar2_solver_options_for_ar1():
     )
 
     with pytest.raises(ValueError, match="require --oasis-ar-order 2"):
+        demo._validate_oasis_args(args)
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "message"),
+    [
+        (["--oasis-discrete-mode", "support"], "required"),
+        (["--oasis-event-threshold", "0.5"], "requires support"),
+        (["--oasis-threshold-units", "noise_scaled"], "requires support"),
+        (
+            [
+                "--oasis-discrete-mode",
+                "support",
+                "--oasis-event-threshold",
+                "0",
+            ],
+            "positive and finite",
+        ),
+    ],
+)
+def test_demo_rejects_invalid_event_support_settings(extra_args, message):
+    demo = _load_demo_module()
+    args = demo.parse_args(["--dataset", "recording.mat", *extra_args])
+
+    with pytest.raises(ValueError, match=message):
         demo._validate_oasis_args(args)

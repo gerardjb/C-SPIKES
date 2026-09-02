@@ -67,6 +67,16 @@ def _validate_oasis_args(args: argparse.Namespace) -> None:
         raise ValueError("--oasis-sn must be non-negative.")
     if args.oasis_tol is not None and args.oasis_tol <= 0:
         raise ValueError("--oasis-tol must be positive.")
+    if args.oasis_event_threshold is not None and (
+        not np.isfinite(args.oasis_event_threshold) or args.oasis_event_threshold <= 0
+    ):
+        raise ValueError("--oasis-event-threshold must be positive and finite.")
+    if args.oasis_discrete_mode == "support" and args.oasis_event_threshold is None:
+        raise ValueError("--oasis-event-threshold is required for support mode.")
+    if args.oasis_discrete_mode == "none" and args.oasis_event_threshold is not None:
+        raise ValueError("--oasis-event-threshold requires support mode.")
+    if args.oasis_discrete_mode == "none" and args.oasis_threshold_units != "absolute":
+        raise ValueError("--oasis-threshold-units requires support mode.")
     if args.oasis_ar_order == 1 and any(
         value is not None for value in (args.oasis_shift, args.oasis_window, args.oasis_tol)
     ):
@@ -217,6 +227,33 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--oasis-shift", type=int, help="AR(2)-only ONNLS shift.")
     parser.add_argument("--oasis-window", type=int, help="AR(2)-only ONNLS window.")
     parser.add_argument("--oasis-tol", type=float, help="AR(2)-only ONNLS tolerance.")
+    parser.add_argument(
+        "--oasis-discrete-mode",
+        choices=("none", "support"),
+        default="none",
+        help=(
+            "Optional binary event-support output; 'none' preserves continuous-only "
+            "OASIS output (default: none)."
+        ),
+    )
+    parser.add_argument(
+        "--oasis-event-threshold",
+        type=float,
+        metavar="VALUE",
+        help=(
+            "Positive threshold used in support mode. It is an event-support cutoff, "
+            "not a calibrated spike count."
+        ),
+    )
+    parser.add_argument(
+        "--oasis-threshold-units",
+        choices=("absolute", "noise_scaled"),
+        default="absolute",
+        help=(
+            "Interpret the event threshold as an absolute OASIS amplitude or a "
+            "per-trial noise-scaled factor (default: absolute)."
+        ),
+    )
     parser.add_argument(
         "--ens2-pretrained-root",
         type=Path,
@@ -387,6 +424,9 @@ def main() -> None:
         oasis_shift=args.oasis_shift,
         oasis_window=args.oasis_window,
         oasis_tol=args.oasis_tol,
+        oasis_discrete_mode=str(args.oasis_discrete_mode),
+        oasis_event_threshold=args.oasis_event_threshold,
+        oasis_threshold_units=str(args.oasis_threshold_units),
         trialwise_correlations=bool(args.trialwise_correlations),
     )
 

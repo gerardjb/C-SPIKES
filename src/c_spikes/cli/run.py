@@ -380,6 +380,33 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Optional positive AR(2) ONNLS tolerance.",
     )
     oasis_group.add_argument(
+        "--oasis-discrete-mode",
+        choices=("none", "support"),
+        default="none",
+        help=(
+            "Optional binary event-support output; 'none' preserves continuous-only "
+            "OASIS output (default: none)."
+        ),
+    )
+    oasis_group.add_argument(
+        "--oasis-event-threshold",
+        type=_positive_float,
+        metavar="VALUE",
+        help=(
+            "Positive threshold used when --oasis-discrete-mode=support. "
+            "It is an event-support cutoff, not a calibrated spike count."
+        ),
+    )
+    oasis_group.add_argument(
+        "--oasis-threshold-units",
+        choices=("absolute", "noise_scaled"),
+        default="absolute",
+        help=(
+            "Interpret the event threshold as an absolute OASIS amplitude or a "
+            "per-trial noise-scaled factor (default: absolute)."
+        ),
+    )
+    oasis_group.add_argument(
         "--oasis-uniformity-rtol",
         type=_nonnegative_float,
         default=5e-3,
@@ -415,6 +442,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         value is not None for value in (args.oasis_shift, args.oasis_window, args.oasis_tol)
     ):
         parser.error("--oasis-shift, --oasis-window, and --oasis-tol require --oasis-ar-order 2")
+    if args.oasis_discrete_mode == "support":
+        if args.oasis_event_threshold is None:
+            parser.error("--oasis-event-threshold is required for --oasis-discrete-mode=support")
+    else:
+        if args.oasis_event_threshold is not None:
+            parser.error("--oasis-event-threshold requires --oasis-discrete-mode=support")
+        if args.oasis_threshold_units != "absolute":
+            parser.error("--oasis-threshold-units requires --oasis-discrete-mode=support")
     return args
 
 
@@ -477,6 +512,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         oasis_tol=args.oasis_tol,
         oasis_uniformity_rtol=float(args.oasis_uniformity_rtol),
         oasis_uniformity_atol=float(args.oasis_uniformity_atol),
+        oasis_discrete_mode=str(args.oasis_discrete_mode),
+        oasis_event_threshold=args.oasis_event_threshold,
+        oasis_threshold_units=str(args.oasis_threshold_units),
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
         pgas_bm_sigma_min=float(args.pgas_bm_sigma_min),
