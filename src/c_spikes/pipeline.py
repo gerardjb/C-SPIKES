@@ -2,7 +2,7 @@
 Reusable batching/orchestration layer for running spike-inference methods.
 
 This wraps the existing compare_inference_methods helpers so callers can:
-  • select any subset of methods (pgas / ens2 / cascade),
+  • select any subset of methods (pgas / ens2 / cascade / oasis),
   • batch over datasets via globbing or explicit lists,
   • drive runs either from Python (direct call) or the CLI wrapper.
 """
@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -28,7 +28,7 @@ from c_spikes.inference.pgas import (
     PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT,
 )
 from c_spikes.inference.smoothing import resolve_smoothing_levels
-from c_spikes.inference.types import MethodResult, ensure_serializable
+from c_spikes.inference.types import MethodResult, compute_config_signature, ensure_serializable
 from c_spikes.inference.workflow import (
     DatasetRunConfig,
     MethodSelection,
@@ -81,6 +81,19 @@ class RunConfig:
     pgas_c0_first_y: bool = False
     trialwise_correlations: bool = False
     eval_only: bool = False
+    oasis_g: Tuple[Optional[float], ...] = (None,)
+    oasis_sn: Optional[float] = None
+    oasis_b: Optional[float] = None
+    oasis_b_nonneg: bool = True
+    oasis_optimize_g: int = 0
+    oasis_penalty: int = 1
+    oasis_decimate: int = 1
+    oasis_max_iter: Optional[int] = None
+    oasis_shift: Optional[int] = None
+    oasis_window: Optional[int] = None
+    oasis_tol: Optional[float] = None
+    oasis_uniformity_rtol: float = 1e-3
+    oasis_uniformity_atol: float = 1e-9
 
 
 def _select_dataset_paths(cfg: RunConfig) -> List[Path]:
@@ -121,6 +134,27 @@ def _build_run_tag(cfg: RunConfig) -> str:
         tokens.append(cascade_token)
     if "ens2" in methods:
         tokens.append("ens2")
+    if "oasis" in methods:
+        oasis_g = tuple(cfg.oasis_g)
+        if len(oasis_g) not in (1, 2):
+            raise ValueError("oasis_g must contain one AR(1) or two AR(2) coefficients")
+        oasis_settings = {
+            "g": oasis_g,
+            "sn": cfg.oasis_sn,
+            "b": cfg.oasis_b,
+            "b_nonneg": cfg.oasis_b_nonneg,
+            "optimize_g": cfg.oasis_optimize_g,
+            "penalty": cfg.oasis_penalty,
+            "decimate": cfg.oasis_decimate,
+            "max_iter": cfg.oasis_max_iter,
+            "shift": cfg.oasis_shift,
+            "window": cfg.oasis_window,
+            "tol": cfg.oasis_tol,
+            "uniformity_rtol": cfg.oasis_uniformity_rtol,
+            "uniformity_atol": cfg.oasis_uniformity_atol,
+        }
+        oasis_signature, _ = compute_config_signature(oasis_settings)
+        tokens.append(f"oasisar{len(oasis_g)}_{oasis_signature[:8]}")
     return "_".join(tokens) if tokens else "no_methods"
 
 
@@ -237,6 +271,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 run_pgas=("pgas" in method_list),
                 run_ens2=("ens2" in method_list),
                 run_cascade=("cascade" in method_list),
+                run_oasis=("oasis" in method_list),
             )
             edges = None
             if edges_lookup is not None and dataset_tag in edges_lookup:
@@ -441,6 +476,19 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 pgas_noise_calibration_method=cfg.pgas_noise_calibration_method,
                 cascade_discretize=bool(cfg.cascade_discretize),
                 cascade_model_name=str(cfg.cascade_model_name),
+                oasis_g=tuple(cfg.oasis_g),
+                oasis_sn=cfg.oasis_sn,
+                oasis_b=cfg.oasis_b,
+                oasis_b_nonneg=bool(cfg.oasis_b_nonneg),
+                oasis_optimize_g=cfg.oasis_optimize_g,
+                oasis_penalty=cfg.oasis_penalty,
+                oasis_decimate=cfg.oasis_decimate,
+                oasis_max_iter=cfg.oasis_max_iter,
+                oasis_shift=cfg.oasis_shift,
+                oasis_window=cfg.oasis_window,
+                oasis_tol=cfg.oasis_tol,
+                oasis_uniformity_rtol=cfg.oasis_uniformity_rtol,
+                oasis_uniformity_atol=cfg.oasis_uniformity_atol,
                 trialwise_correlations=bool(cfg.trialwise_correlations),
                 trial_indices=selected_trial_indices,
             )
@@ -523,6 +571,21 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                             "input_resample_fs", CASCADE_RESAMPLE_FS
                         ),
                         "cascade_samples": summary_sample_count("cascade", cascade_result),
+                    }
+                )
+            if "oasis" in methods:
+                oasis_result = methods["oasis"]
+                summary.update(
+                    {
+                        "oasis_cache": ensure_serializable(
+                            oasis_result.metadata.get("config", {})
+                        ),
+                        "oasis_sampling_rate": float(oasis_result.sampling_rate),
+                        "oasis_source_version": oasis_result.metadata.get("source_version"),
+                        "oasis_trials": ensure_serializable(
+                            oasis_result.metadata.get("trials", [])
+                        ),
+                        "oasis_samples": summary_sample_count("oasis", oasis_result),
                     }
                 )
             summary["gt_count"] = int(outputs.get("summary", {}).get("gt_count", 0))

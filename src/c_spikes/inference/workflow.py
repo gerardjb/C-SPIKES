@@ -31,6 +31,7 @@ from .pgas import (
     pgas_windows_from_result,
     trim_trials_by_edges,
 )
+from .oasis import OasisConfig, run_oasis_inference
 from .smoothing import mean_downsample_trace, resample_trials_to_fs
 from .types import MethodResult, TrialSeries, compute_sampling_rate, ensure_serializable, extract_spike_times, flatten_trials
 
@@ -53,6 +54,7 @@ class MethodSelection:
     run_pgas: bool = True
     run_ens2: bool = True
     run_cascade: bool = True
+    run_oasis: bool = False
 
 
 @dataclass
@@ -83,6 +85,19 @@ class DatasetRunConfig:
     cascade_model_name: str = "universal_p_cascade_exc_30"
     trialwise_correlations: bool = False
     trial_indices: Optional[List[int]] = None
+    oasis_g: Tuple[Optional[float], ...] = (None,)
+    oasis_sn: Optional[float] = None
+    oasis_b: Optional[float] = None
+    oasis_b_nonneg: bool = True
+    oasis_optimize_g: int = 0
+    oasis_penalty: int = 1
+    oasis_decimate: int = 1
+    oasis_max_iter: Optional[int] = None
+    oasis_shift: Optional[int] = None
+    oasis_window: Optional[int] = None
+    oasis_tol: Optional[float] = None
+    oasis_uniformity_rtol: float = 1e-3
+    oasis_uniformity_atol: float = 1e-9
 
 
 def _resolve_edges_for_trials(
@@ -295,6 +310,33 @@ def run_inference_for_dataset(
     else:
         cascade_result = None
 
+    if cfg.selection.run_oasis:
+        oasis_cfg = OasisConfig(
+            dataset_tag=dataset_tag,
+            g=cfg.oasis_g,
+            sn=cfg.oasis_sn,
+            b=cfg.oasis_b,
+            b_nonneg=cfg.oasis_b_nonneg,
+            optimize_g=cfg.oasis_optimize_g,
+            penalty=cfg.oasis_penalty,
+            decimate=cfg.oasis_decimate,
+            max_iter=cfg.oasis_max_iter,
+            shift=cfg.oasis_shift,
+            window=cfg.oasis_window,
+            tol=cfg.oasis_tol,
+            downsample_label=downsample_label,
+            uniformity_rtol=cfg.oasis_uniformity_rtol,
+            uniformity_atol=cfg.oasis_uniformity_atol,
+            use_cache=cfg.use_cache,
+        )
+        oasis_result = run_oasis_inference(
+            trials=trials_for_methods,
+            config=oasis_cfg,
+        )
+        methods["oasis"] = oasis_result
+    else:
+        oasis_result = None
+
     if not methods:
         return {
             "dataset": dataset_tag,
@@ -417,6 +459,15 @@ def run_inference_for_dataset(
         summary["ens2_cache"] = ensure_serializable(ens2_result.metadata.get("config", {}))
     if cascade_result is not None:
         summary["cascade_cache"] = ensure_serializable(cascade_result.metadata.get("config", {}))
+    if oasis_result is not None:
+        summary.update(
+            {
+                "oasis_cache": ensure_serializable(oasis_result.metadata.get("config", {})),
+                "oasis_sampling_rate": float(oasis_result.sampling_rate),
+                "oasis_source_version": oasis_result.metadata.get("source_version"),
+                "oasis_trials": ensure_serializable(oasis_result.metadata.get("trials", [])),
+            }
+        )
 
     return {
         "dataset": dataset_tag,

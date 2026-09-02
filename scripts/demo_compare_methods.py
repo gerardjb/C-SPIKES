@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Demo: run PGAS, ENS2, and CASCADE on a user-specified dataset and compare outputs.
+Demo: run PGAS, ENS2, CASCADE, and optionally OASIS on a dataset and compare outputs.
 
 Features:
   - Optional smoothing/downsampling (set a target Hz or use native rate).
   - Optional PGAS/CASCADE resample overrides.
+  - Opt-in OASIS inference with per-trial AR(1) or AR(2) deconvolution.
   - Optional trimming via edges file or start/end times.
   - Prints correlations and shows overlay plots (spike_prob + discrete spikes).
 """
@@ -13,7 +14,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Sequence
 
 import numpy as np
 
@@ -41,7 +42,40 @@ def _parse_optional_float(value: str | None) -> float | None:
     return float(value)
 
 
-def parse_args() -> argparse.Namespace:
+def _resolve_oasis_g(
+    ar_order: int,
+    coefficients: Optional[Sequence[float]],
+) -> tuple[Optional[float], ...]:
+    if coefficients is None:
+        return tuple(None for _ in range(ar_order))
+    resolved = tuple(float(value) for value in coefficients)
+    if len(resolved) != ar_order:
+        raise ValueError(
+            f"--oasis-g requires exactly {ar_order} coefficient(s) for AR({ar_order})."
+        )
+    return resolved
+
+
+def _validate_oasis_args(args: argparse.Namespace) -> None:
+    if args.oasis_optimize_g < 0:
+        raise ValueError("--oasis-optimize-g must be non-negative.")
+    for name in ("oasis_decimate", "oasis_max_iter", "oasis_shift", "oasis_window"):
+        value = getattr(args, name)
+        if value is not None and value < 1:
+            raise ValueError(f"--{name.replace('_', '-')} must be positive.")
+    if args.oasis_sn is not None and args.oasis_sn < 0:
+        raise ValueError("--oasis-sn must be non-negative.")
+    if args.oasis_tol is not None and args.oasis_tol <= 0:
+        raise ValueError("--oasis-tol must be positive.")
+    if args.oasis_ar_order == 1 and any(
+        value is not None for value in (args.oasis_shift, args.oasis_window, args.oasis_tol)
+    ):
+        raise ValueError(
+            "--oasis-shift, --oasis-window, and --oasis-tol require --oasis-ar-order 2."
+        )
+
+
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", required=True, type=Path, help="Path to .mat file with time_stamps and dff.")
     parser.add_argument("--smoothing", type=float, default=None, help="Target Hz for pre-inference smoothing (None=raw).")
@@ -141,6 +175,43 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-ens2", action="store_true", help="Skip ENS2.")
     parser.add_argument("--skip-cascade", action="store_true", help="Skip CASCADE.")
     parser.add_argument(
+        "--run-oasis",
+        action="store_true",
+        help="Run OASIS in addition to the default comparison methods.",
+    )
+    parser.add_argument(
+        "--oasis-ar-order",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="OASIS autoregressive order (default: 1).",
+    )
+    parser.add_argument(
+        "--oasis-g",
+        type=float,
+        nargs="+",
+        metavar="COEFF",
+        help="Per-bin AR coefficient(s); omit to estimate independently per trial.",
+    )
+    parser.add_argument("--oasis-sn", type=float, help="Fixed OASIS noise level; omit to estimate.")
+    parser.add_argument(
+        "--oasis-baseline",
+        type=float,
+        help="Fixed fluorescence baseline; omit to estimate.",
+    )
+    parser.add_argument(
+        "--oasis-allow-negative-baseline",
+        action="store_true",
+        help="Allow an estimated OASIS baseline to be negative.",
+    )
+    parser.add_argument("--oasis-optimize-g", type=int, default=0)
+    parser.add_argument("--oasis-penalty", type=int, choices=(0, 1), default=1)
+    parser.add_argument("--oasis-decimate", type=int, default=1)
+    parser.add_argument("--oasis-max-iter", type=int)
+    parser.add_argument("--oasis-shift", type=int, help="AR(2)-only ONNLS shift.")
+    parser.add_argument("--oasis-window", type=int, help="AR(2)-only ONNLS window.")
+    parser.add_argument("--oasis-tol", type=float, help="AR(2)-only ONNLS tolerance.")
+    parser.add_argument(
         "--ens2-pretrained-root",
         type=Path,
         default=Path("results/Pretrained_models/ens2_published"),
@@ -159,7 +230,7 @@ def parse_args() -> argparse.Namespace:
         help="Gaussian sigma (ms) used to smooth GT spikes and method predictions for correlation (default: 50).",
     )
     parser.add_argument("--plot", action="store_true", help="Show overlay plots.")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def plot_overlay(
@@ -184,7 +255,7 @@ def plot_overlay(
             linewidth=0.8,
             label="GT spikes",
         )
-    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red"]
+    colors = ["tab:blue", "tab:orange", "tab:green", "tab:purple", "tab:red"]
     for idx, (label, m) in enumerate((methods or {}).items()):
         c = colors[idx % len(colors)]
         times = np.asarray(getattr(m, "time_stamps"), dtype=float)
@@ -197,7 +268,7 @@ def plot_overlay(
         ax.plot(valid_times, valid_vals, label=f"{label} spike_prob", color=c, alpha=0.8)
     ax.set_title(title)
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Signal / spike prob (offset per method)")
+    ax.set_ylabel("Signal / continuous inference output (offset per method)")
     ax.legend()
     if xlim:
         ax.set_xlim(*xlim)
@@ -272,10 +343,13 @@ def main() -> None:
         spike_times = spike_times[mask]
 
     smoothing = SmoothingLevel(target_fs=args.smoothing)
+    oasis_g = _resolve_oasis_g(args.oasis_ar_order, args.oasis_g)
+    _validate_oasis_args(args)
     selection = MethodSelection(
         run_pgas=not args.skip_pgas,
         run_ens2=not args.skip_ens2,
         run_cascade=not args.skip_cascade,
+        run_oasis=bool(args.run_oasis),
     )
     cfg = DatasetRunConfig(
         dataset_path=args.dataset,
@@ -296,6 +370,17 @@ def main() -> None:
         pgas_sigma2_alpha=_parse_optional_float(args.pgas_sigma2_alpha),
         pgas_sigma2_prior_strength=float(args.pgas_sigma2_prior_strength),
         cascade_discretize=bool(not args.cascade_no_discrete),
+        oasis_g=oasis_g,
+        oasis_sn=args.oasis_sn,
+        oasis_b=args.oasis_baseline,
+        oasis_b_nonneg=bool(not args.oasis_allow_negative_baseline),
+        oasis_optimize_g=int(args.oasis_optimize_g),
+        oasis_penalty=int(args.oasis_penalty),
+        oasis_decimate=int(args.oasis_decimate),
+        oasis_max_iter=args.oasis_max_iter,
+        oasis_shift=args.oasis_shift,
+        oasis_window=args.oasis_window,
+        oasis_tol=args.oasis_tol,
         trialwise_correlations=bool(args.trialwise_correlations),
     )
 

@@ -6,7 +6,8 @@
   - NumPy, SciPy, Matplotlib, PySide6, h5py, ruamel.yaml
   - PyTorch `>=2.0`
   - TensorFlow (CPU and GPU-capable installs are supported where available)
-  - PGAS build stack: `scikit-build-core`, `pybind11`, CMake toolchain, and a C++ compiler
+  - Native build stack for PGAS and OASIS: `scikit-build-core`, `pybind11`, NumPy headers,
+    a CMake toolchain, and a C++ compiler
   - For GPU PGAS builds: Kokkos with CUDA enabled (see `kokkos_install.md`)
 - **Operating systems supported**:
   - Linux (`x86_64`) and Windows (`x86_64`) are supported for installation and CPU workflows.
@@ -24,10 +25,10 @@
 
 # C-SPIKES usage guide
 
-The C-SPIKES (**C**alcium **S**pike **P**rocessing using **I**ntegrated **K**inetic **E**stimation and **S**imulation) repository bundles multiple spike-inference backends (PGAS, ENS2, CASCADE) and a Python API for running and comparing them on your own calcium imaging data.
+The C-SPIKES (**C**alcium **S**pike **P**rocessing using **I**ntegrated **K**inetic **E**stimation and **S**imulation) repository bundles multiple spike-inference backends (PGAS, ENS2, CASCADE, and OASIS) and a Python API for running and comparing them on your own calcium imaging data.
 
-## Installation (build PGAS + deps)
-PGAS is a compiled C++/pybind extension. The quickest path on Linux/HPC is:
+## Installation (build native extensions + deps)
+PGAS and OASIS include compiled C++ extensions. The quickest path on Linux/HPC is:
 
 1. Install C++ deps via vcpkg (see `kokkos_install.md` for the exact commands/pins used in this repo).
 2. Install the Python package in editable mode (builds the extension):
@@ -36,10 +37,26 @@ PGAS is a compiled C++/pybind extension. The quickest path on Linux/HPC is:
    pip install -e .
    ```
 
-Check that the extension imports:
+Check that both native backends import:
 ```bash
 python -c "import c_spikes.pgas.pgas_bound as p; print('pgas_bound OK')"
+python -c "import c_spikes.oasis.oasis_methods as o; print('oasis_methods OK')"
 ```
+
+### OASIS build
+
+OASIS is built by default from the checked-in generated C++ source. Normal installation neither
+installs nor runs Cython. The build was audited with NumPy 1.26 and NumPy 2.x; isolated builds choose
+compatible NumPy headers for the selected Python version. To intentionally build C-SPIKES without
+OASIS, use:
+
+```bash
+pip install -ve . --config-settings=cmake.args="-DC_SPIKES_BUILD_OASIS=OFF"
+```
+
+A clean serialized OASIS compilation added approximately 20–21 seconds on the audited HPC build
+host. An unchanged no-op target took about 0.14 seconds, so incremental build overhead is
+negligible. See `src/c_spikes/oasis/PROVENANCE.md` for regeneration details and source attribution.
 
 ### CPU/GPU PGAS builds
 This repo now builds **CPU** and (optionally) **GPU** PGAS backends side-by-side:
@@ -92,6 +109,71 @@ ln -s ../Pretrained_models results/Pretrained_models
 - Input files: MATLAB `.mat` containing at least `time_stamps` (trials × samples, seconds) and `dff` (trials × samples). NaN padding is OK (it’s dropped per trial).
 - Optional ground truth spikes: `ap_times` (1D, seconds). If you don’t have GT, store an empty array; correlations-to-GT will be unavailable/NaN.
 - Optional per-trial windows: an `edges` array (shape n_trials × 2, seconds) to trim data before inference. See `extract_time_stamp_edges.py` for generating these from existing recordings.
+- OASIS inputs must be uniformly sampled within a trial and use a consistent effective rate across
+  trials. The workflow can downsample before dispatch, but the OASIS adapter never resamples or
+  treats an irregular trace as uniform implicitly.
+
+## OASIS spike inference
+
+OASIS is an opt-in runtime method even though its native extension is built by default. This keeps
+the existing PGAS/ENS2/CASCADE comparison defaults unchanged. An OASIS-only batch run with
+per-trial automatic AR(1) and noise estimation is:
+
+```bash
+python -m c_spikes.cli.run \
+  --data-root data/my_data \
+  --dataset my_recording \
+  --smoothing-level raw \
+  --method oasis \
+  --oasis-ar-order 1 \
+  --use-cache
+```
+
+The demo script exposes the method through `--run-oasis`:
+
+```bash
+python scripts/demo_compare_methods.py \
+  --dataset data/my_data/my_recording.mat \
+  --run-oasis --skip-pgas --skip-ens2 --skip-cascade
+```
+
+The lower-level framework adapter accepts already-preprocessed trials directly:
+
+```python
+from c_spikes.inference import OasisConfig, TrialSeries, run_oasis_inference
+
+result = run_oasis_inference(
+    [TrialSeries(times=trial_times, values=trial_dff)],
+    OasisConfig(
+        dataset_tag="my_recording",
+        g=(None,),       # estimate one AR coefficient on this processed trial
+        sn=None,         # estimate its noise level
+        penalty=1,
+        use_cache=True,
+    ),
+)
+```
+
+Important output semantics and limitations:
+
+- Each trial is deconvolved independently, so calcium state never crosses gaps between epochs.
+- `MethodResult.spike_prob` contains the continuous nonnegative OASIS event amplitude `s`. Despite
+  the shared field name, it is not a calibrated probability or an integer spike count.
+- `MethodResult.reconstruction` is the baseline-inclusive `c + b` signal.
+- `discrete_spikes` is deliberately `None`; thresholding or rounding `s` into counts would require
+  a separately specified event policy.
+- AR coefficients in `g` are per-bin values. The default estimates one AR(1) coefficient and the
+  noise level independently for every processed trial. Fixed `g` values must match the selected AR
+  order.
+- The framework default is convex L1 (`penalty=1`). AR(1) uses the compiled constrained solver;
+  AR(2) currently preserves the comparator's Python constrained ONNLS backend.
+- Cache entries live under `results/inference_cache/oasis/<dataset>_s<label>/`. Their identity
+  includes exact timestamps/values, trial boundaries, sampling rates, preprocessing label, every
+  solver option, and the OASIS source/adapter revision.
+
+The implementation is based on OASIS by Johannes Friedrich and the methods described by Friedrich
+and Paninski (NIPS 2016) and Friedrich, Zhou, and Paninski (PLOS Computational Biology 2017). Full
+source-revision and licensing details are in `src/c_spikes/oasis/PROVENANCE.md`.
 
 ## GUI usage
 The gui is the primary entry point for the majority of the functionality of the codebase for what most people will use it for. It functions in both the cpu-only or gpu builds and allows you to perform inference on your dataset with our biophysical methods as well as other methods (only CASCADE and ENS2 as MLspike is implemented in Matlab) we investigated in the original publication. Core tasks include:
@@ -348,11 +430,12 @@ PYTHONPATH=src python scripts/import_matlab_cache.py \
 
 ## Core Python API
 All reusable pieces live under `c_spikes/inference`:
-- `workflow.run_inference_for_dataset(cfg, …)` orchestrates loading a dataset, optional downsampling, running PGAS/ENS2/CASCADE, computing correlations, and returning `MethodResult` objects plus summary metadata.
+- `workflow.run_inference_for_dataset(cfg, …)` orchestrates loading a dataset, optional downsampling, running PGAS/ENS2/CASCADE/OASIS, computing correlations, and returning `MethodResult` objects plus summary metadata.
 - `types.py`: `TrialSeries`, `MethodResult`, hashes/serialization helpers.
 - `smoothing.py`: mean downsampling and resampling utilities.
 - `pgas.py`: PGAS config (`PgasConfig`), runner, and PGAS-specific helpers (trim by edges, load trajectories).
-- `ens2.py`, `cascade.py`: wrappers for ENS2 and CASCADE with caching.
+- `ens2.py`, `cascade.py`, `oasis.py`: framework adapters with caching. The numerical OASIS
+  implementation remains isolated under `c_spikes/oasis`.
 - `eval.py`: ground-truth series building, correlation, resampling utilities.
 
 ### Minimal example
@@ -363,7 +446,15 @@ from c_spikes.inference.workflow import DatasetRunConfig, MethodSelection, Smoot
 cfg = DatasetRunConfig(
     dataset_path=Path("data/my_data/my_recording.mat"),
     smoothing=SmoothingLevel(target_fs=30.0),   # None -> raw
-    selection=MethodSelection(run_pgas=True, run_ens2=True, run_cascade=True),
+    selection=MethodSelection(
+        run_pgas=True,
+        run_ens2=True,
+        run_cascade=True,
+        run_oasis=True,
+    ),
+    oasis_g=(None,),                             # estimate AR(1) g per processed trial
+    oasis_sn=None,                               # estimate noise per processed trial
+    oasis_penalty=1,                             # framework default: L1
     pgas_resample_fs=None,                      # None => use native rate for PGAS
     cascade_resample_fs=30.0,                   # override CASCADE input rate if needed
     edges=None,                                 # optional per-trial windows
@@ -380,13 +471,13 @@ print(outputs["correlations"])
 ```
 
 ### Caching
-Each backend caches results under `results/inference_cache/<method>/<dataset_tag>/<hash>.{mat,json}`. Reuse by setting `use_cache=True` in configs. PGAS trajectories are also written under `results/pgas_output/<tag>` for reconstruction.
+Each backend caches results under `results/inference_cache/<method>/<dataset_tag>/<hash>.{mat,json}`. Reuse by setting `use_cache=True` in configs. OASIS uses a boundary-aware trace identity because trial resets affect inference. PGAS trajectories are also written under `results/pgas_output/<tag>` for reconstruction.
 
 ## Demo script
 Run `scripts/demo_compare_methods.py` to:
 - Load a user-specified `.mat` file.
 - Optionally trim to a window (edges file or start/end times).
-- Run PGAS/ENS2/CASCADE with configurable smoothing/downsampling.
+- Run PGAS/ENS2/CASCADE and opt-in OASIS with configurable smoothing/downsampling.
 - Print correlations and plot overlays (spike_prob + discrete spikes).
 
 Example:
@@ -400,14 +491,14 @@ python scripts/demo_compare_methods.py \
 ```
 
 ## Batch runs across a directory
-The batch pipeline (`python run_pipeline.py` or `python -m c_spikes.cli.run`) can run PGAS/ENS2/CASCADE across many `.mat` files and multiple smoothing/downsample settings:
+The batch pipeline (`python run_pipeline.py` or `python -m c_spikes.cli.run`) can run PGAS/ENS2/CASCADE/OASIS across many `.mat` files and multiple smoothing/downsample settings:
 
 ```bash
 python run_pipeline.py \
   --data-root data/my_data \
   --dataset-glob '*.mat' \
   --smoothing-level raw --smoothing-level 30Hz \
-  --method pgas --method ens2 --method cascade \
+  --method pgas --method ens2 --method cascade --method oasis \
   --pgas-output-root results/pgas_output/my_run \
   --output-root results/full_evaluation/my_run
 ```
@@ -424,4 +515,6 @@ python run_pipeline.py \
 ## Where to look next
 - `c_spikes/inference/workflow.py` for the end-to-end runner.
 - `c_spikes/inference/pgas.py` for PGAS-specific knobs and trajectory loading.
+- `c_spikes/inference/oasis.py` for the OASIS framework contract and cache mapping.
+- `c_spikes/oasis/PROVENANCE.md` for the numerical source, local changes, and Cython regeneration.
 - `inference_cache_compare.ipynb` for quick cache comparisons/plots.
