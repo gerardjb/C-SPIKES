@@ -94,6 +94,9 @@ class RunConfig:
     oasis_tol: Optional[float] = None
     oasis_uniformity_rtol: float = 5e-3
     oasis_uniformity_atol: float = 1e-9
+    oasis_discrete_mode: str = "none"
+    oasis_event_threshold: Optional[float] = None
+    oasis_threshold_units: str = "absolute"
 
 
 def _select_dataset_paths(cfg: RunConfig) -> List[Path]:
@@ -153,6 +156,14 @@ def _build_run_tag(cfg: RunConfig) -> str:
             "uniformity_rtol": cfg.oasis_uniformity_rtol,
             "uniformity_atol": cfg.oasis_uniformity_atol,
         }
+        if cfg.oasis_discrete_mode != "none":
+            oasis_settings.update(
+                {
+                    "discrete_mode": cfg.oasis_discrete_mode,
+                    "event_threshold": cfg.oasis_event_threshold,
+                    "threshold_units": cfg.oasis_threshold_units,
+                }
+            )
         oasis_signature, _ = compute_config_signature(oasis_settings)
         tokens.append(f"oasisar{len(oasis_g)}_{oasis_signature[:8]}")
     return "_".join(tokens) if tokens else "no_methods"
@@ -489,6 +500,9 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                 oasis_tol=cfg.oasis_tol,
                 oasis_uniformity_rtol=cfg.oasis_uniformity_rtol,
                 oasis_uniformity_atol=cfg.oasis_uniformity_atol,
+                oasis_discrete_mode=cfg.oasis_discrete_mode,
+                oasis_event_threshold=cfg.oasis_event_threshold,
+                oasis_threshold_units=cfg.oasis_threshold_units,
                 trialwise_correlations=bool(cfg.trialwise_correlations),
                 trial_indices=selected_trial_indices,
             )
@@ -588,6 +602,11 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                         "oasis_samples": summary_sample_count("oasis", oasis_result),
                     }
                 )
+                oasis_discretization = oasis_result.metadata.get("discretization")
+                if oasis_discretization is not None:
+                    summary["oasis_discretization"] = ensure_serializable(
+                        oasis_discretization
+                    )
             summary["gt_count"] = int(outputs.get("summary", {}).get("gt_count", 0))
 
             with (summary_dir / "summary.json").open("w", encoding="utf-8") as fh:
@@ -595,7 +614,7 @@ def run_batch(cfg: RunConfig) -> List[Path]:
 
             def method_entry(label: str, result: MethodResult) -> Dict[str, object]:
                 meta = result.metadata or {}
-                return {
+                entry: Dict[str, object] = {
                     "label": label,
                     "method": result.name,
                     "cache_tag": meta.get("cache_tag"),
@@ -603,6 +622,10 @@ def run_batch(cfg: RunConfig) -> List[Path]:
                     "config": ensure_serializable(meta.get("config", {})),
                     "sampling_rate": result.sampling_rate,
                 }
+                discretization = meta.get("discretization")
+                if discretization is not None:
+                    entry["discretization"] = ensure_serializable(discretization)
+                return entry
 
             manifest = {
                 "run_tag": run_tag,

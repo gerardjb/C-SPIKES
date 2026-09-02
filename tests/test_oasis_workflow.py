@@ -88,9 +88,20 @@ def test_workflow_passes_all_oasis_options_and_full_untrimmed_trials(tmp_path, m
             reconstruction=(values + 10.0)[order],
             sampling_rate=10.0,
             metadata={
-                "config": {"penalty": config.penalty, "g": config.g},
+                "config": {
+                    "penalty": config.penalty,
+                    "g": config.g,
+                    "discrete_mode": config.discrete_mode,
+                    "event_threshold": config.event_threshold,
+                    "threshold_units": config.threshold_units,
+                },
                 "source_version": "test-source",
                 "trials": [{"index": 0}, {"index": 1}],
+                "discretization": {
+                    "mode": "support",
+                    "semantics": "binary_event_support",
+                    "event_count": 2,
+                },
             },
         )
 
@@ -119,6 +130,9 @@ def test_workflow_passes_all_oasis_options_and_full_untrimmed_trials(tmp_path, m
         oasis_tol=2e-8,
         oasis_uniformity_rtol=2e-4,
         oasis_uniformity_atol=3e-10,
+        oasis_discrete_mode="support",
+        oasis_event_threshold=2.5,
+        oasis_threshold_units="noise_scaled",
     )
 
     result = run_inference_for_dataset(
@@ -148,16 +162,23 @@ def test_workflow_passes_all_oasis_options_and_full_untrimmed_trials(tmp_path, m
     assert oasis_cfg.downsample_label == "native.10Hz"
     assert oasis_cfg.uniformity_rtol == pytest.approx(2e-4)
     assert oasis_cfg.uniformity_atol == pytest.approx(3e-10)
+    assert oasis_cfg.discrete_mode == "support"
+    assert oasis_cfg.event_threshold == pytest.approx(2.5)
+    assert oasis_cfg.threshold_units == "noise_scaled"
     assert oasis_cfg.use_cache is False
 
     assert set(result["methods"]) == {"oasis"}
     assert result["summary"]["oasis_cache"] == {
         "penalty": 0,
         "g": [1.7, -0.712],
+        "discrete_mode": "support",
+        "event_threshold": 2.5,
+        "threshold_units": "noise_scaled",
     }
     assert result["summary"]["oasis_sampling_rate"] == pytest.approx(10.0)
     assert result["summary"]["oasis_source_version"] == "test-source"
     assert result["summary"]["oasis_trials"] == [{"index": 0}, {"index": 1}]
+    assert result["summary"]["oasis_discretization"]["event_count"] == 2
 
 
 def test_oasis_only_synthetic_workflow_keeps_evaluation_and_reconstruction(

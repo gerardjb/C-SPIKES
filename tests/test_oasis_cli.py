@@ -39,6 +39,9 @@ def test_oasis_cli_defaults_keep_method_opt_in(cli_run):
     assert args.oasis_tol is None
     assert args.oasis_uniformity_rtol == pytest.approx(5e-3)
     assert args.oasis_uniformity_atol == pytest.approx(1e-9)
+    assert args.oasis_discrete_mode == "none"
+    assert args.oasis_event_threshold is None
+    assert args.oasis_threshold_units == "absolute"
 
 
 def test_oasis_cli_ar2_omitted_coefficients_request_estimation(cli_run):
@@ -46,6 +49,25 @@ def test_oasis_cli_ar2_omitted_coefficients_request_estimation(cli_run):
 
     assert args.method == ["oasis"]
     assert args.oasis_g == (None, None)
+
+
+def test_oasis_cli_parses_binary_event_support_settings(cli_run):
+    args = cli_run.parse_args(
+        [
+            "--method",
+            "oasis",
+            "--oasis-discrete-mode",
+            "support",
+            "--oasis-event-threshold",
+            "2.5",
+            "--oasis-threshold-units",
+            "noise_scaled",
+        ]
+    )
+
+    assert args.oasis_discrete_mode == "support"
+    assert args.oasis_event_threshold == pytest.approx(2.5)
+    assert args.oasis_threshold_units == "noise_scaled"
 
 
 @pytest.mark.parametrize(
@@ -91,6 +113,10 @@ def test_oasis_cli_parses_fixed_ar_coefficients(cli_run, argv, expected):
         ["--oasis-ar-order", "2", "--oasis-tol", "0"],
         ["--oasis-uniformity-rtol", "-1e-3"],
         ["--oasis-uniformity-atol", "inf"],
+        ["--oasis-discrete-mode", "support"],
+        ["--oasis-event-threshold", "0.5"],
+        ["--oasis-threshold-units", "noise_scaled"],
+        ["--oasis-discrete-mode", "support", "--oasis-event-threshold", "0"],
     ],
 )
 def test_oasis_cli_rejects_invalid_counts_and_ranges(cli_run, argv):
@@ -173,6 +199,12 @@ def test_main_plumbs_all_oasis_options_to_run_config(cli_run, monkeypatch):
             "2e-4",
             "--oasis-uniformity-atol",
             "3e-10",
+            "--oasis-discrete-mode",
+            "support",
+            "--oasis-event-threshold",
+            "2.5",
+            "--oasis-threshold-units",
+            "noise_scaled",
         ]
     )
 
@@ -192,6 +224,9 @@ def test_main_plumbs_all_oasis_options_to_run_config(cli_run, monkeypatch):
     assert kwargs["oasis_tol"] == pytest.approx(2e-8)
     assert kwargs["oasis_uniformity_rtol"] == pytest.approx(2e-4)
     assert kwargs["oasis_uniformity_atol"] == pytest.approx(3e-10)
+    assert kwargs["oasis_discrete_mode"] == "support"
+    assert kwargs["oasis_event_threshold"] == pytest.approx(2.5)
+    assert kwargs["oasis_threshold_units"] == "noise_scaled"
 
 
 def test_main_preserves_legacy_default_method_set(cli_run, monkeypatch):

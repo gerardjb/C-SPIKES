@@ -98,6 +98,9 @@ class DatasetRunConfig:
     oasis_tol: Optional[float] = None
     oasis_uniformity_rtol: float = 5e-3
     oasis_uniformity_atol: float = 1e-9
+    oasis_discrete_mode: str = "none"
+    oasis_event_threshold: Optional[float] = None
+    oasis_threshold_units: str = "absolute"
 
 
 def _resolve_edges_for_trials(
@@ -327,6 +330,9 @@ def run_inference_for_dataset(
             downsample_label=downsample_label,
             uniformity_rtol=cfg.oasis_uniformity_rtol,
             uniformity_atol=cfg.oasis_uniformity_atol,
+            discrete_mode=cfg.oasis_discrete_mode,
+            event_threshold=cfg.oasis_event_threshold,
+            threshold_units=cfg.oasis_threshold_units,
             use_cache=cfg.use_cache,
         )
         oasis_result = run_oasis_inference(
@@ -468,6 +474,9 @@ def run_inference_for_dataset(
                 "oasis_trials": ensure_serializable(oasis_result.metadata.get("trials", [])),
             }
         )
+        oasis_discretization = oasis_result.metadata.get("discretization")
+        if oasis_discretization is not None:
+            summary["oasis_discretization"] = ensure_serializable(oasis_discretization)
 
     return {
         "dataset": dataset_tag,
