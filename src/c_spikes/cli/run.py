@@ -339,8 +339,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--oasis-optimize-g",
         type=_nonnegative_int,
         default=0,
-        metavar="STEPS",
-        help="Number of AR-coefficient optimization steps (default: 0).",
+        metavar="EVENTS",
+        help="Large isolated events used to optimize AR coefficients; 0 disables it (default: 0).",
     )
     oasis_group.add_argument(
         "--oasis-penalty",

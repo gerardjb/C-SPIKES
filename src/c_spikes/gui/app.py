@@ -80,6 +80,77 @@ PGAS_PARAMS_ROOT = REPO_ROOT / "parameter_files"
 PGAS_GPARAM_ROOT = REPO_ROOT / "src" / "c_spikes" / "pgas"
 
 
+def _parse_oasis_g(text: str, ar_order: int) -> Tuple[Optional[float], ...]:
+    """Parse the GUI's OASIS coefficient field without loading OASIS itself."""
+
+    if ar_order not in (1, 2):
+        raise ValueError("OASIS AR order must be 1 or 2")
+    value = str(text).strip()
+    if value.casefold() == "auto":
+        return tuple(None for _ in range(ar_order))
+    if not value:
+        raise ValueError("OASIS g must be 'auto' or comma-separated coefficients")
+
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) != ar_order or any(not part for part in parts):
+        raise ValueError(
+            f"OASIS AR({ar_order}) requires exactly {ar_order} g coefficient(s)"
+        )
+    try:
+        coefficients = tuple(float(part) for part in parts)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("OASIS g coefficients must be finite numbers") from exc
+    if not np.all(np.isfinite(coefficients)):
+        raise ValueError("OASIS g coefficients must be finite numbers")
+    _validate_oasis_g_stability(coefficients)
+    return coefficients
+
+
+def _parse_oasis_optional_float(
+    text: str,
+    *,
+    name: str,
+    nonnegative: bool = False,
+) -> Optional[float]:
+    """Parse an OASIS scalar field which also accepts the literal ``auto``."""
+
+    value = str(text).strip()
+    if value.casefold() == "auto":
+        return None
+    if not value:
+        raise ValueError(f"OASIS {name} must be 'auto' or a finite number")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"OASIS {name} must be 'auto' or a finite number") from exc
+    if not np.isfinite(parsed):
+        raise ValueError(f"OASIS {name} must be 'auto' or a finite number")
+    if nonnegative and parsed < 0:
+        raise ValueError(f"OASIS {name} must be non-negative")
+    return parsed
+
+
+def _validate_oasis_g_stability(coefficients: Sequence[float]) -> None:
+    """Validate the stable AR coefficients supported by the OASIS kernels."""
+
+    values = tuple(float(value) for value in coefficients)
+    if len(values) == 1:
+        if not 0.0 < values[0] < 1.0:
+            raise ValueError("OASIS AR(1) g must satisfy 0 < g < 1")
+        return
+    if len(values) != 2:
+        raise ValueError("OASIS g must contain one AR(1) or two AR(2) coefficients")
+    roots = np.roots((1.0, -values[0], -values[1]))
+    if (
+        np.max(np.abs(roots.imag)) > 1e-12
+        or np.any(roots.real <= 0.0)
+        or np.any(roots.real >= 1.0)
+    ):
+        raise ValueError(
+            "OASIS AR(2) g must have two real roots strictly between 0 and 1"
+        )
+
+
 def _pgas_cache_mat_for_result(
     *,
     context: RunContext,
@@ -552,6 +623,7 @@ class MainWindow(QtWidgets.QMainWindow):
         left_layout.addWidget(self._build_batch_group())
         left_layout.addWidget(self._build_display_group())
         left_layout.addWidget(self._build_method_group())
+        left_layout.addWidget(self._build_oasis_group())
         left_layout.addWidget(self._build_model_group())
         left_layout.addWidget(self._build_biophys_group())
         left_layout.addWidget(self._build_pgas_group())
@@ -1106,18 +1178,71 @@ class MainWindow(QtWidgets.QMainWindow):
         self._biophys_check = QtWidgets.QCheckBox("BiophysML", box)
         self._cascade_check = QtWidgets.QCheckBox("Cascade", box)
         self._ens2_check = QtWidgets.QCheckBox("ENS2", box)
+        self._oasis_check = QtWidgets.QCheckBox("OASIS", box)
+        self._oasis_check.setToolTip(
+            "Per-trial OASIS deconvolution; output is continuous event amplitude, not spike counts."
+        )
         self._pgas_check.setChecked(False)
         self._biophys_check.setChecked(True)
         self._cascade_check.setChecked(True)
         self._ens2_check.setChecked(True)
+        self._oasis_check.setChecked(False)
         layout.addWidget(self._pgas_check)
         layout.addWidget(self._biophys_check)
         layout.addWidget(self._cascade_check)
         layout.addWidget(self._ens2_check)
+        layout.addWidget(self._oasis_check)
 
         self._run_btn = QtWidgets.QPushButton("Run Inference", box)
         self._run_btn.clicked.connect(self._run_inference)
         layout.addWidget(self._run_btn)
+
+        return box
+
+    def _build_oasis_group(self) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox("OASIS Config")
+        box.setToolTip(
+            "OASIS runs on each raw GUI epoch independently and requires uniform sampling."
+        )
+        layout = QtWidgets.QFormLayout(box)
+
+        self._oasis_ar_order_combo = QtWidgets.QComboBox(box)
+        self._oasis_ar_order_combo.addItems(["1", "2"])
+        layout.addRow("AR order", self._oasis_ar_order_combo)
+
+        self._oasis_g_edit = QtWidgets.QLineEdit("auto", box)
+        self._oasis_g_edit.setPlaceholderText("auto or comma-separated coefficients")
+        self._oasis_g_edit.setToolTip(
+            "Per-bin AR coefficient(s): one for AR(1), two comma-separated values for AR(2)."
+        )
+        layout.addRow("g", self._oasis_g_edit)
+
+        self._oasis_sn_edit = QtWidgets.QLineEdit("auto", box)
+        self._oasis_sn_edit.setPlaceholderText("auto or non-negative value")
+        layout.addRow("Noise (sn)", self._oasis_sn_edit)
+
+        self._oasis_baseline_edit = QtWidgets.QLineEdit("auto", box)
+        self._oasis_baseline_edit.setPlaceholderText("auto or finite value")
+        layout.addRow("Baseline", self._oasis_baseline_edit)
+
+        self._oasis_b_nonneg_check = QtWidgets.QCheckBox("Nonnegative", box)
+        self._oasis_b_nonneg_check.setChecked(True)
+        layout.addRow("Baseline constraint", self._oasis_b_nonneg_check)
+
+        self._oasis_penalty_combo = QtWidgets.QComboBox(box)
+        self._oasis_penalty_combo.addItem("L1", 1)
+        self._oasis_penalty_combo.addItem("L0", 0)
+        layout.addRow("Penalty", self._oasis_penalty_combo)
+
+        self._oasis_optimize_g_spin = QtWidgets.QSpinBox(box)
+        self._oasis_optimize_g_spin.setRange(0, 1_000_000)
+        self._oasis_optimize_g_spin.setValue(0)
+        layout.addRow("Optimize g", self._oasis_optimize_g_spin)
+
+        self._oasis_decimate_spin = QtWidgets.QSpinBox(box)
+        self._oasis_decimate_spin.setRange(1, 1_000_000)
+        self._oasis_decimate_spin.setValue(1)
+        layout.addRow("Decimate", self._oasis_decimate_spin)
 
         return box
 
@@ -3440,6 +3565,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "biophys_ml": "BiophysML",
             "cascade": "Cascade",
             "ens2": "ENS2",
+            "oasis": "OASIS",
         }
         return names.get(base_method, base_method)
 
@@ -3571,9 +3697,28 @@ class MainWindow(QtWidgets.QMainWindow):
         run_ens2 = self._ens2_check.isChecked()
         run_biophys = self._biophys_check.isChecked()
         run_pgas = self._pgas_check.isChecked()
-        if not (run_cascade or run_ens2 or run_biophys or run_pgas):
+        run_oasis = self._oasis_check.isChecked()
+        if not (run_cascade or run_ens2 or run_biophys or run_pgas or run_oasis):
             self._log("Select at least one method to run.")
             return None
+
+        if run_oasis:
+            try:
+                oasis_ar_order = int(self._oasis_ar_order_combo.currentText())
+                oasis_g = _parse_oasis_g(self._oasis_g_edit.text(), oasis_ar_order)
+                oasis_sn = _parse_oasis_optional_float(
+                    self._oasis_sn_edit.text(), name="sn", nonnegative=True
+                )
+                oasis_b = _parse_oasis_optional_float(
+                    self._oasis_baseline_edit.text(), name="baseline"
+                )
+            except ValueError as exc:
+                self._log(str(exc))
+                return None
+        else:
+            oasis_g = (None,)
+            oasis_sn = None
+            oasis_b = None
 
         cascade_root = CASCADE_ROOT
         if run_cascade:
@@ -3637,6 +3782,7 @@ class MainWindow(QtWidgets.QMainWindow):
             run_ens2=run_ens2,
             run_pgas=run_pgas,
             run_biophys=run_biophys,
+            run_oasis=run_oasis,
             neuron_type=self._neuron_combo.currentText(),
             use_cache=self._use_cache_check.isChecked(),
             cascade_model_folder=cascade_root,
@@ -3645,6 +3791,13 @@ class MainWindow(QtWidgets.QMainWindow):
             biophys_models=biophys_models,
             pgas_constants_file=constants_path,
             pgas_gparam_file=gparam_path,
+            oasis_g=oasis_g,
+            oasis_sn=oasis_sn,
+            oasis_b=oasis_b,
+            oasis_b_nonneg=self._oasis_b_nonneg_check.isChecked(),
+            oasis_optimize_g=self._oasis_optimize_g_spin.value(),
+            oasis_penalty=int(self._oasis_penalty_combo.currentData()),
+            oasis_decimate=self._oasis_decimate_spin.value(),
         )
         return settings
 
@@ -3712,6 +3865,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "ens2": settings.run_ens2,
                 "biophys_ml": settings.run_biophys,
                 "pgas": settings.run_pgas,
+                "oasis": settings.run_oasis,
             },
             "models": {
                 "cascade_model_folder": str(settings.cascade_model_folder),
@@ -3751,6 +3905,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     else float(settings.pgas_sigma2_alpha)
                 ),
                 "sigma2_prior_strength": float(settings.pgas_sigma2_prior_strength),
+            },
+            "oasis": {
+                "g": list(settings.oasis_g),
+                "sn": settings.oasis_sn,
+                "b": settings.oasis_b,
+                "b_nonneg": bool(settings.oasis_b_nonneg),
+                "optimize_g": int(settings.oasis_optimize_g),
+                "penalty": int(settings.oasis_penalty),
+                "decimate": int(settings.oasis_decimate),
+                "downsample_label": "raw",
             },
             "edges": {
                 "enabled": bool(self._edges_enabled),

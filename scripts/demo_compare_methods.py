@@ -204,7 +204,13 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Allow an estimated OASIS baseline to be negative.",
     )
-    parser.add_argument("--oasis-optimize-g", type=int, default=0)
+    parser.add_argument(
+        "--oasis-optimize-g",
+        type=int,
+        default=0,
+        metavar="EVENTS",
+        help="Large isolated events used to optimize AR coefficients; 0 disables it.",
+    )
     parser.add_argument("--oasis-penalty", type=int, choices=(0, 1), default=1)
     parser.add_argument("--oasis-decimate", type=int, default=1)
     parser.add_argument("--oasis-max-iter", type=int)

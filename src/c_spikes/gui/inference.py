@@ -10,6 +10,7 @@ import numpy as np
 from c_spikes.inference.cache import set_cache_root
 from c_spikes.inference.cascade import CascadeConfig, run_cascade_inference, CASCADE_RESAMPLE_FS
 from c_spikes.inference.ens2 import Ens2Config, run_ens2_inference
+from c_spikes.inference.oasis import OasisConfig, run_oasis_inference
 from c_spikes.inference.pgas import (
     PGAS_BM_SIGMA_MAX,
     PGAS_BM_SIGMA_MIN,
@@ -55,6 +56,14 @@ class InferenceSettings:
     pgas_sigma2_target: Optional[float] = None
     pgas_sigma2_alpha: Optional[float] = None
     pgas_sigma2_prior_strength: float = PGAS_SIGMA2_PRIOR_STRENGTH_DEFAULT
+    run_oasis: bool = False
+    oasis_g: Tuple[Optional[float], ...] = (None,)
+    oasis_sn: Optional[float] = None
+    oasis_b: Optional[float] = None
+    oasis_b_nonneg: bool = True
+    oasis_optimize_g: int = 0
+    oasis_penalty: int = 1
+    oasis_decimate: int = 1
 
 
 @dataclass(frozen=True)
@@ -125,6 +134,22 @@ def run_inference_for_epoch(
         if padded_cache is None:
             padded_cache = _pad_trials(trials)
         return padded_cache
+
+    if settings.run_oasis:
+        oasis_cfg = OasisConfig(
+            dataset_tag=epoch_id,
+            g=settings.oasis_g,
+            sn=settings.oasis_sn,
+            b=settings.oasis_b,
+            b_nonneg=settings.oasis_b_nonneg,
+            optimize_g=settings.oasis_optimize_g,
+            penalty=settings.oasis_penalty,
+            decimate=settings.oasis_decimate,
+            downsample_label="raw",
+            use_cache=settings.use_cache,
+            cache_root=context.cache_root,
+        )
+        results["oasis"] = run_oasis_inference(trials=trials, config=oasis_cfg)
 
     if settings.run_pgas:
         pgas_cfg = PgasConfig(
@@ -260,6 +285,25 @@ def run_inference_for_epoch_safe(
         if padded_cache is None:
             padded_cache = _pad_trials(trials)
         return padded_cache
+
+    if settings.run_oasis:
+        try:
+            oasis_cfg = OasisConfig(
+                dataset_tag=epoch_id,
+                g=settings.oasis_g,
+                sn=settings.oasis_sn,
+                b=settings.oasis_b,
+                b_nonneg=settings.oasis_b_nonneg,
+                optimize_g=settings.oasis_optimize_g,
+                penalty=settings.oasis_penalty,
+                decimate=settings.oasis_decimate,
+                downsample_label="raw",
+                use_cache=settings.use_cache,
+                cache_root=context.cache_root,
+            )
+            results["oasis"] = run_oasis_inference(trials=trials, config=oasis_cfg)
+        except Exception as exc:
+            errors["oasis"] = str(exc)
 
     if settings.run_pgas:
         try:

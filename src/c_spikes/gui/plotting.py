@@ -8,15 +8,17 @@ from matplotlib.figure import Figure
 from c_spikes.inference.types import MethodResult
 
 
-METHOD_ORDER = ("pgas", "biophys_ml", "cascade", "ens2")
+METHOD_ORDER = ("pgas", "oasis", "biophys_ml", "cascade", "ens2")
 METHOD_COLORS = {
     "pgas": "#009E73",
+    "oasis": "#CC79A7",
     "cascade": "#F3AE14",
     "ens2": "#A6780C",
     "biophys_ml": "#007755",
 }
 METHOD_LABELS = {
     "pgas": r"Biophys$_{SMC}$",
+    "oasis": "OASIS",
     "cascade": "CASCADE",
     "ens2": r"ENS$^2$",
     "biophys_ml": r"Biophys$_{ML}$",
