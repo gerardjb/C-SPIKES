@@ -29,6 +29,9 @@ def _config(**overrides) -> OasisConfig:
         "shift": None,
         "window": None,
         "tol": None,
+        "discrete_mode": "none",
+        "event_threshold": None,
+        "threshold_units": "absolute",
         "downsample_label": "raw",
         "uniformity_rtol": 1e-5,
         "uniformity_atol": 1e-10,
@@ -106,6 +109,8 @@ def test_unequal_disjoint_trials_are_solved_independently_and_sorted(monkeypatch
     np.testing.assert_allclose(result.reconstruction, [6.5, 7.5, 8.5, 1.5, 2.5, 3.5, 4.5])
     assert result.discrete_spikes is None
     assert result.sampling_rate == pytest.approx(10.0)
+    assert "discretization" not in result.metadata
+    assert "discrete_mode" not in result.metadata["config"]
     assert np.all(np.diff(result.time_stamps) >= 0)
 
     metadata = result.metadata
@@ -135,6 +140,154 @@ def test_unequal_disjoint_trials_are_solved_independently_and_sorted(monkeypatch
     # Adapter plumbing and fake results must not mutate caller-owned trials.
     np.testing.assert_array_equal(late_trial.values, [10.0, 11.0, 12.0, 13.0])
     np.testing.assert_array_equal(early_trial.values, [20.0, 21.0, 22.0])
+
+
+def test_absolute_threshold_emits_sorted_binary_support_without_changing_continuous_output(
+    monkeypatch,
+):
+    from c_spikes.inference import oasis as oasis_adapter
+
+    late_trial = TrialSeries(
+        times=np.asarray([4.0, 4.1, 4.2, 4.3]),
+        values=np.asarray([10.0, 11.0, 12.0, 13.0]),
+    )
+    early_trial = TrialSeries(
+        times=np.asarray([1.0, 1.1, 1.2]),
+        values=np.asarray([20.0, 21.0, 22.0]),
+    )
+    solver_spikes = [
+        np.asarray([0.0, 0.3, 0.5, 0.8]),
+        np.asarray([0.5, 0.49, 1.0]),
+    ]
+    calls: list[dict[str, object]] = []
+
+    def fake_deconvolve(values, **kwargs):
+        calls.append(dict(kwargs))
+        spikes = solver_spikes[len(calls) - 1]
+        return np.zeros_like(values), spikes, 0.25, 0.9, 0.1
+
+    monkeypatch.setattr(oasis_adapter, "_load_deconvolve", lambda: fake_deconvolve)
+    result = run_oasis_inference(
+        [late_trial, early_trial],
+        _config(
+            discrete_mode="support",
+            event_threshold=0.5,
+            threshold_units="absolute",
+        ),
+    )
+
+    assert len(calls) == 2
+    assert all("discrete_mode" not in call for call in calls)
+    np.testing.assert_array_equal(
+        result.spike_prob,
+        np.asarray([0.5, 0.49, 1.0, 0.0, 0.3, 0.5, 0.8]),
+    )
+    np.testing.assert_array_equal(
+        result.discrete_spikes,
+        np.asarray([1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0]),
+    )
+    assert result.discrete_spikes.dtype == np.uint8
+    assert set(np.unique(result.discrete_spikes)) == {0.0, 1.0}
+    assert result.metadata["config"]["discrete_mode"] == "support"
+    assert result.metadata["config"]["event_threshold"] == pytest.approx(0.5)
+    assert result.metadata["config"]["threshold_units"] == "absolute"
+    discretization = result.metadata["discretization"]
+    assert discretization["semantics"] == "binary_event_support"
+    assert discretization["comparison"] == "s >= resolved_threshold"
+    assert discretization["event_count"] == 4
+    assert discretization["max_events_per_bin"] == 1
+    assert [
+        trial["discretization"]["resolved_threshold"]
+        for trial in result.metadata["trials"]
+    ] == pytest.approx([0.5, 0.5])
+    assert [
+        trial["discretization"]["event_count"]
+        for trial in result.metadata["trials"]
+    ] == [2, 2]
+
+
+def test_noise_scaled_threshold_uses_per_trial_fitted_ar2_dominant_decay(monkeypatch):
+    from c_spikes.inference import oasis as oasis_adapter
+
+    trials = [
+        TrialSeries(
+            times=offset + np.arange(4, dtype=np.float64) / 10.0,
+            values=np.linspace(0.0, 1.0, 4),
+        )
+        for offset in (0.0, 2.0)
+    ]
+    fitted_coefficients = [(1.7, -0.72), (1.25, -0.375)]
+    resolved_thresholds = [
+        2.0 * 0.4 * np.sqrt(1.0 - 0.9),
+        2.0 * 0.4 * np.sqrt(1.0 - 0.75),
+    ]
+    solver_spikes = [
+        np.asarray([0.0, resolved - 1e-5, resolved + 1e-5, resolved + 2e-5])
+        for resolved in resolved_thresholds
+    ]
+    calls = 0
+
+    def fake_deconvolve(values, **_kwargs):
+        nonlocal calls
+        index = calls
+        calls += 1
+        return (
+            np.zeros_like(values),
+            solver_spikes[index],
+            0.0,
+            fitted_coefficients[index],
+            0.1,
+        )
+
+    monkeypatch.setattr(oasis_adapter, "_load_deconvolve", lambda: fake_deconvolve)
+    result = run_oasis_inference(
+        trials,
+        _config(
+            g=(1.7, -0.712),
+            sn=0.4,
+            discrete_mode="support",
+            event_threshold=2.0,
+            threshold_units="noise_scaled",
+        ),
+    )
+
+    np.testing.assert_array_equal(
+        result.spike_prob,
+        np.concatenate(solver_spikes),
+    )
+    np.testing.assert_array_equal(
+        result.discrete_spikes,
+        np.asarray([0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0]),
+    )
+    assert [
+        trial["discretization"]["resolved_threshold"]
+        for trial in result.metadata["trials"]
+    ] == pytest.approx(resolved_thresholds)
+    assert result.metadata["discretization"]["threshold_units"] == "noise_scaled"
+
+
+def test_noise_scaled_threshold_rejects_zero_resolved_noise_scale(monkeypatch):
+    from c_spikes.inference import oasis as oasis_adapter
+
+    trial = TrialSeries(
+        times=np.arange(4, dtype=np.float64) / 10.0,
+        values=np.linspace(0.0, 1.0, 4),
+    )
+
+    def fake_deconvolve(values, **_kwargs):
+        return np.zeros_like(values), np.zeros_like(values), 0.0, 0.9, 0.1
+
+    monkeypatch.setattr(oasis_adapter, "_load_deconvolve", lambda: fake_deconvolve)
+    with pytest.raises(ValueError, match=r"noise_scaled.*absolute"):
+        run_oasis_inference(
+            [trial],
+            _config(
+                sn=0.0,
+                discrete_mode="support",
+                event_threshold=2.0,
+                threshold_units="noise_scaled",
+            ),
+        )
 
 
 def test_near_uniform_timestamps_are_accepted_without_resampling(monkeypatch):
@@ -270,6 +423,25 @@ def test_invalid_automatic_estimation_trace_is_rejected_before_native_import(
         ({"g": (1.2, 0.1)}, "AR\\(2\\)"),
         ({"decimate": None}, "decimate"),
         ({"decimate": 5}, "shortest trial"),
+        ({"discrete_mode": "binary"}, "discrete_mode"),
+        ({"event_threshold": 0.1}, "event_threshold must be None"),
+        ({"threshold_units": "noise_scaled"}, "threshold_units must be 'absolute'"),
+        (
+            {"discrete_mode": "support", "event_threshold": None},
+            "event_threshold must be a positive",
+        ),
+        (
+            {"discrete_mode": "support", "event_threshold": 0.0},
+            "event_threshold must be a positive",
+        ),
+        (
+            {"discrete_mode": "support", "event_threshold": np.inf},
+            "event_threshold must be a finite",
+        ),
+        (
+            {"discrete_mode": "support", "event_threshold": 0.1, "threshold_units": "relative"},
+            "threshold_units",
+        ),
     ],
 )
 def test_invalid_solver_configuration_is_rejected_before_native_import(

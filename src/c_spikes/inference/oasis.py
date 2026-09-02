@@ -14,6 +14,7 @@ from .types import MethodResult, TrialSeries, compute_config_signature, ensure_s
 
 OASIS_ADAPTER_VERSION = "2"
 OASIS_NUMERICAL_REVISION = "cspikes-numerical-v2"
+OASIS_DISCRETE_OUTPUT_VERSION = "binary-event-support-v1"
 OASIS_SOURCE_VERSION = (
     "oasis_port-0.2.0+e738431502040ad7db8f79a12b2927ae9d2f4e7c."
     f"{OASIS_NUMERICAL_REVISION}"
@@ -28,6 +29,11 @@ class OasisConfig:
     An all-``None`` tuple requests per-trial estimation. OASIS coefficients are
     per-bin values, so every input trial must have the same near-uniform sample
     rate. This adapter deliberately performs no implicit resampling.
+
+    ``discrete_mode="support"`` derives a binary event-support proxy from
+    the continuous OASIS event amplitudes without changing the solver result.
+    Noise-scaled thresholds are resolved independently for each trial from its
+    final noise estimate and dominant fitted decay.
     """
 
     dataset_tag: str
@@ -42,6 +48,9 @@ class OasisConfig:
     shift: Optional[int] = None
     window: Optional[int] = None
     tol: Optional[float] = None
+    discrete_mode: str = "none"
+    event_threshold: Optional[float] = None
+    threshold_units: str = "absolute"
     downsample_label: str = "raw"
     uniformity_rtol: float = 5e-3
     uniformity_atol: float = 1e-9
@@ -182,6 +191,26 @@ def _validate_config(config: OasisConfig) -> Tuple[Optional[float], ...]:
     tol = _finite_optional_scalar(config.tol, "tol")
     if tol is not None and tol <= 0:
         raise ValueError("tol must be positive")
+    if (
+        not isinstance(config.discrete_mode, str)
+        or config.discrete_mode not in {"none", "support"}
+    ):
+        raise ValueError("discrete_mode must be either 'none' or 'support'")
+    if (
+        not isinstance(config.threshold_units, str)
+        or config.threshold_units not in {"absolute", "noise_scaled"}
+    ):
+        raise ValueError("threshold_units must be either 'absolute' or 'noise_scaled'")
+    event_threshold = _finite_optional_scalar(config.event_threshold, "event_threshold")
+    if config.discrete_mode == "none":
+        if event_threshold is not None:
+            raise ValueError("event_threshold must be None when discrete_mode is 'none'")
+        if config.threshold_units != "absolute":
+            raise ValueError("threshold_units must be 'absolute' when discrete_mode is 'none'")
+    elif event_threshold is None or event_threshold <= 0:
+        raise ValueError(
+            "event_threshold must be a positive finite scalar when discrete_mode is 'support'"
+        )
     for name, value in (
         ("uniformity_rtol", config.uniformity_rtol),
         ("uniformity_atol", config.uniformity_atol),
@@ -345,7 +374,7 @@ def _public_config(
     config: OasisConfig,
     requested_g: Tuple[Optional[float], ...],
 ) -> Dict[str, Any]:
-    return {
+    public_config: Dict[str, Any] = {
         "dataset_tag": str(config.dataset_tag),
         "g": requested_g,
         "sn": None if config.sn is None else float(config.sn),
@@ -365,6 +394,18 @@ def _public_config(
         "use_cache": bool(config.use_cache),
         "cache_root": None if config.cache_root is None else str(config.cache_root),
     }
+    # Preserve the public metadata and cache identity of the legacy/default
+    # continuous-only configuration. Discretization keys are inference-affecting
+    # only when the opt-in support train is requested.
+    if config.discrete_mode == "support":
+        public_config.update(
+            {
+                "discrete_mode": "support",
+                "event_threshold": float(config.event_threshold),
+                "threshold_units": str(config.threshold_units),
+            }
+        )
+    return public_config
 
 
 def _solver_kwargs(config: OasisConfig, ar_order: int) -> Dict[str, Any]:
@@ -392,6 +433,39 @@ def _normalize_fitted_g(g: Any, ar_order: int) -> Tuple[float, ...]:
         raise RuntimeError("OASIS returned invalid AR coefficients")
     _validate_stable_g(values, error_type=RuntimeError)
     return values
+
+
+def _dominant_decay(g: Sequence[float]) -> float:
+    """Return the slowest stable per-bin decay represented by AR coefficients."""
+
+    coefficients = tuple(float(value) for value in g)
+    if len(coefficients) == 1:
+        return coefficients[0]
+    roots = np.roots((1.0, -coefficients[0], -coefficients[1]))
+    return float(np.max(roots.real))
+
+
+def _resolve_event_threshold(
+    config: OasisConfig,
+    *,
+    final_g: Sequence[float],
+    final_sn: float,
+) -> float:
+    """Resolve an event-amplitude threshold for one fitted trial."""
+
+    requested = float(config.event_threshold)
+    if config.threshold_units == "absolute":
+        resolved = requested
+    else:
+        dominant_decay = _dominant_decay(final_g)
+        resolved = requested * float(final_sn) * np.sqrt(1.0 - dominant_decay)
+    if not np.isfinite(resolved) or resolved <= 0.0:
+        raise ValueError(
+            "OASIS event threshold must resolve to a positive finite value; "
+            "noise_scaled thresholds require a positive fitted noise estimate, "
+            "so use absolute units when sn is zero"
+        )
+    return float(resolved)
 
 
 def run_oasis_inference(
@@ -432,6 +506,8 @@ def run_oasis_inference(
             "sampling_rates": sampling_rates,
         }
     )
+    if config.discrete_mode == "support":
+        cache_config["discrete_output_version"] = OASIS_DISCRETE_OUTPUT_VERSION
     cache_key, _ = compute_config_signature(cache_config)
 
     if config.use_cache:
@@ -470,6 +546,7 @@ def run_oasis_inference(
     time_segments: list[np.ndarray] = []
     spike_segments: list[np.ndarray] = []
     reconstruction_segments: list[np.ndarray] = []
+    discrete_segments: list[np.ndarray] = []
     trial_metadata: list[Dict[str, Any]] = []
 
     for trial_index, (trial, sampling_rate, parameters) in enumerate(
@@ -509,43 +586,76 @@ def run_oasis_inference(
             else "oasis_python_constrained_onnlsAR2"
         )
 
+        discretization: Optional[Dict[str, Any]] = None
+        if config.discrete_mode == "support":
+            resolved_threshold = _resolve_event_threshold(
+                config,
+                final_g=final_g,
+                final_sn=final_sn,
+            )
+            support = np.asarray(spikes >= resolved_threshold, dtype=np.uint8)
+            discrete_segments.append(support)
+            discretization = {
+                "semantics": "binary_event_support",
+                "requested_threshold": float(config.event_threshold),
+                "threshold_units": str(config.threshold_units),
+                "resolved_threshold": resolved_threshold,
+                "comparison": "s >= resolved_threshold",
+                "event_count": int(np.count_nonzero(support)),
+                "max_events_per_bin": 1,
+            }
+
         time_segments.append(trial.times)
         spike_segments.append(spikes)
         reconstruction_segments.append(calcium + fitted_b)
-        trial_metadata.append(
-            {
-                "index": trial_index,
-                "length": int(trial.values.size),
-                "b": fitted_b,
-                "g": final_g,
-                "sn": final_sn,
-                "lam": lam,
-                "sampling_rate": sampling_rate,
-                "solver": "deconvolve",
-                "backend": backend,
-            }
-        )
+        trial_entry: Dict[str, Any] = {
+            "index": trial_index,
+            "length": int(trial.values.size),
+            "b": fitted_b,
+            "g": final_g,
+            "sn": final_sn,
+            "lam": lam,
+            "sampling_rate": sampling_rate,
+            "solver": "deconvolve",
+            "backend": backend,
+        }
+        if discretization is not None:
+            trial_entry["discretization"] = discretization
+        trial_metadata.append(trial_entry)
 
     times = np.concatenate(time_segments)
     spikes = np.concatenate(spike_segments)
     reconstruction = np.concatenate(reconstruction_segments)
+    discrete = np.concatenate(discrete_segments) if discrete_segments else None
     order = np.argsort(times, kind="stable")
+    metadata: Dict[str, Any] = {
+        "config": ensure_serializable(public_config),
+        "source_version": OASIS_SOURCE_VERSION,
+        "adapter_version": OASIS_ADAPTER_VERSION,
+        "cache_tag": cache_tag,
+        "cache_key": cache_key,
+        "cache_hit": False,
+        "trials": ensure_serializable(trial_metadata),
+    }
+    if discrete is not None:
+        metadata["discretization"] = {
+            "mode": "support",
+            "semantics": "binary_event_support",
+            "version": OASIS_DISCRETE_OUTPUT_VERSION,
+            "requested_threshold": float(config.event_threshold),
+            "threshold_units": str(config.threshold_units),
+            "comparison": "s >= resolved_threshold",
+            "event_count": int(np.count_nonzero(discrete)),
+            "max_events_per_bin": 1,
+        }
     result = MethodResult(
         name="oasis",
         time_stamps=times[order],
         spike_prob=spikes[order],
         sampling_rate=float(np.median(sampling_rates)),
-        metadata={
-            "config": ensure_serializable(public_config),
-            "source_version": OASIS_SOURCE_VERSION,
-            "adapter_version": OASIS_ADAPTER_VERSION,
-            "cache_tag": cache_tag,
-            "cache_key": cache_key,
-            "cache_hit": False,
-            "trials": ensure_serializable(trial_metadata),
-        },
+        metadata=metadata,
         reconstruction=reconstruction[order],
-        discrete_spikes=None,
+        discrete_spikes=None if discrete is None else discrete[order],
     )
 
     if config.use_cache:

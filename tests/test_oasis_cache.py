@@ -38,6 +38,9 @@ def _config(cache_root, **overrides) -> OasisConfig:
         "shift": None,
         "window": None,
         "tol": None,
+        "discrete_mode": "none",
+        "event_threshold": None,
+        "threshold_units": "absolute",
         "downsample_label": "raw",
         "uniformity_rtol": 1e-3,
         "uniformity_atol": 1e-9,
@@ -79,8 +82,12 @@ def _assert_results_equal(actual, expected) -> None:
     np.testing.assert_array_equal(actual.time_stamps, expected.time_stamps)
     np.testing.assert_array_equal(actual.spike_prob, expected.spike_prob)
     np.testing.assert_array_equal(actual.reconstruction, expected.reconstruction)
-    assert actual.discrete_spikes is None
-    assert expected.discrete_spikes is None
+    if expected.discrete_spikes is None:
+        assert actual.discrete_spikes is None
+    else:
+        assert actual.discrete_spikes is not None
+        np.testing.assert_array_equal(actual.discrete_spikes, expected.discrete_spikes)
+        assert actual.discrete_spikes.dtype == expected.discrete_spikes.dtype
     actual_metadata = dict(actual.metadata)
     expected_metadata = dict(expected.metadata)
     assert actual_metadata.pop("cache_hit") is True
@@ -136,6 +143,11 @@ def test_identical_call_hits_shared_cache_without_loading_solver_and_round_trips
         "uniformity_atol",
     ):
         assert name in payload["config"]
+    assert "discrete_mode" not in payload["config"]
+    assert "event_threshold" not in payload["config"]
+    assert "threshold_units" not in payload["config"]
+    assert "discrete_output_version" not in payload["config"]
+    assert "discretization" not in first.metadata
 
     def fail_if_native_solver_is_loaded():
         raise AssertionError("a cache hit must not load the native OASIS solver")
@@ -145,6 +157,53 @@ def test_identical_call_hits_shared_cache_without_loading_solver_and_round_trips
 
     assert len(calls) == 2
     _assert_results_equal(second, first)
+
+
+def test_binary_support_round_trips_through_a_policy_specific_cache(tmp_path, monkeypatch):
+    cache_root = tmp_path / "inference_cache"
+    config = _config(
+        cache_root,
+        discrete_mode="support",
+        event_threshold=0.25,
+        threshold_units="absolute",
+    )
+    calls = _install_fake_solver(monkeypatch)
+
+    first = run_oasis_inference(_trials(), config)
+
+    assert len(calls) == 2
+    assert first.discrete_spikes is not None
+    assert first.discrete_spikes.dtype == np.uint8
+    np.testing.assert_array_equal(
+        first.discrete_spikes,
+        np.asarray(
+            [0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+            dtype=np.uint8,
+        ),
+    )
+    assert first.metadata["discretization"]["event_count"] == 6
+
+    meta_path = (
+        cache_root
+        / "oasis"
+        / first.metadata["cache_tag"]
+        / f"{first.metadata['cache_key']}.json"
+    )
+    payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert payload["config"]["discrete_mode"] == "support"
+    assert payload["config"]["event_threshold"] == pytest.approx(0.25)
+    assert payload["config"]["threshold_units"] == "absolute"
+    assert payload["config"]["discrete_output_version"] == "binary-event-support-v1"
+
+    def fail_if_native_solver_is_loaded():
+        raise AssertionError("a binary-support cache hit must not load the native OASIS solver")
+
+    monkeypatch.setattr(oasis_adapter, "_load_deconvolve", fail_if_native_solver_is_loaded)
+    second = run_oasis_inference(_trials(), config)
+
+    assert len(calls) == 2
+    _assert_results_equal(second, first)
+    assert second.discrete_spikes.dtype == np.uint8
 
 
 @pytest.mark.parametrize("dataset_tag", ["../../outside", "/absolute/outside", "nested/name"])
@@ -243,6 +302,22 @@ def test_every_exposed_config_field_has_cache_invalidation_coverage(tmp_path, mo
         "shift": replace(base, shift=4),
         "window": replace(base, window=6),
         "tol": replace(base, tol=1e-8),
+        "discrete_mode": replace(
+            base,
+            discrete_mode="support",
+            event_threshold=0.1,
+        ),
+        "event_threshold": replace(
+            base,
+            discrete_mode="support",
+            event_threshold=0.2,
+        ),
+        "threshold_units": replace(
+            base,
+            discrete_mode="support",
+            event_threshold=0.1,
+            threshold_units="noise_scaled",
+        ),
         "downsample_label": replace(base, downsample_label="downsampled"),
         "uniformity_rtol": replace(base, uniformity_rtol=2e-3),
         "uniformity_atol": replace(base, uniformity_atol=2e-9),
