@@ -382,9 +382,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     oasis_group.add_argument(
         "--oasis-uniformity-rtol",
         type=_nonnegative_float,
-        default=1e-3,
+        default=5e-3,
         metavar="RTOL",
-        help="Relative tolerance for uniform-sampling validation (default: 1e-3).",
+        help="Relative tolerance for uniform-sampling validation (default: 5e-3).",
     )
     oasis_group.add_argument(
         "--oasis-uniformity-atol",

@@ -37,7 +37,7 @@ def test_oasis_cli_defaults_keep_method_opt_in(cli_run):
     assert args.oasis_shift is None
     assert args.oasis_window is None
     assert args.oasis_tol is None
-    assert args.oasis_uniformity_rtol == pytest.approx(1e-3)
+    assert args.oasis_uniformity_rtol == pytest.approx(5e-3)
     assert args.oasis_uniformity_atol == pytest.approx(1e-9)
 
 

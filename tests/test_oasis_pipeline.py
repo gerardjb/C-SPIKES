@@ -58,7 +58,7 @@ def test_oasis_run_tag_has_ar_order_and_stable_eight_character_signature() -> No
         "shift": None,
         "window": None,
         "tol": None,
-        "uniformity_rtol": 1e-3,
+        "uniformity_rtol": 5e-3,
         "uniformity_atol": 1e-9,
     }
     expected_signature = hashlib.sha256(

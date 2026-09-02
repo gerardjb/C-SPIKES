@@ -219,6 +219,53 @@ def test_oasis_only_synthetic_workflow_keeps_evaluation_and_reconstruction(
     np.testing.assert_array_equal(result["spike_times"]["oasis"], np.asarray([]))
 
 
+def test_oasis_workflow_resamples_unequal_trials_to_one_exact_target_rate(
+    tmp_path, monkeypatch
+):
+    from c_spikes.inference import oasis as oasis_adapter
+
+    def fake_deconvolve(values, **kwargs):
+        values = np.asarray(values, dtype=np.float64)
+        return values.copy(), np.zeros_like(values), 0.0, kwargs["g"][0], 0.0
+
+    monkeypatch.setattr(oasis_adapter, "_load_deconvolve", lambda: fake_deconvolve)
+    times = np.full((2, 106), np.nan, dtype=np.float64)
+    traces = np.full_like(times, np.nan)
+    for row, length in enumerate((101, 106)):
+        trial_times = row * 2.0 + np.arange(length, dtype=np.float64) / 100.0
+        times[row, :length] = trial_times
+        traces[row, :length] = np.sin(trial_times)
+
+    cfg = DatasetRunConfig(
+        dataset_path=tmp_path / "unequal.mat",
+        smoothing=SmoothingLevel(target_fs=30.0, label="30Hz"),
+        selection=MethodSelection(
+            run_pgas=False,
+            run_ens2=False,
+            run_cascade=False,
+            run_oasis=True,
+        ),
+        use_cache=False,
+        oasis_g=(0.9,),
+        oasis_sn=0.05,
+    )
+
+    result = run_inference_for_dataset(
+        cfg,
+        dataset_data=(times, traces, np.asarray([], dtype=np.float64)),
+        **_workflow_paths(tmp_path),
+    )
+
+    oasis_result = result["methods"]["oasis"]
+    assert oasis_result.sampling_rate == pytest.approx(30.0)
+    assert oasis_result.time_stamps.size == 63
+    assert [trial["length"] for trial in oasis_result.metadata["trials"]] == [31, 32]
+    assert all(
+        trial["sampling_rate"] == pytest.approx(30.0)
+        for trial in oasis_result.metadata["trials"]
+    )
+
+
 def test_oasis_predictions_do_not_receive_the_pgas_one_bin_shift():
     values = np.asarray([1.0, 2.0, 3.0])
 

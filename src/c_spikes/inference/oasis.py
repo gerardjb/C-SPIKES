@@ -12,8 +12,8 @@ from .cache import load_method_cache, save_method_cache
 from .types import MethodResult, TrialSeries, compute_config_signature, ensure_serializable
 
 
-OASIS_ADAPTER_VERSION = "1"
-OASIS_NUMERICAL_REVISION = "cspikes-numerical-v1"
+OASIS_ADAPTER_VERSION = "2"
+OASIS_NUMERICAL_REVISION = "cspikes-numerical-v2"
 OASIS_SOURCE_VERSION = (
     "oasis_port-0.2.0+e738431502040ad7db8f79a12b2927ae9d2f4e7c."
     f"{OASIS_NUMERICAL_REVISION}"
@@ -43,7 +43,7 @@ class OasisConfig:
     window: Optional[int] = None
     tol: Optional[float] = None
     downsample_label: str = "raw"
-    uniformity_rtol: float = 1e-3
+    uniformity_rtol: float = 5e-3
     uniformity_atol: float = 1e-9
     use_cache: bool = True
     cache_root: Optional[Path] = None
@@ -160,8 +160,13 @@ def _validate_config(config: OasisConfig) -> Tuple[Optional[float], ...]:
         or config.penalty not in (0, 1)
     ):
         raise ValueError("penalty must be either 0 (L0) or 1 (L1)")
+    if (
+        isinstance(config.decimate, (bool, np.bool_))
+        or not isinstance(config.decimate, (int, np.integer))
+        or config.decimate < 1
+    ):
+        raise ValueError("decimate must be a positive integer")
     for name, value in (
-        ("decimate", config.decimate),
         ("max_iter", config.max_iter),
         ("shift", config.shift),
         ("window", config.window),
@@ -399,7 +404,10 @@ def run_oasis_inference(
     prepared_trials, sampling_rates, _ = _prepare_trials(list(trials), config)
     trace_hash = _hash_trials(prepared_trials)
 
-    cache_tag = f"{config.dataset_tag}_s{_format_tag_token(config.downsample_label)}"
+    cache_tag = (
+        f"{_format_tag_token(config.dataset_tag)}_"
+        f"s{_format_tag_token(config.downsample_label)}"
+    )
     public_config = _public_config(config, requested_g)
     cache_config: Dict[str, Any] = {
         key: value

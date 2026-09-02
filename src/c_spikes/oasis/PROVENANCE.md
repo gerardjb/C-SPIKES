@@ -72,10 +72,36 @@ parity for fixed, valid AR(1) and AR(2) calls. It:
 - deliberately retains Python ONNLS as the facade's AR(2) backend and the low-level facade's legacy
   `penalty=0` default. The C-SPIKES adapter selects `penalty=1` explicitly.
 
-The C++ was regenerated again with the command and Cython/NumPy versions above. Current hashes are:
+The C++ was regenerated again with the command and Cython/NumPy versions above. The hashes after
+that slice were:
 
 | File | SHA-256 |
 |---|---|
 | `functions.py` | `a78b378b2691723b6e4baeecac9079a06c5f11e4680b6c5e967e48a6269b3314` |
 | `oasis_methods.pyx` | `f80dd88de95d14ff5e71a1838e50db14507d8a945ab01e06ffcd6953026913cf` |
 | `oasis_methods.cpp` | `8c96ddfaebda46d625368d2a410ddeec254c20385060ce0f117fe5e71e396d0d` |
+
+## Post-integration numerical and portability fixes
+
+A final integration audit made the following targeted changes after the initial numerical-hardening
+slice:
+
+- decimated AR(1) L0 inference retries once at full resolution if its acceleration warm start
+  produces materially negative events, preserving the L0 recurrence instead of clipping output;
+- AR(2) L0 sparsification retains its feasible constrained result when no valid sparser candidate
+  is found, and skips the unused zero-length leading-pool calculation;
+- AR(2) ONNLS limits its block shift to the effective window size;
+- short-trace noise estimation passes an explicit Welch segment length, preserving SciPy's fallback
+  calculation without emitting a warning under the repository's warnings-as-errors policy; and
+- native index arrays use NumPy's pointer-sized `np.intp_t`/`np.intp`, avoiding the C `long` versus
+  NumPy `intp` width mismatch on Win64.
+
+The checked-in C++ was regenerated again with Cython 3.2.4 and NumPy 2.1.3 declarations using the
+command above. Cython's two whitespace-only generated lines were normalized afterward so repository
+whitespace checks remain clean. Current hashes are:
+
+| File | SHA-256 |
+|---|---|
+| `functions.py` | `4fe3a6967e020b04c6e0de5e31caf43a26852c3f6dc01ae9b3afcbfc0e4af656` |
+| `oasis_methods.pyx` | `287c258c79eec687c07b92ebd5690af09e17ea05c81ac8f6ac56fd0c7e6b6254` |
+| `oasis_methods.cpp` | `794dd7cbbf8cf7faacec2db74f9405d85c75bbe0eb8496ae9fd5a47258945b75` |

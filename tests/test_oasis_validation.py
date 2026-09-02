@@ -281,6 +281,24 @@ def test_deconvolve_rejects_short_or_constant_parameter_estimation(y, g):
     _assert_clear_validation_error(y, g=g, sn=None)
 
 
+@pytest.mark.parametrize(
+    "g, length, seed",
+    [
+        pytest.param((None,), 12, 0, id="minimum-ar1"),
+        pytest.param((None, None), 13, 1, id="minimum-ar2"),
+    ],
+)
+def test_minimum_length_automatic_estimation_is_warning_free_and_deterministic(g, length, seed):
+    y = np.random.default_rng(seed).normal(0.3, 0.1, length)
+
+    first = deconvolve(y, g=g, sn=None, penalty=1, decimate=1)
+    second = deconvolve(y, g=g, sn=None, penalty=1, decimate=1)
+
+    for first_value, second_value in zip(first, second):
+        np.testing.assert_allclose(first_value, second_value, rtol=0, atol=0)
+        assert np.isfinite(np.asarray(first_value, dtype=np.float64)).all()
+
+
 def test_ar1_nondivisible_decimation_returns_full_finite_output():
     g = (0.92,)
     y = _simulate_trace(g, length=103)
@@ -300,6 +318,95 @@ def test_ar1_nondivisible_decimation_returns_full_finite_output():
     assert s.dtype == np.float64
     assert np.isfinite(c).all()
     assert np.isfinite(s).all()
+
+
+def test_ar1_l0_retries_full_resolution_when_decimated_warm_start_is_infeasible():
+    y = np.random.default_rng(6).normal(0.2, 0.3, 10)
+
+    actual = deconvolve(y, g=(0.92,), sn=0.05, penalty=0, decimate=5)
+    expected = deconvolve(y, g=(0.92,), sn=0.05, penalty=0, decimate=1)
+
+    for actual_value, expected_value in zip(actual, expected):
+        np.testing.assert_allclose(actual_value, expected_value, rtol=0, atol=0)
+    c, s, b_hat, fitted_g, lam = actual
+    assert np.isfinite(c).all()
+    assert np.isfinite(s).all()
+    assert np.min(c) >= -1e-12
+    assert np.min(s) >= -1e-12
+    assert np.isfinite(b_hat)
+    assert np.isfinite(lam)
+    assert fitted_g == pytest.approx(0.92)
+    np.testing.assert_allclose(s[1:], c[1:] - fitted_g * c[:-1], atol=1e-12)
+
+
+def test_ar2_l0_infeasible_sparsification_retains_a_valid_solution():
+    y = np.random.default_rng(2).normal(0.2, 0.3, 20)
+    kwargs = {"g": (1.7, -0.72), "sn": 0.05, "penalty": 0, "decimate": 2}
+
+    first = deconvolve(y, **kwargs)
+    second = deconvolve(y, **kwargs)
+
+    for first_value, second_value in zip(first, second):
+        np.testing.assert_allclose(first_value, second_value, rtol=0, atol=0)
+    c, s, b_hat, fitted_g, lam = first
+    assert np.isfinite(c).all()
+    assert np.isfinite(s).all()
+    assert np.min(c) >= -1e-12
+    assert np.min(s) >= -1e-12
+    assert np.isfinite(b_hat)
+    assert np.isfinite(lam)
+    np.testing.assert_allclose(fitted_g, (1.7, -0.72))
+    np.testing.assert_allclose(
+        s[2:],
+        c[2:] - fitted_g[0] * c[1:-1] - fitted_g[1] * c[:-2],
+        rtol=1e-7,
+        atol=1e-9,
+    )
+
+
+def test_ar2_l0_event_at_first_sample_does_not_evaluate_empty_prefix():
+    y = np.random.default_rng(0).normal(0.2, 0.3, 20)
+
+    c, s, _, fitted_g, _ = deconvolve(
+        y,
+        g=(1.7, -0.72),
+        sn=0.001,
+        penalty=0,
+        decimate=1,
+    )
+
+    assert np.isfinite(c).all()
+    assert np.isfinite(s).all()
+    assert np.min(c) >= -1e-12
+    assert np.min(s) >= -1e-12
+    np.testing.assert_allclose(
+        s[2:],
+        c[2:] - fitted_g[0] * c[1:-1] - fitted_g[1] * c[:-2],
+        rtol=1e-7,
+        atol=1e-9,
+    )
+
+
+@pytest.mark.parametrize("window, shift", [(50, 100), (None, 300)])
+def test_ar2_onnls_limits_block_shift_to_effective_window(window, shift):
+    y = np.random.default_rng(17).normal(0.2, 0.1, 220)
+
+    c, s, _, _, _ = deconvolve(
+        y,
+        g=(1.7, -0.72),
+        sn=0.1,
+        b=0.0,
+        penalty=1,
+        decimate=1,
+        window=window,
+        shift=shift,
+    )
+
+    assert c.shape == y.shape
+    assert s.shape == y.shape
+    assert np.isfinite(c).all()
+    assert np.isfinite(s).all()
+    assert np.min(s) >= -1e-12
 
 
 def test_deconvolve_rejects_decimation_larger_than_trace():

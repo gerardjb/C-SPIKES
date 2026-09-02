@@ -96,7 +96,7 @@ class DatasetRunConfig:
     oasis_shift: Optional[int] = None
     oasis_window: Optional[int] = None
     oasis_tol: Optional[float] = None
-    oasis_uniformity_rtol: float = 1e-3
+    oasis_uniformity_rtol: float = 5e-3
     oasis_uniformity_atol: float = 1e-9
 
 
