@@ -64,6 +64,9 @@ class InferenceSettings:
     oasis_optimize_g: int = 0
     oasis_penalty: int = 1
     oasis_decimate: int = 1
+    oasis_discrete_mode: str = "none"
+    oasis_event_threshold: Optional[float] = None
+    oasis_threshold_units: str = "absolute"
 
 
 @dataclass(frozen=True)
@@ -145,6 +148,9 @@ def run_inference_for_epoch(
             optimize_g=settings.oasis_optimize_g,
             penalty=settings.oasis_penalty,
             decimate=settings.oasis_decimate,
+            discrete_mode=settings.oasis_discrete_mode,
+            event_threshold=settings.oasis_event_threshold,
+            threshold_units=settings.oasis_threshold_units,
             downsample_label="raw",
             use_cache=settings.use_cache,
             cache_root=context.cache_root,
@@ -297,6 +303,9 @@ def run_inference_for_epoch_safe(
                 optimize_g=settings.oasis_optimize_g,
                 penalty=settings.oasis_penalty,
                 decimate=settings.oasis_decimate,
+                discrete_mode=settings.oasis_discrete_mode,
+                event_threshold=settings.oasis_event_threshold,
+                threshold_units=settings.oasis_threshold_units,
                 downsample_label="raw",
                 use_cache=settings.use_cache,
                 cache_root=context.cache_root,
