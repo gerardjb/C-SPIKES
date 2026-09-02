@@ -183,7 +183,7 @@ def constrained_oasisAR1(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g, DOUBLE sn,
         DOUBLE thresh, v, w, RSS, aa, bb, cc, lam, dlam, b, db, dphi, lg
         bool g_converged
         np.ndarray[DOUBLE, ndim = 1] c, res, tmp, fluor, h
-        np.ndarray[long, ndim = 1] ff, ll
+        np.ndarray[np.intp_t, ndim = 1] ff, ll
         vector[Pool] P
         Pool newpool
 
@@ -475,10 +475,11 @@ def constrained_oasisAR1(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g, DOUBLE sn,
         if decimation_length != T:
             thresh = sn * sn * T
         # warm-start active set
-        ff = np.ravel([P[i].t * decimate + np.arange(-decimate, 3 * decimate / 2)
+        ff = np.ravel([P[i].t * decimate + np.arange(
+                       -decimate, 3 * decimate // 2, dtype=np.intp)
                        for i in range(P.size())])  # this window size seems necessary and sufficient
-        ff = np.unique(ff[(ff >= 0) * (ff < T)])
-        ll = np.append(ff[1:] - ff[:-1], T - ff[-1])
+        ff = np.unique(ff[(ff >= 0) * (ff < T)]).astype(np.intp, copy=False)
+        ll = np.append(ff[1:] - ff[:-1], T - ff[-1]).astype(np.intp, copy=False)
         h = np.exp(log(g) * np.arange(T))
         P.resize(0)
         for i in range(len(ff)):
@@ -967,13 +968,17 @@ def constrained_oasisAR2(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g1, DOUBLE g2, DOU
         def c4smin(y, s, s_min, g11, g12, g11g11, g11g12):
             cdef:
                 Py_ssize_t i, t, l
-                np.ndarray[long, ndim = 1] ls
+                np.ndarray[np.intp_t, ndim = 1] ls
                 np.ndarray[DOUBLE, ndim = 1] tmp
-            ls = np.append(np.where(s > s_min)[0], len(y))
+            ls = np.append(np.where(s > s_min)[0], len(y)).astype(np.intp, copy=False)
             tmp = np.zeros_like(s)
             l = ls[0]  # first pool
-            tmp[:l] = max(0, np.exp(log(d) * np.arange(l)).dot(y[:l]) * (1 - d * d)
-                          / (1 - exp(ld*2*l))) * np.exp(log(d) * np.arange(l))
+            if l > 0:
+                tmp[:l] = max(
+                    0,
+                    np.exp(log(d) * np.arange(l)).dot(y[:l]) * (1 - d * d)
+                    / (1 - exp(ld*2*l)),
+                ) * np.exp(log(d) * np.arange(l))
             for i, t in enumerate(ls[:-1]):  # all other pools
                 l = ls[i+1] - t
                 tmp[t] = (g11[:l].dot(y[t:t + l])
@@ -1157,7 +1162,7 @@ def constrained_oasisAR1_f32(np.ndarray[SINGLE, ndim=1] y, SINGLE g, SINGLE sn,
         SINGLE thresh, v, w, RSS, aa, bb, cc, lam, dlam, b, db, dphi, lg
         bool g_converged
         np.ndarray[SINGLE, ndim = 1] c, s, res, tmp, fluor, h
-        np.ndarray[long, ndim = 1] ff, ll
+        np.ndarray[np.intp_t, ndim = 1] ff, ll
         vector[Pool32] P
         Pool32 newpool
 
@@ -1450,10 +1455,11 @@ def constrained_oasisAR1_f32(np.ndarray[SINGLE, ndim=1] y, SINGLE g, SINGLE sn,
         if decimation_length != T:
             thresh = sn * sn * T
         # warm-start active set
-        ff = np.ravel([P[i].t * decimate + np.arange(-decimate, 3 * decimate / 2)
+        ff = np.ravel([P[i].t * decimate + np.arange(
+                       -decimate, 3 * decimate // 2, dtype=np.intp)
                        for i in range(P.size())])  # this window size seems necessary and sufficient
-        ff = np.unique(ff[(ff >= 0) * (ff < T)])
-        ll = np.append(ff[1:] - ff[:-1], T - ff[-1])
+        ff = np.unique(ff[(ff >= 0) * (ff < T)]).astype(np.intp, copy=False)
+        ll = np.append(ff[1:] - ff[:-1], T - ff[-1]).astype(np.intp, copy=False)
         h = np.exp(lg * np.arange(T, dtype=np.float32))
         P.resize(0)
         for i in range(len(ff)):

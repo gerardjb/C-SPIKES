@@ -162,6 +162,32 @@ def test_near_uniform_timestamps_are_accepted_without_resampling(monkeypatch):
     assert result.metadata["trials"][0]["sampling_rate"] == pytest.approx(10.0, rel=2e-6)
 
 
+def test_default_uniformity_tolerance_accepts_janelia_timestamp_quantization(monkeypatch):
+    from c_spikes.inference import oasis as oasis_adapter
+
+    # Bundled Janelia traces alternate between 8.18 ms and 8.20 ms bins after
+    # timestamp serialization (about 0.24% relative jitter).
+    diffs = np.resize(np.asarray([0.00818, 0.00820]), 15)
+    times = np.concatenate(([0.0], np.cumsum(diffs)))
+    values = np.sin(np.arange(times.size, dtype=np.float64) / 3.0)
+
+    def fake_deconvolve(y, **_kwargs):
+        return np.zeros_like(y), np.ones_like(y), 0.0, 0.9, 0.1
+
+    monkeypatch.setattr(oasis_adapter, "_load_deconvolve", lambda: fake_deconvolve)
+    config = OasisConfig(
+        dataset_tag="janelia_quantized",
+        g=(0.9,),
+        sn=0.05,
+        use_cache=False,
+    )
+
+    result = run_oasis_inference([TrialSeries(times=times, values=values)], config)
+
+    assert config.uniformity_rtol == pytest.approx(5e-3)
+    np.testing.assert_array_equal(result.time_stamps, times)
+
+
 def test_automatic_parameters_are_estimated_per_trial_and_recorded(monkeypatch):
     from c_spikes.inference import oasis as oasis_adapter
 
@@ -242,6 +268,7 @@ def test_invalid_automatic_estimation_trace_is_rejected_before_native_import(
     [
         ({"g": (1.0,)}, "AR\\(1\\)"),
         ({"g": (1.2, 0.1)}, "AR\\(2\\)"),
+        ({"decimate": None}, "decimate"),
         ({"decimate": 5}, "shortest trial"),
     ],
 )

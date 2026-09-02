@@ -7,7 +7,7 @@
   - PyTorch `>=2.0`
   - TensorFlow (CPU and GPU-capable installs are supported where available)
   - Native build stack for PGAS and OASIS: `scikit-build-core`, `pybind11`, NumPy headers,
-    a CMake toolchain, and a C++ compiler
+    CMake `>=3.18`, and a C++ compiler
   - For GPU PGAS builds: Kokkos with CUDA enabled (see `kokkos_install.md`)
 - **Operating systems supported**:
   - Linux (`x86_64`) and Windows (`x86_64`) are supported for installation and CPU workflows.
@@ -51,7 +51,7 @@ compatible NumPy headers for the selected Python version. To intentionally build
 OASIS, use:
 
 ```bash
-pip install -ve . --config-settings=cmake.args="-DC_SPIKES_BUILD_OASIS=OFF"
+pip install -ve . --config-settings=cmake.define.C_SPIKES_BUILD_OASIS=OFF
 ```
 
 A clean serialized OASIS compilation added approximately 20–21 seconds on the audited HPC build
@@ -72,10 +72,10 @@ This repo now builds **CPU** and (optionally) **GPU** PGAS backends side-by-side
 pip install -ve .
 
 # Force GPU build (error if CUDA/Kokkos CUDA not enabled)
-pip install -ve . --config-settings=cmake.args="-DPGAS_BUILD_GPU=ON"
+pip install -ve . --config-settings=cmake.define.PGAS_BUILD_GPU=ON
 
 # CPU only
-pip install -ve . --config-settings=cmake.args="-DPGAS_BUILD_GPU=OFF"
+pip install -ve . --config-settings=cmake.define.PGAS_BUILD_GPU=OFF
 ```
 
 **Runtime selection**:
@@ -111,7 +111,9 @@ ln -s ../Pretrained_models results/Pretrained_models
 - Optional per-trial windows: an `edges` array (shape n_trials × 2, seconds) to trim data before inference. See `extract_time_stamp_edges.py` for generating these from existing recordings.
 - OASIS inputs must be uniformly sampled within a trial and use a consistent effective rate across
   trials. The workflow can downsample before dispatch, but the OASIS adapter never resamples or
-  treats an irregular trace as uniform implicitly.
+  treats an irregular trace as uniform implicitly. The default 0.5% relative tolerance accepts the
+  bundled recordings' 8.18/8.20 ms timestamp quantization while still rejecting true irregular or
+  cross-rate inputs.
 
 ## OASIS spike inference
 
@@ -164,7 +166,12 @@ Important output semantics and limitations:
   a separately specified event policy.
 - AR coefficients in `g` are per-bin values. The default estimates one AR(1) coefficient and the
   noise level independently for every processed trial. Fixed `g` values must match the selected AR
-  order.
+  order. Automatic estimation requires a nonconstant
+  trial with at least 12 processed samples for AR(1) or 13 for AR(2); provide fixed `g` and `sn`
+  for shorter or constant traces.
+- For extremely short fixed-parameter AR(2) trials, keep `optimize_g=0`; coefficient refinement
+  estimates an additional time constant and is not supported below the automatic-estimation
+  length.
 - The framework default is convex L1 (`penalty=1`). AR(1) uses the compiled constrained solver;
   AR(2) currently preserves the comparator's Python constrained ONNLS backend.
 - Cache entries live under `results/inference_cache/oasis/<dataset>_s<label>/`. Their identity

@@ -4,6 +4,7 @@ import json
 from dataclasses import fields, replace
 
 import numpy as np
+import pytest
 
 import c_spikes.inference.oasis as oasis_adapter
 from c_spikes.inference.oasis import OasisConfig, run_oasis_inference
@@ -117,7 +118,7 @@ def test_identical_call_hits_shared_cache_without_loading_solver_and_round_trips
     assert payload["dataset"] == first.metadata["cache_tag"]
     assert payload["cache_key"] == first.metadata["cache_key"]
     assert payload["metadata"] == first.metadata
-    assert "cspikes-numerical-v1" in payload["config"]["source_version"]
+    assert "cspikes-numerical-v2" in payload["config"]["source_version"]
     for name in (
         "g",
         "sn",
@@ -144,6 +145,27 @@ def test_identical_call_hits_shared_cache_without_loading_solver_and_round_trips
 
     assert len(calls) == 2
     _assert_results_equal(second, first)
+
+
+@pytest.mark.parametrize("dataset_tag", ["../../outside", "/absolute/outside", "nested/name"])
+def test_oasis_cache_namespace_sanitizes_dataset_paths(tmp_path, monkeypatch, dataset_tag):
+    cache_root = tmp_path / "inference_cache"
+    config = _config(cache_root, dataset_tag=dataset_tag)
+    _install_fake_solver(monkeypatch)
+
+    result = run_oasis_inference(_trials(), config)
+
+    cache_tag = result.metadata["cache_tag"]
+    assert result.metadata["config"]["dataset_tag"] == dataset_tag
+    assert cache_tag
+    assert "/" not in cache_tag
+    assert "\\" not in cache_tag
+    assert cache_tag not in {".", ".."}
+    cache_dir = cache_root / "oasis" / cache_tag
+    assert cache_dir.is_dir()
+    assert list(cache_dir.glob("*.mat"))
+    assert list(cache_dir.glob("*.json"))
+    assert not (tmp_path / "outside").exists()
 
 
 def test_unreadable_cache_does_not_prevent_inference(tmp_path, monkeypatch):

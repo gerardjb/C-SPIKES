@@ -14,6 +14,14 @@ SMOOTHING_LEVELS: Sequence[Tuple[str, Optional[float]]] = [
 ]
 
 
+def _fixed_rate_grid(start: float, end: float, target_fs: float) -> np.ndarray:
+    """Return samples at exactly ``target_fs`` without stretching to the endpoint."""
+
+    duration = float(end - start)
+    n_target = max(1, int(np.floor(duration * target_fs + 1e-12)) + 1)
+    return float(start) + np.arange(n_target, dtype=np.float64) / float(target_fs)
+
+
 def resolve_smoothing_levels(
     selection: Optional[Sequence[str]],
 ) -> Sequence[Tuple[str, Optional[float]]]:
@@ -52,9 +60,7 @@ def mean_downsample_trace(times: np.ndarray, values: np.ndarray, target_fs: floa
     ratio = fs / target_fs
     B = int(round(ratio))
     if not np.isclose(ratio, B, atol=1e-6):
-        duration = times[-1] - times[0]
-        n_target = int(np.round(duration * target_fs)) + 1
-        new_times = np.linspace(times[0], times[-1], n_target)
+        new_times = _fixed_rate_grid(times[0], times[-1], target_fs)
         new_values = np.interp(new_times, times, values)
         return TrialSeries(times=new_times, values=new_values)
     n_trim = (values.size // B) * B
@@ -83,16 +89,13 @@ def resample_trial_to_fs(trial: TrialSeries, target_fs: float, tol: float = 1e-3
     if current_fs > target_fs:
         return mean_downsample_trace(times, values, target_fs)
 
-    duration = float(times[-1] - times[0])
-    if duration <= 0:
+    if times[-1] <= times[0]:
         return TrialSeries(times=times.copy(), values=values.copy())
-    n_target = max(2, int(np.round(duration * target_fs)) + 1)
-    new_times = np.linspace(times[0], times[-1], n_target, dtype=np.float64)
+    new_times = _fixed_rate_grid(times[0], times[-1], target_fs)
     new_values = np.interp(new_times, times, values)
     return TrialSeries(times=new_times, values=new_values)
 
 
 def resample_trials_to_fs(trials: Sequence[TrialSeries], target_fs: float) -> List[TrialSeries]:
     return [resample_trial_to_fs(trial, target_fs) for trial in trials]
-
 

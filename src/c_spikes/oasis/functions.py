@@ -58,6 +58,18 @@ def _validate_stable_g(g):
         raise ValueError("AR(2) g must have two real roots strictly between 0 and 1")
 
 
+def _has_material_negative(values, reference):
+    """Return whether *values* violates non-negativity beyond roundoff."""
+
+    scale = max(
+        1.0,
+        float(np.max(np.abs(values), initial=0.0)),
+        float(np.max(np.abs(reference), initial=0.0)),
+    )
+    tolerance = 64.0 * np.finfo(np.double).eps * scale
+    return bool(np.any(values < -tolerance))
+
+
 def deconvolve(y, g=(None,), sn=None, b=None, b_nonneg=True,
                optimize_g=0, penalty=0, **kwargs):
     """Infer spikes from a fluorescence trace using OASIS methods.
@@ -142,14 +154,26 @@ def deconvolve(y, g=(None,), sn=None, b=None, b_nonneg=True,
         raise ValueError("Estimated sn must be finite and non-negative")
 
     if len(g) == 1:
-        c, s, fitted_b, fitted_g, lam = constrained_oasisAR1(
-            working_y, g[0], sn,
-            optimize_b=True if b is None else False,
-            b_nonneg=b_nonneg,
-            optimize_g=optimize_g,
-            penalty=penalty,
-            **solver_kwargs
-        )
+        def solve_ar1(kwargs):
+            return constrained_oasisAR1(
+                working_y, g[0], sn,
+                optimize_b=True if b is None else False,
+                b_nonneg=b_nonneg,
+                optimize_g=optimize_g,
+                penalty=penalty,
+                **kwargs
+            )
+
+        c, s, fitted_b, fitted_g, lam = solve_ar1(solver_kwargs)
+        if penalty == 0 and _has_material_negative(s, c):
+            if decimate > 1:
+                full_resolution_kwargs = dict(solver_kwargs)
+                full_resolution_kwargs["decimate"] = 1
+                c, s, fitted_b, fitted_g, lam = solve_ar1(full_resolution_kwargs)
+            if _has_material_negative(s, c):
+                raise RuntimeError(
+                    "OASIS AR(1) L0 inference returned materially negative event amplitudes"
+                )
         fitted_g = float(fitted_g)
         _validate_stable_g((fitted_g,))
         return c, s, fitted_b + (0.0 if b is None else b), fitted_g, lam
@@ -223,6 +247,13 @@ def onnls(y, g, lam=0, shift=100, window=None, mask=None, tol=1e-9, max_iter=Non
     """Infer spikes for AR(2) by solving sparse non-negative deconvolution."""
 
     T = len(y)
+    if (isinstance(shift, (bool, np.bool_)) or
+            not isinstance(shift, (int, np.integer)) or shift < 1):
+        raise ValueError("shift must be a positive integer")
+    if (window is not None and
+            (isinstance(window, (bool, np.bool_)) or
+             not isinstance(window, (int, np.integer)) or window < 1)):
+        raise ValueError("window must be a positive integer")
     if mask is None:
         mask = np.ones(T, dtype=bool)
 
@@ -233,6 +264,7 @@ def onnls(y, g, lam=0, shift=100, window=None, mask=None, tol=1e-9, max_iter=Non
     else:
         w = window
     w = min(T, w)
+    shift = min(shift, w)
 
     K = np.zeros((w, w))
     if len(g) == 1:  # kernel for AR(1)
@@ -472,8 +504,12 @@ def constrained_onnlsAR2(y, g, sn, optimize_b=True, b_nonneg=True, optimize_g=0,
             ls = np.append(np.where(s_ > s_min)[0], T)
             tmp = np.zeros_like(s_)
             l = ls[0]
-            tmp[:l] = max(0, np.exp(log(d) * np.arange(l)).dot(y_[:l]) * (1 - d * d)
-                          / (1 - d**(2 * l))) * np.exp(log(d) * np.arange(l))
+            if l > 0:
+                tmp[:l] = max(
+                    0,
+                    np.exp(log(d) * np.arange(l)).dot(y_[:l]) * (1 - d * d)
+                    / (1 - d**(2 * l)),
+                ) * np.exp(log(d) * np.arange(l))
             for i, f in enumerate(ls[:-1]):
                 l = ls[i + 1] - f
                 tmp[f] = (g11[:l].dot(y_[f:f + l])
@@ -482,6 +518,7 @@ def constrained_onnlsAR2(y, g, sn, optimize_b=True, b_nonneg=True, optimize_g=0,
             return tmp
 
         spikesizes = np.sort(s[s > 1e-6])
+        best_c = None
         i = len(spikesizes) // 2
         l = 0
         u = len(spikesizes) - 1
@@ -490,15 +527,26 @@ def constrained_onnlsAR2(y, g, sn, optimize_b=True, b_nonneg=True, optimize_g=0,
             tmp = c4smin(y - b, s, s_min)
             res = y - b - tmp
             RSS = res.dot(res)
-            if RSS < thresh or i == 0:
+            accepted = RSS < thresh or i == 0
+            if accepted:
+                candidate_s = np.append(
+                    [0, 0],
+                    tmp[2:] - g[0] * tmp[1:-1] - g[1] * tmp[:-2],
+                )
+                accepted = (
+                    np.isfinite(tmp).all()
+                    and np.isfinite(candidate_s).all()
+                    and not _has_material_negative(candidate_s, tmp)
+                )
+            if accepted:
                 l = i
                 i = (l + u) // 2
-                res0 = tmp
+                best_c = tmp.copy()
             else:
                 u = i
                 i = (l + u) // 2
-        if i > 0:
-            c = res0
+        if best_c is not None:
+            c = best_c
             s = np.append([0, 0], c[2:] - g[0] * c[1:-1] - g[1] * c[:-2])
 
     return c, s, b, g, lam
@@ -555,7 +603,7 @@ def estimate_time_constant(y, p=2, sn=None, lags=10, fudge_factor=1., nonlinear_
 def GetSn(y, range_ff=[0.25, 0.5], method='mean'):
     """Estimate noise standard deviation from the power spectral density."""
 
-    ff, Pxx = scipy.signal.welch(y)
+    ff, Pxx = scipy.signal.welch(y, nperseg=min(256, len(y)))
     ind1 = ff > range_ff[0]
     ind2 = ff < range_ff[1]
     ind = np.logical_and(ind1, ind2)
