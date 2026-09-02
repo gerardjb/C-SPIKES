@@ -1,8 +1,19 @@
-cmake_minimum_required(VERSION 3.15...3.26)
+cmake_minimum_required(VERSION 3.18...3.26)
 
 project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION} LANGUAGES CXX Fortran)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+option(C_SPIKES_BUILD_OASIS "Build the OASIS native extension." ON)
+
+if(C_SPIKES_BUILD_OASIS)
+    find_package(Python COMPONENTS Interpreter Development.Module NumPy REQUIRED)
+
+    Python_add_library(oasis_methods MODULE src/c_spikes/oasis/oasis_methods.cpp WITH_SOABI)
+    target_compile_features(oasis_methods PRIVATE cxx_std_11)
+    target_compile_definitions(oasis_methods PRIVATE NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION)
+    target_link_libraries(oasis_methods PRIVATE Python::Module Python::NumPy)
+endif()
 
 add_subdirectory(dependencies)
 
@@ -75,4 +86,11 @@ endif()
 install(TARGETS pgas_bound_cpu DESTINATION ${SKBUILD_PROJECT_NAME}/pgas)
 if(_pgas_build_gpu)
     install(TARGETS pgas_bound_gpu DESTINATION ${SKBUILD_PROJECT_NAME}/pgas)
+endif()
+if(C_SPIKES_BUILD_OASIS)
+    install(
+        TARGETS oasis_methods
+        LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}/oasis
+        RUNTIME DESTINATION ${SKBUILD_PROJECT_NAME}/oasis
+    )
 endif()
