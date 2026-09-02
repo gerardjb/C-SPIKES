@@ -176,9 +176,9 @@ and Paninski (NIPS 2016) and Friedrich, Zhou, and Paninski (PLOS Computational B
 source-revision and licensing details are in `src/c_spikes/oasis/PROVENANCE.md`.
 
 ## GUI usage
-The gui is the primary entry point for the majority of the functionality of the codebase for what most people will use it for. It functions in both the cpu-only or gpu builds and allows you to perform inference on your dataset with our biophysical methods as well as other methods (only CASCADE and ENS2 as MLspike is implemented in Matlab) we investigated in the original publication. Core tasks include:
+The gui is the primary entry point for the majority of the functionality of the codebase for what most people will use it for. It functions in both the cpu-only or gpu builds and allows you to perform inference on your dataset with our biophysical methods as well as CASCADE, ENS2, and opt-in OASIS. MLspike remains implemented in Matlab. Core tasks include:
 - Edge selection (a module that allows selection of subsets of data from every epoch. This is useful for reducing run times for the biophys_smc method, which can take a long time to run on longer datasets)
-- Spike Inference (a module that performs spike prediction on your data with our biophysical methods as well as CASCADE and ENS2 methods)
+- Spike Inference (a module that performs spike prediction on your data with our biophysical methods as well as CASCADE, ENS2, and OASIS)
 
 To launch the desktop GUI:
 ```bash
@@ -195,16 +195,21 @@ C_SPIKES_PROJECT_ROOT=/path/to/C-SPIKES python scripts/c_spikes_gui.py
 ```
 
 ### Spike Inference tab
-This tab contains panels that allow selection of which methods (i.e., BiophysSMC, BiophysML, CASCADE, ENS2) you'd like to run on your data as well as panels for selecting specific Pretrained models for the supervised methods (BiophysML, CASCADE, ENS2) and hyperparameters for the BiophyhsSMC method.
+This tab contains panels that allow selection of which methods (i.e., BiophysSMC, BiophysML, CASCADE, ENS2, OASIS) you'd like to run on your data as well as panels for selecting specific Pretrained models for the supervised methods (BiophysML, CASCADE, ENS2) and hyperparameters for BiophysSMC and OASIS.
 - **Dataset**: select a directory containing `.mat` files.
 - **Epoch**: navigate epochs within files (multi-epoch `.mat` supported).
-- **Methods**: toggle `biophys_smc` (PGAS), `BiophysML`, `CASCADE`, `ENS2`.
+- **Methods**: toggle `biophys_smc` (PGAS), `BiophysML`, `CASCADE`, `ENS2`, or opt-in `OASIS`.
 - **Models**:
   - CASCADE models: `Pretrained_models/CASCADE/<model_name>/`
   - ENS2 models: `Pretrained_models/ENS2/<model_dir>/` containing `exc_ens2_pub.pt` or `inh_ens2_pub.pt`
   - BiophysML: `Pretrained_models/BiophysML/<model_dir>/` (auto-detects CASCADE vs ENS2 based on contents)
 - **Run tag**: outputs are organized under `data_dir/spike_inference/<run_tag>/`.
 - **Use cache**: reuses cached inference under `data_dir/spike_inference/<run_tag>/inference_cache/`.
+- **OASIS Config**: choose AR(1)/AR(2), automatic or fixed per-bin `g`, automatic or fixed
+  noise/baseline, L1/L0 penalty, coefficient optimization, and decimation. OASIS runs on the raw
+  uniformly sampled GUI epoch and plots continuous event amplitude; it does not create discrete
+  spike markers. A missing/stale native OASIS extension is reported for OASIS only, so other
+  selected methods can still finish.
 - **Use edges**: apply an edges file (selected in the Dataset panel) when running PGAS.
 - **Generate sbatch**: in **PGAS Config**, `Edit Slurm Profile...` edits
   `data_dir/spike_inference/<run_tag>/slurm/slurm_profile.json`, and `Generate sbatch...` previews then writes
