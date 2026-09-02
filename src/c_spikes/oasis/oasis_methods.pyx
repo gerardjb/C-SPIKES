@@ -151,6 +151,8 @@ def constrained_oasisAR1(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g, DOUBLE sn,
         No optimization if optimize_g=0.
     decimate : int, optional, default 1
         Decimation factor for estimating hyper-parameters faster on decimated data.
+        When the trace length is not divisible by this factor, estimation uses
+        the largest complete prefix and the final solve still uses the full trace.
     max_iter : int, optional, default 5
         Maximal number of iterations.
     penalty : int, optional, default 1
@@ -177,7 +179,7 @@ def constrained_oasisAR1(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g, DOUBLE sn,
 
     cdef:
         Py_ssize_t i, j, k, t, l
-        unsigned int ma, count, T
+        unsigned int ma, count, T, decimation_length
         DOUBLE thresh, v, w, RSS, aa, bb, cc, lam, dlam, b, db, dphi, lg
         bool g_converged
         np.ndarray[DOUBLE, ndim = 1] c, res, tmp, fluor, h
@@ -185,14 +187,21 @@ def constrained_oasisAR1(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g, DOUBLE sn,
         vector[Pool] P
         Pool newpool
 
-    lg = log(g)
     T = len(y)
+    if decimate < 1:
+        raise ValueError("decimate must be a positive integer")
+    if decimate > T:
+        raise ValueError("decimate cannot exceed the trace length")
+    lg = log(g)
     thresh = sn * sn * T
     if decimate > 1:  # parameter changes due to downsampling
         fluor = y.copy()
-        y = y.reshape(-1, decimate).mean(1)
+        decimation_length = T // decimate * decimate
+        y = fluor[:decimation_length].reshape(-1, decimate).mean(1)
         lg *= decimate
         g = exp(lg)
+        if decimation_length != T:
+            thresh = sn * sn * decimation_length
         thresh = thresh / decimate / decimate
         T = len(y)
     h = np.exp(lg * np.arange(T))  # explicit kernel, useful for constructing solution
@@ -463,6 +472,8 @@ def constrained_oasisAR1(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g, DOUBLE sn,
         lam /= (1 - g)
         thresh = thresh * decimate * decimate
         T = len(fluor)
+        if decimation_length != T:
+            thresh = sn * sn * T
         # warm-start active set
         ff = np.ravel([P[i].t * decimate + np.arange(-decimate, 3 * decimate / 2)
                        for i in range(P.size())])  # this window size seems necessary and sufficient
@@ -719,6 +730,8 @@ def constrained_oasisAR2(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g1, DOUBLE g2, DOU
         No optimization if optimize_g=0.
     decimate : int, optional, default 5
         Decimation factor for estimating hyper-parameters faster on decimated data.
+        When the trace length is not divisible by this factor, estimation uses
+        the largest complete prefix. Set to 0 to skip decimated initialization.
     T_over_ISI : int, optional, default 1
         Ratio of recording duration T and maximal inter-spike-interval ISI
     max_iter : int, optional, default 5
@@ -747,7 +760,7 @@ def constrained_oasisAR2(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g1, DOUBLE g2, DOU
 
     cdef:
         Py_ssize_t i, j, t, l, f
-        unsigned int len_g, count
+        unsigned int len_g, count, decimation_length
         DOUBLE thresh, d, r, v, last, lam, dlam, RSS, aa, bb, cc, ll, b, ld
         np.ndarray[DOUBLE, ndim = 1] c, res0, res, spikesizes, s
         np.ndarray[DOUBLE, ndim = 1] g11, g12, g11g11, g11g12, Sg11, tmp
@@ -755,6 +768,10 @@ def constrained_oasisAR2(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g1, DOUBLE g2, DOU
         Pool newpool
 
     T = len(y)
+    if decimate < 0:
+        raise ValueError("decimate must be non-negative")
+    if decimate > T:
+        raise ValueError("decimate cannot exceed the trace length")
     thresh = sn * sn * T
     c = np.empty(T)
     for t in range(T):
@@ -882,10 +899,12 @@ def constrained_oasisAR2(np.ndarray[DOUBLE, ndim=1] y, DOUBLE g1, DOUBLE g2, DOU
     else:
         # get initial estimate of b and lam on downsampled data using AR1 model
         if decimate > 0:
-            _, tmp, b, aa, lam = constrained_oasisAR1(y.reshape(-1, decimate).mean(1),
-                                                      exp(ld*decimate),  sn / sqrt(decimate),
-                                                      optimize_b=True, b_nonneg=b_nonneg,
-                                                      optimize_g=optimize_g)
+            decimation_length = T // decimate * decimate
+            _, tmp, b, aa, lam = constrained_oasisAR1(
+                y[:decimation_length].reshape(-1, decimate).mean(1),
+                exp(ld*decimate), sn / sqrt(decimate),
+                optimize_b=True, b_nonneg=b_nonneg,
+                optimize_g=optimize_g)
             if optimize_g > 0:
                 d = aa**(1. / decimate)
                 ld = log(d)
@@ -1106,6 +1125,8 @@ def constrained_oasisAR1_f32(np.ndarray[SINGLE, ndim=1] y, SINGLE g, SINGLE sn,
         No optimization if optimize_g=0.
     decimate : int, optional, default 1
         Decimation factor for estimating hyper-parameters faster on decimated data.
+        When the trace length is not divisible by this factor, estimation uses
+        the largest complete prefix and the final solve still uses the full trace.
     max_iter : int, optional, default 5
         Maximal number of iterations.
     penalty : int, optional, default 1
@@ -1132,7 +1153,7 @@ def constrained_oasisAR1_f32(np.ndarray[SINGLE, ndim=1] y, SINGLE g, SINGLE sn,
 
     cdef:
         Py_ssize_t i, j, k, t, l
-        unsigned int ma, count, T
+        unsigned int ma, count, T, decimation_length
         SINGLE thresh, v, w, RSS, aa, bb, cc, lam, dlam, b, db, dphi, lg
         bool g_converged
         np.ndarray[SINGLE, ndim = 1] c, s, res, tmp, fluor, h
@@ -1140,14 +1161,21 @@ def constrained_oasisAR1_f32(np.ndarray[SINGLE, ndim=1] y, SINGLE g, SINGLE sn,
         vector[Pool32] P
         Pool32 newpool
 
-    lg = log(g)
     T = len(y)
+    if decimate < 1:
+        raise ValueError("decimate must be a positive integer")
+    if decimate > T:
+        raise ValueError("decimate cannot exceed the trace length")
+    lg = log(g)
     thresh = sn * sn * T
     if decimate > 1:  # parameter changes due to downsampling
         fluor = y.copy()
-        y = y.reshape(-1, decimate).mean(1)
+        decimation_length = T // decimate * decimate
+        y = fluor[:decimation_length].reshape(-1, decimate).mean(1)
         lg *= decimate
         g = exp(lg)
+        if decimation_length != T:
+            thresh = sn * sn * decimation_length
         thresh = thresh / decimate / decimate
         T = len(y)
     # explicit kernel, useful for constructing solution
@@ -1419,6 +1447,8 @@ def constrained_oasisAR1_f32(np.ndarray[SINGLE, ndim=1] y, SINGLE g, SINGLE sn,
         lam /= (1 - g)
         thresh = thresh * decimate * decimate
         T = len(fluor)
+        if decimation_length != T:
+            thresh = sn * sn * T
         # warm-start active set
         ff = np.ravel([P[i].t * decimate + np.arange(-decimate, 3 * decimate / 2)
                        for i in range(P.size())])  # this window size seems necessary and sufficient

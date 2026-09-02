@@ -33,7 +33,7 @@ Local changes must be recorded here when they are made. The initial integration:
 - integrates the generated extension with the C-SPIKES CMake/scikit-build package; and
 - keeps Cython regeneration as a maintainer-only operation rather than a normal build step.
 
-The integrated source hashes are:
+The source hashes after the initial build integration were:
 
 | File | SHA-256 |
 |---|---|
@@ -56,3 +56,26 @@ Python 3.8, which cannot install NumPy 2, uses NumPy 1.24.4 at build time.
 The integrated C++ was compiled and imported successfully with NumPy 1.26.4, 2.1.3, and 2.4.2
 headers. A NumPy-2-header build was also imported under a NumPy 1.26.4 runtime. The Python 3.8 /
 NumPy 1.24.4 source-build fallback was compile-tested separately.
+
+## Numerical hardening
+
+The second integration slice deliberately changed the numerical facade while retaining golden
+parity for fixed, valid AR(1) and AR(2) calls. It:
+
+- validates trace shape, dtype, finiteness, AR coefficients, scalar parameters, penalty, optimization,
+  and decimation choices before entering a solver;
+- implements supplied baselines by subtracting them before inference and returning them unchanged;
+- prevents AR(2) optimization from mutating caller-owned coefficients;
+- replaces random repair of unstable estimated roots with deterministic values;
+- estimates decimated native parameters on the largest complete prefix while solving the full trace;
+  and
+- deliberately retains Python ONNLS as the facade's AR(2) backend and the low-level facade's legacy
+  `penalty=0` default. The C-SPIKES adapter selects `penalty=1` explicitly.
+
+The C++ was regenerated again with the command and Cython/NumPy versions above. Current hashes are:
+
+| File | SHA-256 |
+|---|---|
+| `functions.py` | `a78b378b2691723b6e4baeecac9079a06c5f11e4680b6c5e967e48a6269b3314` |
+| `oasis_methods.pyx` | `f80dd88de95d14ff5e71a1838e50db14507d8a945ab01e06ffcd6953026913cf` |
+| `oasis_methods.cpp` | `8c96ddfaebda46d625368d2a410ddeec254c20385060ce0f117fe5e71e396d0d` |
