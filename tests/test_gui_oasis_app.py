@@ -16,6 +16,7 @@ def _load_parser_helpers() -> dict[str, object]:
     helper_names = {
         "_parse_oasis_g",
         "_parse_oasis_optional_float",
+        "_parse_oasis_discrete_settings",
         "_validate_oasis_g_stability",
     }
     helper_nodes = [
@@ -40,6 +41,7 @@ def _load_parser_helpers() -> dict[str, object]:
 _HELPERS = _load_parser_helpers()
 _parse_oasis_g = _HELPERS["_parse_oasis_g"]
 _parse_oasis_optional_float = _HELPERS["_parse_oasis_optional_float"]
+_parse_oasis_discrete_settings = _HELPERS["_parse_oasis_discrete_settings"]
 
 
 def test_parse_oasis_g_accepts_auto_for_each_ar_order() -> None:
@@ -81,3 +83,44 @@ def test_parse_oasis_optional_float_accepts_auto_and_finite_values() -> None:
 def test_parse_oasis_noise_rejects_invalid_or_negative_values(text: str) -> None:
     with pytest.raises(ValueError, match="OASIS sn"):
         _parse_oasis_optional_float(text, name="sn", nonnegative=True)
+
+
+def test_parse_oasis_discrete_settings_canonicalizes_disabled_output() -> None:
+    assert _parse_oasis_discrete_settings(
+        "none", "ignored", "noise_scaled"
+    ) == ("none", None, "absolute")
+
+
+@pytest.mark.parametrize("units", ["absolute", "noise_scaled"])
+def test_parse_oasis_discrete_settings_accepts_positive_support_threshold(
+    units: str,
+) -> None:
+    assert _parse_oasis_discrete_settings("support", " 1.25 ", units) == (
+        "support",
+        1.25,
+        units,
+    )
+
+
+@pytest.mark.parametrize("threshold", ["", "auto", "0", "-0.1", "nan", "inf"])
+def test_parse_oasis_discrete_settings_rejects_invalid_support_threshold(
+    threshold: str,
+) -> None:
+    with pytest.raises(ValueError, match="positive finite"):
+        _parse_oasis_discrete_settings("support", threshold, "absolute")
+
+
+@pytest.mark.parametrize(
+    ("mode", "units", "message"),
+    [
+        ("threshold", "absolute", "discrete mode"),
+        ("support", "sn", "threshold units"),
+    ],
+)
+def test_parse_oasis_discrete_settings_rejects_unknown_choices(
+    mode: str,
+    units: str,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _parse_oasis_discrete_settings(mode, "1", units)

@@ -73,6 +73,9 @@ def test_inference_settings_oasis_defaults_preserve_existing_constructors() -> N
     assert settings.oasis_optimize_g == 0
     assert settings.oasis_penalty == 1
     assert settings.oasis_decimate == 1
+    assert settings.oasis_discrete_mode == "none"
+    assert settings.oasis_event_threshold is None
+    assert settings.oasis_threshold_units == "absolute"
 
 
 def test_normal_path_passes_exact_oasis_config_and_unpadded_trial(
@@ -99,6 +102,9 @@ def test_normal_path_passes_exact_oasis_config_and_unpadded_trial(
         oasis_optimize_g=3,
         oasis_penalty=0,
         oasis_decimate=4,
+        oasis_discrete_mode="support",
+        oasis_event_threshold=1.75,
+        oasis_threshold_units="noise_scaled",
     )
     time = np.arange(4, dtype=np.float64) / 10.0
     dff = np.array([0.1, 0.3, -0.2, 0.4], dtype=np.float64)
@@ -129,6 +135,9 @@ def test_normal_path_passes_exact_oasis_config_and_unpadded_trial(
     assert config.optimize_g == 3
     assert config.penalty == 0
     assert config.decimate == 4
+    assert config.discrete_mode == "support"
+    assert config.event_threshold == 1.75
+    assert config.threshold_units == "noise_scaled"
     assert config.downsample_label == "raw"
     assert config.use_cache is False
     assert config.cache_root == context.cache_root
@@ -157,7 +166,13 @@ def test_safe_path_scopes_oasis_import_failure_and_runs_other_backend(
     monkeypatch.setattr(gui_inference, "run_oasis_inference", unavailable_oasis)
     monkeypatch.setattr(gui_inference, "run_pgas_inference", successful_pgas)
     context = _context(tmp_path)
-    settings = _settings(run_oasis=True, run_pgas=True)
+    settings = _settings(
+        run_oasis=True,
+        run_pgas=True,
+        oasis_discrete_mode="support",
+        oasis_event_threshold=0.125,
+        oasis_threshold_units="absolute",
+    )
 
     results, errors = gui_inference.run_inference_for_epoch_safe(
         epoch_id="epoch_missing_native",
@@ -177,3 +192,6 @@ def test_safe_path_scopes_oasis_import_failure_and_runs_other_backend(
     np.testing.assert_array_equal(oasis_trials[0].times, time)
     np.testing.assert_array_equal(oasis_trials[0].values, dff)
     assert captured["oasis_config"].cache_root == context.cache_root
+    assert captured["oasis_config"].discrete_mode == "support"
+    assert captured["oasis_config"].event_threshold == 0.125
+    assert captured["oasis_config"].threshold_units == "absolute"

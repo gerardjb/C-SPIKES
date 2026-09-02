@@ -130,6 +130,38 @@ def _parse_oasis_optional_float(
     return parsed
 
 
+def _parse_oasis_discrete_settings(
+    mode: str,
+    threshold_text: str,
+    threshold_units: str,
+) -> Tuple[str, Optional[float], str]:
+    """Normalize the opt-in OASIS binary-event settings from the GUI."""
+
+    normalized_mode = str(mode).strip().casefold()
+    if normalized_mode not in {"none", "support"}:
+        raise ValueError("OASIS discrete mode must be 'none' or 'support'")
+    if normalized_mode == "none":
+        # Canonicalize disabled controls so they cannot change cache identity or
+        # accidentally request thresholding.
+        return "none", None, "absolute"
+
+    normalized_units = str(threshold_units).strip().casefold()
+    if normalized_units not in {"absolute", "noise_scaled"}:
+        raise ValueError(
+            "OASIS threshold units must be 'absolute' or 'noise_scaled'"
+        )
+    value = str(threshold_text).strip()
+    try:
+        threshold = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(
+            "OASIS event threshold must be a positive finite number"
+        ) from exc
+    if not np.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError("OASIS event threshold must be a positive finite number")
+    return "support", threshold, normalized_units
+
+
 def _validate_oasis_g_stability(coefficients: Sequence[float]) -> None:
     """Validate the stable AR coefficients supported by the OASIS kernels."""
 
@@ -1180,7 +1212,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ens2_check = QtWidgets.QCheckBox("ENS2", box)
         self._oasis_check = QtWidgets.QCheckBox("OASIS", box)
         self._oasis_check.setToolTip(
-            "Per-trial OASIS deconvolution; output is continuous event amplitude, not spike counts."
+            "Per-trial OASIS deconvolution. Correlation uses continuous event amplitude; "
+            "optional binary support marks at most one event per time bin."
         )
         self._pgas_check.setChecked(False)
         self._biophys_check.setChecked(True)
@@ -1244,7 +1277,44 @@ class MainWindow(QtWidgets.QMainWindow):
         self._oasis_decimate_spin.setValue(1)
         layout.addRow("Decimate", self._oasis_decimate_spin)
 
+        self._oasis_discrete_mode_combo = QtWidgets.QComboBox(box)
+        self._oasis_discrete_mode_combo.addItem("Off (continuous only)", "none")
+        self._oasis_discrete_mode_combo.addItem("Binary event support", "support")
+        self._oasis_discrete_mode_combo.setToolTip(
+            "Optionally populate discrete_spikes with a binary support mask. "
+            "The continuous OASIS amplitudes remain available and are used for correlation."
+        )
+        layout.addRow("Discrete output", self._oasis_discrete_mode_combo)
+
+        self._oasis_event_threshold_edit = QtWidgets.QLineEdit("", box)
+        self._oasis_event_threshold_edit.setPlaceholderText("positive value required")
+        self._oasis_event_threshold_edit.setToolTip(
+            "A bin is marked as an event when its continuous OASIS amplitude is greater "
+            "than or equal to the resolved threshold."
+        )
+        layout.addRow("Event threshold", self._oasis_event_threshold_edit)
+
+        self._oasis_threshold_units_combo = QtWidgets.QComboBox(box)
+        self._oasis_threshold_units_combo.addItem("Absolute amplitude", "absolute")
+        self._oasis_threshold_units_combo.addItem("Noise-scaled", "noise_scaled")
+        self._oasis_threshold_units_combo.setToolTip(
+            "Absolute compares directly with the OASIS event amplitude. Noise-scaled uses "
+            "the entered multiplier times sn * sqrt(1 - dominant AR decay), resolved "
+            "independently for each trial."
+        )
+        layout.addRow("Threshold units", self._oasis_threshold_units_combo)
+
+        self._oasis_discrete_mode_combo.currentIndexChanged.connect(
+            self._update_oasis_discrete_controls
+        )
+        self._update_oasis_discrete_controls()
+
         return box
+
+    def _update_oasis_discrete_controls(self, _index: int = -1) -> None:
+        enabled = self._oasis_discrete_mode_combo.currentData() == "support"
+        self._oasis_event_threshold_edit.setEnabled(enabled)
+        self._oasis_threshold_units_combo.setEnabled(enabled)
 
     def _build_model_group(self) -> QtWidgets.QGroupBox:
         box = QtWidgets.QGroupBox("Models")
@@ -3712,6 +3782,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 oasis_b = _parse_oasis_optional_float(
                     self._oasis_baseline_edit.text(), name="baseline"
                 )
+                (
+                    oasis_discrete_mode,
+                    oasis_event_threshold,
+                    oasis_threshold_units,
+                ) = _parse_oasis_discrete_settings(
+                    str(self._oasis_discrete_mode_combo.currentData()),
+                    self._oasis_event_threshold_edit.text(),
+                    str(self._oasis_threshold_units_combo.currentData()),
+                )
             except ValueError as exc:
                 self._log(str(exc))
                 return None
@@ -3719,6 +3798,9 @@ class MainWindow(QtWidgets.QMainWindow):
             oasis_g = (None,)
             oasis_sn = None
             oasis_b = None
+            oasis_discrete_mode = "none"
+            oasis_event_threshold = None
+            oasis_threshold_units = "absolute"
 
         cascade_root = CASCADE_ROOT
         if run_cascade:
@@ -3798,6 +3880,9 @@ class MainWindow(QtWidgets.QMainWindow):
             oasis_optimize_g=self._oasis_optimize_g_spin.value(),
             oasis_penalty=int(self._oasis_penalty_combo.currentData()),
             oasis_decimate=self._oasis_decimate_spin.value(),
+            oasis_discrete_mode=oasis_discrete_mode,
+            oasis_event_threshold=oasis_event_threshold,
+            oasis_threshold_units=oasis_threshold_units,
         )
         return settings
 
@@ -3828,6 +3913,27 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     batch_ids.append("<unknown>")
             self._log("Batch order: " + ", ".join(batch_ids))
+            if settings.run_oasis:
+                if settings.oasis_discrete_mode == "support":
+                    assert settings.oasis_event_threshold is not None
+                    if settings.oasis_threshold_units == "absolute":
+                        threshold_status = (
+                            f"event amplitude >= {settings.oasis_event_threshold:g}"
+                        )
+                    else:
+                        threshold_status = (
+                            f"{settings.oasis_event_threshold:g} times the per-trial "
+                            "innovation-noise scale"
+                        )
+                    self._log(
+                        "OASIS binary event support enabled: "
+                        f"{threshold_status}; continuous amplitudes "
+                        "remain the correlation output."
+                    )
+                else:
+                    self._log(
+                        "OASIS binary event support disabled; discrete_spikes will be omitted."
+                    )
             self._apply_device_preference()
             assert self._run_context is not None
             ensure_run_dirs(self._run_context)
@@ -3914,6 +4020,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 "optimize_g": int(settings.oasis_optimize_g),
                 "penalty": int(settings.oasis_penalty),
                 "decimate": int(settings.oasis_decimate),
+                "discrete_mode": settings.oasis_discrete_mode,
+                "event_threshold": settings.oasis_event_threshold,
+                "threshold_units": settings.oasis_threshold_units,
                 "downsample_label": "raw",
             },
             "edges": {
