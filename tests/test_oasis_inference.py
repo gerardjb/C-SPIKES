@@ -397,19 +397,28 @@ def test_inference_package_import_does_not_load_oasis_native_extension():
 
     repo_root = Path(__file__).resolve().parents[1]
     env = os.environ.copy()
-    existing_path = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = str(repo_root / "src") + (os.pathsep + existing_path if existing_path else "")
-    script = """
+    source_root = (repo_root / "src").resolve()
+    dependency_paths = [
+        entry
+        for entry in sys.path
+        if entry and Path(entry).resolve() != source_root
+    ]
+    env["PYTHONPATH"] = os.pathsep.join([str(source_root), *dependency_paths])
+    env["PYTHONNOUSERSITE"] = "1"
+    script = f"""
 import sys
+from pathlib import Path
+import c_spikes
 import c_spikes.inference
 import c_spikes.inference.oasis
+assert Path(c_spikes.__file__).resolve() == Path({str(source_root / 'c_spikes' / '__init__.py')!r})
 assert 'c_spikes.oasis.functions' not in sys.modules
 assert 'c_spikes.oasis.oasis_methods' not in sys.modules
 print('lazy-oasis-import-ok')
 """
 
     completed = subprocess.run(
-        [sys.executable, "-c", script],
+        [sys.executable, "-S", "-c", script],
         cwd=repo_root,
         env=env,
         check=False,

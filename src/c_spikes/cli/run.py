@@ -14,6 +14,7 @@ Example usages:
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -54,6 +55,49 @@ def _parse_optional_float(value: Optional[str]) -> Optional[float]:
     return float(value)
 
 
+def _finite_float(value: str) -> float:
+    """Argparse converter for finite floating-point values."""
+
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(result):
+        raise argparse.ArgumentTypeError("must be finite")
+    return result
+
+
+def _nonnegative_float(value: str) -> float:
+    result = _finite_float(value)
+    if result < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return result
+
+
+def _positive_float(value: str) -> float:
+    result = _finite_float(value)
+    if result <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return result
+
+
+def _nonnegative_int(value: str) -> int:
+    try:
+        result = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if result < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return result
+
+
+def _positive_int(value: str) -> int:
+    result = _nonnegative_int(value)
+    if result < 1:
+        raise argparse.ArgumentTypeError("must be positive")
+    return result
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-root", type=Path, default=Path("data/janelia_8f/excitatory"))
@@ -62,7 +106,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--dataset-list", type=Path, help="File containing dataset stems (one per line).")
     parser.add_argument("--max-datasets", type=int, help="Limit number of datasets processed.")
     parser.add_argument("--smoothing-level", action="append", metavar="LEVEL", help="raw, 30Hz, 10Hz (repeatable).")
-    parser.add_argument("--method", action="append", metavar="NAME", help="Methods to run: pgas, ens2, cascade. Default: all.")
+    parser.add_argument(
+        "--method",
+        action="append",
+        metavar="NAME",
+        help=(
+            "Methods to run: pgas, ens2, cascade, oasis. Repeatable. "
+            "Default: pgas, ens2, cascade (OASIS is opt-in)."
+        ),
+    )
     parser.add_argument("--output-root", type=Path, default=Path("results/full_evaluation"), help="Where to write summaries/manifests.")
     parser.add_argument(
         "--cache-root",
@@ -253,6 +305,94 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=Path("results/Pretrained_models"),
         help="Root directory containing CASCADE pretrained models.",
     )
+    oasis_group = parser.add_argument_group("OASIS options")
+    oasis_group.add_argument(
+        "--oasis-ar-order",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="Autoregressive order. Omit --oasis-g to estimate coefficients per trial (default: 1).",
+    )
+    oasis_group.add_argument(
+        "--oasis-g",
+        type=_finite_float,
+        nargs="+",
+        metavar="COEFF",
+        help="Per-bin AR coefficient(s): one for AR(1), two for AR(2).",
+    )
+    oasis_group.add_argument(
+        "--oasis-sn",
+        type=_nonnegative_float,
+        help="Fixed noise standard deviation; omit to estimate it independently per trial.",
+    )
+    oasis_group.add_argument(
+        "--oasis-baseline",
+        type=_finite_float,
+        help="Fixed fluorescence baseline; omit to optimize it independently per trial.",
+    )
+    oasis_group.add_argument(
+        "--oasis-allow-negative-baseline",
+        action="store_true",
+        help="Allow an optimized OASIS baseline to be negative.",
+    )
+    oasis_group.add_argument(
+        "--oasis-optimize-g",
+        type=_nonnegative_int,
+        default=0,
+        metavar="STEPS",
+        help="Number of AR-coefficient optimization steps (default: 0).",
+    )
+    oasis_group.add_argument(
+        "--oasis-penalty",
+        type=int,
+        choices=(0, 1),
+        default=1,
+        help="Sparsity penalty: 0 for L0 or 1 for L1 (default: 1).",
+    )
+    oasis_group.add_argument(
+        "--oasis-decimate",
+        type=_positive_int,
+        default=1,
+        metavar="FACTOR",
+        help="Positive decimation factor used during fitting (default: 1).",
+    )
+    oasis_group.add_argument(
+        "--oasis-max-iter",
+        type=_positive_int,
+        metavar="COUNT",
+        help="Optional positive solver-iteration limit.",
+    )
+    oasis_group.add_argument(
+        "--oasis-shift",
+        type=_positive_int,
+        metavar="SAMPLES",
+        help="Optional positive AR(2) ONNLS block shift.",
+    )
+    oasis_group.add_argument(
+        "--oasis-window",
+        type=_positive_int,
+        metavar="SAMPLES",
+        help="Optional positive AR(2) ONNLS window length.",
+    )
+    oasis_group.add_argument(
+        "--oasis-tol",
+        type=_positive_float,
+        help="Optional positive AR(2) ONNLS tolerance.",
+    )
+    oasis_group.add_argument(
+        "--oasis-uniformity-rtol",
+        type=_nonnegative_float,
+        default=1e-3,
+        metavar="RTOL",
+        help="Relative tolerance for uniform-sampling validation (default: 1e-3).",
+    )
+    oasis_group.add_argument(
+        "--oasis-uniformity-atol",
+        type=_nonnegative_float,
+        default=1e-9,
+        metavar="ATOL",
+        help="Absolute tolerance for uniform-sampling validation (default: 1e-9).",
+    )
     parser.add_argument(
         "--trialwise-correlations",
         action="store_true",
@@ -261,7 +401,21 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--pgas-maxspikes", type=int, help="PGAS maxspikes override.")
     parser.add_argument("--pgas-c0-first-y", action="store_true", help="Initialize PGAS C0 to first observation.")
     parser.add_argument("--run-tag", type=str, help="Optional run-tag override for output directory naming.")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.oasis_g is None:
+        args.oasis_g = tuple(None for _ in range(args.oasis_ar_order))
+    else:
+        args.oasis_g = tuple(float(value) for value in args.oasis_g)
+        if len(args.oasis_g) != args.oasis_ar_order:
+            parser.error(
+                f"--oasis-g requires exactly {args.oasis_ar_order} coefficient(s) "
+                f"for AR({args.oasis_ar_order})"
+            )
+    if args.oasis_ar_order == 1 and any(
+        value is not None for value in (args.oasis_shift, args.oasis_window, args.oasis_tol)
+    ):
+        parser.error("--oasis-shift, --oasis-window, and --oasis-tol require --oasis-ar-order 2")
+    return args
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
@@ -310,6 +464,19 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         ens2_pretrained_root=ens2_pretrained_root,
         cascade_model_root=args.cascade_model_root,
         cascade_model_name=str(args.cascade_model_name),
+        oasis_g=args.oasis_g,
+        oasis_sn=args.oasis_sn,
+        oasis_b=args.oasis_baseline,
+        oasis_b_nonneg=bool(not args.oasis_allow_negative_baseline),
+        oasis_optimize_g=int(args.oasis_optimize_g),
+        oasis_penalty=int(args.oasis_penalty),
+        oasis_decimate=int(args.oasis_decimate),
+        oasis_max_iter=args.oasis_max_iter,
+        oasis_shift=args.oasis_shift,
+        oasis_window=args.oasis_window,
+        oasis_tol=args.oasis_tol,
+        oasis_uniformity_rtol=float(args.oasis_uniformity_rtol),
+        oasis_uniformity_atol=float(args.oasis_uniformity_atol),
         pgas_maxspikes=args.pgas_maxspikes,
         pgas_fixed_bm_sigma=_parse_optional_float(args.pgas_bm_sigma),
         pgas_bm_sigma_min=float(args.pgas_bm_sigma_min),
