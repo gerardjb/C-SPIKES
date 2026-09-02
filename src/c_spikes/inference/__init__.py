@@ -1,4 +1,5 @@
 from .types import TrialSeries, MethodResult  # noqa: F401
+from .oasis import OasisConfig, run_oasis_inference  # noqa: F401
 from . import cache as cache_utils  # noqa: F401
 from . import smoothing  # noqa: F401
 from . import eval as eval_utils  # noqa: F401
