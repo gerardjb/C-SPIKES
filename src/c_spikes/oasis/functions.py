@@ -7,50 +7,168 @@ from warnings import warn
 from scipy.optimize import minimize, curve_fit
 
 
+def _finite_scalar(value, name):
+    """Return *value* as a finite float or raise a public-facing error."""
+
+    if isinstance(value, (bool, np.bool_)) or np.ndim(value) != 0:
+        raise ValueError(f"{name} must be a finite scalar")
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be a finite scalar") from exc
+    if not np.isfinite(result):
+        raise ValueError(f"{name} must be a finite scalar")
+    return result
+
+
+def _normalize_g(g):
+    """Normalize the public AR coefficient input without retaining caller-owned storage."""
+
+    if g is None or np.ndim(g) == 0:
+        values = (g,)
+    else:
+        array = np.asarray(g, dtype=object)
+        if array.ndim != 1:
+            raise ValueError("g must be a scalar or a one-dimensional sequence")
+        values = tuple(array.tolist())
+
+    if len(values) not in (1, 2):
+        raise ValueError("g must contain one AR(1) coefficient or two AR(2) coefficients")
+
+    missing = tuple(value is None for value in values)
+    if any(missing):
+        if not all(missing):
+            raise ValueError("g coefficients must either all be provided or all be None")
+        return tuple(None for _ in values)
+
+    return tuple(_finite_scalar(value, "g") for value in values)
+
+
+def _validate_stable_g(g):
+    """Validate coefficients supported by the logarithmic OASIS kernels."""
+
+    if len(g) == 1:
+        if not 0 < g[0] < 1:
+            raise ValueError("AR(1) g must satisfy 0 < g < 1")
+        return
+
+    roots = np.roots((1.0, -g[0], -g[1]))
+    if (np.max(np.abs(roots.imag)) > 1e-12 or
+            np.any(roots.real <= 0) or np.any(roots.real >= 1)):
+        raise ValueError("AR(2) g must have two real roots strictly between 0 and 1")
+
+
 def deconvolve(y, g=(None,), sn=None, b=None, b_nonneg=True,
                optimize_g=0, penalty=0, **kwargs):
     """Infer spikes from a fluorescence trace using OASIS methods.
 
     Solves the noise-constrained sparse non-negative deconvolution problem
     ``min |s|_q`` subject to ``|c-y|^2 = sn^2 T`` and ``s = Gc >= 0`` where
-    ``q`` is either 1 or 0.
+    ``q`` is either 1 or 0. AR(1) uses the compiled active-set solver; AR(2)
+    retains the comparator's Python ONNLS backend.
+
+    ``y`` may be a floating-point list or one-dimensional array and is copied
+    to float64 before inference. ``g`` contains one or two per-bin AR
+    coefficients; use all-``None`` coefficients to estimate them. If ``b`` is
+    supplied, it is treated as the authoritative fluorescence baseline and is
+    subtracted before inference. The returned calcium trace therefore excludes
+    the baseline, while the returned baseline remains ``b``. ``b_nonneg`` only
+    constrains an estimated baseline.
     """
+    y = np.asarray(y)
+    if y.ndim != 1:
+        raise ValueError("Input trace must be a one-dimensional array")
+    if y.size < 3:
+        raise ValueError("Input trace must contain at least three samples")
     if not np.issubdtype(y.dtype, np.floating):
         raise TypeError("Input trace should be a floating point array")
-    y = y.astype(np.double, copy=False)
+    y = y.astype(np.double, copy=True)
+    if not np.isfinite(y).all():
+        raise ValueError("Input trace must contain only finite values")
 
-    if g[0] is None or sn is None:
+    g = _normalize_g(g)
+    estimate_g = g[0] is None
+
+    if sn is not None:
+        sn = _finite_scalar(sn, "sn")
+        if sn < 0:
+            raise ValueError("sn must be non-negative")
+    if b is not None:
+        b = _finite_scalar(b, "b")
+    if not isinstance(b_nonneg, (bool, np.bool_)):
+        raise TypeError("b_nonneg must be a boolean")
+    if (isinstance(optimize_g, (bool, np.bool_)) or
+            not isinstance(optimize_g, (int, np.integer)) or optimize_g < 0):
+        raise ValueError("optimize_g must be a non-negative integer")
+    optimize_g = int(optimize_g)
+    if (isinstance(penalty, (bool, np.bool_)) or
+            not isinstance(penalty, (int, np.integer)) or penalty not in (0, 1)):
+        raise ValueError("penalty must be either 0 (L0) or 1 (L1)")
+    penalty = int(penalty)
+
+    solver_kwargs = dict(kwargs)
+    decimate = solver_kwargs.get("decimate", 1 if len(g) == 1 else 5)
+    if (isinstance(decimate, (bool, np.bool_)) or
+            not isinstance(decimate, (int, np.integer)) or decimate < 1):
+        raise ValueError("decimate must be a positive integer")
+    if decimate > len(y):
+        raise ValueError("decimate cannot exceed the trace length")
+    if "decimate" in solver_kwargs:
+        solver_kwargs["decimate"] = int(decimate)
+
+    working_y = y if b is None else y - b
+
+    if estimate_g or sn is None:
+        minimum_length = 11 + len(g)
+        scale = max(1.0, float(np.max(np.abs(working_y))))
+        if len(y) < minimum_length:
+            raise ValueError(
+                f"Automatic parameter estimation for AR({len(g)}) requires at least "
+                f"{minimum_length} samples"
+            )
+        if np.std(working_y) <= np.finfo(np.double).eps * scale:
+            raise ValueError("Automatic parameter estimation requires a non-constant trace")
+
+    if estimate_g or sn is None:
         fudge_factor = .97 if (optimize_g and len(g) == 1) else .98
-        est = estimate_parameters(y, p=len(g), fudge_factor=fudge_factor)
-        if g[0] is None:
-            g = est[0]
+        est = estimate_parameters(working_y, p=len(g), fudge_factor=fudge_factor)
+        if estimate_g:
+            g = tuple(float(value) for value in np.asarray(est[0]).reshape(-1))
         if sn is None:
-            sn = est[1]
+            sn = float(est[1])
+
+    _validate_stable_g(g)
+    if not np.isfinite(sn) or sn < 0:
+        raise ValueError("Estimated sn must be finite and non-negative")
 
     if len(g) == 1:
-        return constrained_oasisAR1(
-            y, g[0], sn,
+        c, s, fitted_b, fitted_g, lam = constrained_oasisAR1(
+            working_y, g[0], sn,
             optimize_b=True if b is None else False,
             b_nonneg=b_nonneg,
             optimize_g=optimize_g,
             penalty=penalty,
-            **kwargs
+            **solver_kwargs
         )
+        fitted_g = float(fitted_g)
+        _validate_stable_g((fitted_g,))
+        return c, s, fitted_b + (0.0 if b is None else b), fitted_g, lam
 
     if len(g) == 2:
         if optimize_g > 0:
             warn("Optimization of AR parameters is already fairly stable for AR(1), "
                  "but slower and more experimental for AR(2)")
-        return constrained_onnlsAR2(
-            y, g, sn,
+        c, s, fitted_b, fitted_g, lam = constrained_onnlsAR2(
+            working_y, list(g), sn,
             optimize_b=True if b is None else False,
             b_nonneg=b_nonneg,
             optimize_g=optimize_g,
             penalty=penalty,
-            **kwargs
+            **solver_kwargs
         )
-
-    print('g must have length 1 or 2, cause only AR(1) and AR(2) are currently implemented')
+        fitted_g = tuple(float(value) for value in fitted_g)
+        _validate_stable_g(fitted_g)
+        return c, s, fitted_b + (0.0 if b is None else b), fitted_g, lam
 
 
 def _nnls(KK, Ky, s=None, mask=None, tol=1e-9, max_iter=None):
@@ -425,9 +543,9 @@ def estimate_time_constant(y, p=2, sn=None, lags=10, fudge_factor=1., nonlinear_
                               xc[np.arange(p)]) - sn**2 * np.eye(lags, p)
     g = np.linalg.lstsq(A, xc[1:, np.newaxis], rcond=None)[0]
     gr = np.roots(np.concatenate([np.array([1]), -g.flatten()]))
-    gr = (gr + gr.conjugate()) / 2.
-    gr[gr > 1] = 0.95 + np.random.normal(0, 0.01, np.sum(gr > 1))
-    gr[gr < 0] = 0.15 + np.random.normal(0, 0.01, np.sum(gr < 0))
+    gr = np.real((gr + gr.conjugate()) / 2.)
+    gr[gr > 1] = 0.95
+    gr[gr < 0] = 0.15
     g = np.poly(fudge_factor * gr)
     g = -g[1:]
 
