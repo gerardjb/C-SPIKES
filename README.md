@@ -92,6 +92,23 @@ pip install -ve . --config-settings=cmake.define.PGAS_BUILD_GPU=OFF
 If you previously installed an older `pgas_bound` extension, remove it and rebuild so the shim
 module can take effect.
 
+### Experimental GPU resampling and trajectory transfer
+
+GPU PGAS retains host/GSL ancestor sampling and full-history extraction by default.
+Two independent opt-in controls reduce transfers:
+
+```bash
+export C_SPIKES_PGAS_BACKEND=gpu
+export C_SPIKES_PGAS_RESAMPLING=device
+export C_SPIKES_PGAS_ANCESTOR_SEED=123456789  # use a distinct seed per chain
+export C_SPIKES_PGAS_TRAJECTORY=selected
+```
+
+Use `host` and `full` (or unset the options) to restore the defaults. CPU inference
+remains available with `C_SPIKES_PGAS_BACKEND=cpu`; device-only requests on that
+backend raise errors. See [GPU PGAS options and developer checks](docs/pgas_gpu_options.md)
+for RNG ownership, cache identity, build/test commands and validation limits.
+
 ## Pretrained models
 This repo ships pretrained model bundles under `Pretrained_models/` at the repo root:
 - ENS2 published checkpoints: `Pretrained_models/ens2_published/`
