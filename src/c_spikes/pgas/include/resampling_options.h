@@ -10,6 +10,7 @@
 namespace pgas {
 struct ResamplingOptions {
     bool device = false;
+    bool selected_trajectory = false;
     uint64_t seed = 0;
 
     static ResamplingOptions from_environment(unsigned long effective_seed) {
@@ -21,7 +22,15 @@ struct ResamplingOptions {
                 throw std::invalid_argument("C_SPIKES_PGAS_RESAMPLING must be host or device");
             out.device = true;
         }
+        const char* trajectory = std::getenv("C_SPIKES_PGAS_TRAJECTORY");
+        if (trajectory && std::string(trajectory) != "full") {
+            if (std::string(trajectory) != "selected")
+                throw std::invalid_argument("C_SPIKES_PGAS_TRAJECTORY must be full or selected");
+            out.selected_trajectory = true;
+        }
 #if !defined(USE_GPU) || !USE_GPU
+        if (out.selected_trajectory)
+            throw std::invalid_argument("Selected trajectory extraction requires the GPU backend");
         if (out.device) throw std::invalid_argument("Device ancestor sampling requires the GPU backend");
 #endif
         const char* seed = std::getenv("C_SPIKES_PGAS_ANCESTOR_SEED");
