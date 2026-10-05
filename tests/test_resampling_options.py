@@ -6,6 +6,7 @@ from c_spikes.inference.pgas import resampling_provenance
 @pytest.fixture(autouse=True)
 def clear_options(monkeypatch):
     monkeypatch.delenv("C_SPIKES_PGAS_RESAMPLING", raising=False)
+    monkeypatch.delenv("C_SPIKES_PGAS_TRAJECTORY", raising=False)
     monkeypatch.delenv("C_SPIKES_PGAS_ANCESTOR_SEED", raising=False)
 
 
@@ -55,3 +56,20 @@ def test_legacy_host_lookup_rejects_device_cache(tmp_path):
         "trace", stable_config_keys=["niter"], cache_root=tmp_path) is None
     assert load_method_cache_legacy_compatible("pgas", ["fixture"], device,
         "trace", stable_config_keys=["niter"], cache_root=tmp_path) is not None
+
+
+def test_selected_trajectory_has_separate_identity(monkeypatch):
+    default = resampling_provenance()
+    monkeypatch.setenv("C_SPIKES_PGAS_TRAJECTORY", "selected")
+    selected = resampling_provenance()
+    assert selected != default
+    assert selected["mode"] == "host"
+    assert selected["trajectory"] == "selected"
+    monkeypatch.setenv("C_SPIKES_PGAS_RESAMPLING", "device")
+    assert resampling_provenance()["trajectory"] == "selected"
+
+
+def test_invalid_trajectory_mode(monkeypatch):
+    monkeypatch.setenv("C_SPIKES_PGAS_TRAJECTORY", "automatic")
+    with pytest.raises(ValueError):
+        resampling_provenance()
