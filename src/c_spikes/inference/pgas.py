@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+import os
 import re
 
 from .cache import load_method_cache, load_method_cache_legacy_compatible, save_method_cache
@@ -68,6 +69,26 @@ class PgasConfig:
     edges: Optional[np.ndarray] = None
     use_cache: bool = True
     keep_output_dat_files: bool = False
+
+
+def resampling_provenance() -> Dict[str, object]:
+    """Snapshot native runtime options before cache lookup; defaults stay compatible."""
+    mode = os.environ.get("C_SPIKES_PGAS_RESAMPLING", "host")
+    if mode not in ("host", "device"):
+        raise ValueError("C_SPIKES_PGAS_RESAMPLING must be host or device")
+    seed = os.environ.get("C_SPIKES_PGAS_ANCESTOR_SEED")
+    if seed is not None:
+        if mode != "device":
+            raise ValueError("Ancestor seed requires device resampling")
+        if not seed or not seed.isascii() or not seed.isdecimal() or int(seed) >= 2**64:
+            raise ValueError("Ancestor seed must be an unsigned 64-bit decimal integer")
+    return {
+        "mode": mode,
+        "ancestor_rng": "philox4x32-10-v1" if mode == "device" else "gsl-mt19937-alias",
+        "ancestor_seed": str(int(seed)) if seed is not None else "effective_cpu_seed",
+        "gsl_consumption": "preserve_ancestor_uniform_count",
+        "proposal_rng": "kokkos-xorshift64-pool-42-per-sweep-unchanged",
+    }
 
 
 def validate_bm_sigma_bounds(min_sigma: float, max_sigma: float) -> Tuple[float, float]:
@@ -813,9 +834,14 @@ def run_pgas_inference(
     if config.edges is not None:
         cfg_dict["edge_hash"] = hash_array(config.edges)
 
+    resampling = resampling_provenance()
+    if resampling["mode"] != "host":
+        cfg_dict["resampling"] = resampling
+
     if config.use_cache:
         cached = load_method_cache("pgas", run_tag, cfg_dict, trace_hash)
         if cached:
+            cached.metadata.setdefault("resampling", resampling)
             cached.metadata.setdefault("input_resample_fs", config.resample_fs)
             cached.metadata.setdefault("maxspikes_per_bin", config.maxspikes_per_bin)
             cached.metadata.setdefault("cache_tag", run_tag)
@@ -859,7 +885,8 @@ def run_pgas_inference(
         #
         # This keeps `--use-cache` effective even if the tagging/config signature evolved.
         if (
-            config.resample_fs is None
+            resampling["mode"] == "host"
+            and config.resample_fs is None
             and noise_scope == PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
             and noise_granularity == PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
             and noise_method == PGAS_NOISE_CALIBRATION_METHOD_DEFAULT
@@ -965,6 +992,7 @@ def run_pgas_inference(
             "output_root": str(output_root),
         },
     )
+    traces.metadata.setdefault("resampling", resampling)
     traces.metadata.setdefault("config", ensure_serializable(cfg_dict))
     traces.metadata.setdefault("maxspikes", maxspikes)
     traces.metadata.setdefault("maxspikes_per_bin", config.maxspikes_per_bin)

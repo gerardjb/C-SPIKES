@@ -350,7 +350,7 @@ Scalar ParticleArray::logf(
 }
 
 void ParticleArray::calc_ancestor_resampling(
-    int t, const param &par, constpar *constants)
+    int t, const param &par, constpar *constants, bool download)
 {
     Scalar sampling_frequency = constants->sampling_frequency;
     Scalar wbb[2];
@@ -406,9 +406,10 @@ void ParticleArray::calc_ancestor_resampling(
             });
     Kokkos::fence("fence_calc_ancestor_weights");
 
-    // Copy back to host (can remove this later when random number generation is done on GPU)
-    Kokkos::deep_copy(logW_h, logW);
-    Kokkos::deep_copy(ar_logW_h, ar_logW);
+    if (download) {
+        Kokkos::deep_copy(logW_h, logW);
+        Kokkos::deep_copy(ar_logW_h, ar_logW);
+    }
 }
 
 void ParticleArray::move_and_weight(
