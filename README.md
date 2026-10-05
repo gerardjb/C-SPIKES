@@ -282,6 +282,13 @@ PYTHONPATH=src python scripts/export_downsampled_mat_dir.py \
 ```
 
 ## PGAS on your data (produce `param_samples_*.dat`)
+
+For an opt-in queue of already independent windows sharing one allocated GPU,
+see the [independent-fit launcher](docs/pgas_launcher.md). It provides frozen
+manifests, bounded subprocesses, CPU placement, verified MPS attachment and
+explicit resume/retry handling. Existing inference entry points remain serial
+by default. [Della setup](docs/sites/della_mps.md) is documented separately.
+
 To run PGAS and write its output files (including `param_samples_*.dat` used for distillation), the easiest entrypoint is `scripts/demo_compare_methods.py` with ENS2/CASCADE disabled:
 
 ```bash
