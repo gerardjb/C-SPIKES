@@ -80,7 +80,7 @@ class ParticleArray
         void move_and_weight(int t, VectorType y, const param &par, constpar *constants, 
                              VectorType g_noise, std::vector<double> & u_noise, VectorType u_noise_view, const GCaMP_params & params); 
 
-        void calc_ancestor_resampling(int t, const param &par, constpar *constants);
+        void calc_ancestor_resampling(int t, const param &par, constpar *constants, bool download = true);
 
         Scalar logf(int part_idx_in, int t_in, int part_idx_out, int t_out, const param &par, constpar *constants);
 
