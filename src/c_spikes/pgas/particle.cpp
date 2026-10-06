@@ -1,4 +1,5 @@
 #include "include/ancestor_sampler.h"
+#include "include/selected_trajectory.h"
 #include <memory>
 #include"include/particle.h"
 #include"include/particle_array.h"
@@ -825,15 +826,22 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
         for (uint64_t draw = 0; draw < skipped; ++draw) gsl_rng_uniform(rng);
     }
 
-    // Copy the partilce system back to the CPU
-    particleArray.copy_to_host();
-    for(t=1;t<TIME;++t)
-       for(i=0;i<nparticles;i++)
-            particleArray.get_particle(t, i, particleSystem[t][i]);
-		
-    // Now use the last particle set to resample the new trajectory
-    for(i=0;i<nparticles;i++){
-        logW[i] = particleSystem[TIME-1][i].logWeight;
+    if (resampling.selected_trajectory) {
+        // Keep the terminal GSL draw, transferring only its N weights once.
+        const auto history = particleArray.logWeight;
+        const auto terminal = particleArray.logW;
+        const unsigned int last = TIME - 1;
+        Kokkos::parallel_for("terminal_weights", Kokkos::RangePolicy<ExecSpace>(0, nparticles),
+            KOKKOS_LAMBDA(int j) { terminal(j) = history(j, last); });
+        Kokkos::deep_copy(particleArray.logW_h, terminal);
+        for(i=0;i<nparticles;i++) logW[i] = particleArray.logW_h(i);
+    } else {
+        // The full-cloud path remains the default and fixed-history reference.
+        particleArray.copy_to_host();
+        for(t=1;t<TIME;++t)
+            for(i=0;i<nparticles;i++)
+                particleArray.get_particle(t, i, particleSystem[t][i]);
+        for(i=0;i<nparticles;i++) logW[i] = particleSystem[TIME-1][i].logWeight;
     }
 
     utils::w_from_logW(logW,w,nparticles);
@@ -841,6 +849,22 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
     gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w);
     i = gsl_ran_discrete(rng,rdisc);
     gsl_ran_discrete_free(rdisc);
+
+    if (resampling.selected_trajectory) {
+        pgas::SelectedTrajectory<ExecSpace> selected(TIME);
+        const auto trajectory = selected.gather(i, particleArray.ancestor,
+            particleArray.B, particleArray.burst, particleArray.C, particleArray.S);
+        arma::vec state(12);
+        for(t=0;t<TIME;++t) {
+            traj_out.B(t) = trajectory(t).baseline;
+            traj_out.burst(t) = trajectory(t).burst;
+            traj_out.S(t) = trajectory(t).spikes;
+            for(int k=0;k<12;++k) state(k) = trajectory(t).calcium[k];
+            traj_out.C(t) = model->getDFF(state);
+            traj_out.Y(t) = data_y(t);
+        }
+        return;
+    }
 
     t=TIME;
 

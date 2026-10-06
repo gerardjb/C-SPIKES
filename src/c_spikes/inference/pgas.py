@@ -76,6 +76,9 @@ def resampling_provenance() -> Dict[str, object]:
     mode = os.environ.get("C_SPIKES_PGAS_RESAMPLING", "host")
     if mode not in ("host", "device"):
         raise ValueError("C_SPIKES_PGAS_RESAMPLING must be host or device")
+    trajectory = os.environ.get("C_SPIKES_PGAS_TRAJECTORY", "full")
+    if trajectory not in ("full", "selected"):
+        raise ValueError("C_SPIKES_PGAS_TRAJECTORY must be full or selected")
     seed = os.environ.get("C_SPIKES_PGAS_ANCESTOR_SEED")
     if seed is not None:
         if mode != "device":
@@ -84,6 +87,7 @@ def resampling_provenance() -> Dict[str, object]:
             raise ValueError("Ancestor seed must be an unsigned 64-bit decimal integer")
     return {
         "mode": mode,
+        "trajectory": trajectory,
         "ancestor_rng": "philox4x32-10-v1" if mode == "device" else "gsl-mt19937-alias",
         "ancestor_seed": str(int(seed)) if seed is not None else "effective_cpu_seed",
         "gsl_consumption": "preserve_ancestor_uniform_count",
@@ -835,7 +839,7 @@ def run_pgas_inference(
         cfg_dict["edge_hash"] = hash_array(config.edges)
 
     resampling = resampling_provenance()
-    if resampling["mode"] != "host":
+    if resampling["mode"] != "host" or resampling["trajectory"] != "full":
         cfg_dict["resampling"] = resampling
 
     if config.use_cache:
@@ -886,6 +890,7 @@ def run_pgas_inference(
         # This keeps `--use-cache` effective even if the tagging/config signature evolved.
         if (
             resampling["mode"] == "host"
+            and resampling["trajectory"] == "full"
             and config.resample_fs is None
             and noise_scope == PGAS_NOISE_CALIBRATION_SCOPE_DEFAULT
             and noise_granularity == PGAS_NOISE_CALIBRATION_GRANULARITY_DEFAULT
