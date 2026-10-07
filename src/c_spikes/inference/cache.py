@@ -202,6 +202,10 @@ def load_method_cache_legacy_compatible(
             actual_config = meta.get("config", {})
             if not isinstance(actual_config, Mapping):
                 continue
+            # Experimental ancestor RNGs must never enter the legacy host path,
+            # even when callers compare only older scientific configuration keys.
+            if method == "pgas" and actual_config.get("resampling") != config.get("resampling"):
+                continue
             if not _stable_config_matches(actual_config, config, stable_config_keys):
                 continue
             result = _load_method_cache_result(method, mat_path, meta)

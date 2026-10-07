@@ -11,6 +11,7 @@
 #include<string>
 #include"GCaMP_model.h"
 #include"particle_array.h"
+#include"resampling_options.h"
 
 #include <Kokkos_Core.hpp>
 
@@ -88,6 +89,8 @@ class SMC{
         GCaMP* model;
 
     private:
+        pgas::ResamplingOptions resampling;
+        uint64_t ancestor_sweep = 0;
         gsl_rng *rng;
         arma::mat tracemat;
         constpar *constants;

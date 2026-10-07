@@ -1,3 +1,6 @@
+#include "include/ancestor_sampler.h"
+#include "include/selected_trajectory.h"
+#include <memory>
 #include"include/particle.h"
 #include"include/particle_array.h"
 #include"include/utils.h"
@@ -140,6 +143,7 @@ double Trajectory::logp(const param* p, const constpar* constants){
 //
 SMC::SMC(string filename, int index, constpar& cst, bool has_header, int seed, unsigned int maxlen, string Gparam_file){
 		
+    resampling = pgas::ResamplingOptions::from_environment((seed==0) ? cst.seed : seed);
     rng = gsl_rng_alloc(gsl_rng_mt19937);
     gsl_rng_set(rng, (seed==0) ? cst.seed : seed);
 		
@@ -181,6 +185,7 @@ SMC::SMC(string filename, int index, constpar& cst, bool has_header, int seed, u
 
 SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_header, int seed, unsigned int maxlen, string Gparam_file){
 		
+    resampling = pgas::ResamplingOptions::from_environment((seed==0) ? cst.seed : seed);
     rng = gsl_rng_alloc(gsl_rng_mt19937);
     gsl_rng_set(rng, (seed==0) ? cst.seed : seed);
 		
@@ -236,6 +241,7 @@ SMC::SMC(arma::vec &Y, constpar& cst, bool v){
 
     constants = &cst;
 
+    resampling = pgas::ResamplingOptions::from_environment(constants->seed);
     rng = gsl_rng_alloc(gsl_rng_mt19937);
     gsl_rng_set(rng,constants->seed);
 
@@ -643,6 +649,9 @@ void init_kokkos()
  
 void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out){
 
+    if (ancestor_sweep == std::numeric_limits<uint64_t>::max())
+        throw std::overflow_error("Ancestor sweep counter exhausted");
+    const uint64_t sweep = ancestor_sweep++;
     unsigned int t,a;
     int i;
 
@@ -699,6 +708,9 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
     
     // Copy the state of particles for all times to our structure of arrays on device memory
     ParticleArray particleArray(nparticles, TIME, constants->maxspikes);
+    std::unique_ptr<pgas::AncestorSampler<ExecSpace>> ancestor_sampler;
+    if (resampling.device)
+        ancestor_sampler.reset(new pgas::AncestorSampler<ExecSpace>(nparticles));
     for(t=0;t<TIME;t++)
         for(i=0;i<nparticles;i++)
             particleArray.set_particle(t, i, particleSystem[t][i]);
@@ -735,48 +747,40 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
         //    ar_logW[i] = logW[i]+logf(particleSystem[t-1][i],particleSystem[t][0],par);
         //}
 
-        particleArray.calc_ancestor_resampling(t, par, constants);
+        particleArray.calc_ancestor_resampling(t, par, constants, !resampling.device);
+        if (resampling.device) {
+            ancestor_sampler->build(particleArray.logW, particleArray.ar_logW);
+            ancestor_sampler->draw(particleArray.new_ancestors, resampling.seed, sweep, t);
+        } else {
+            for(i=0;i<nparticles;i++){
+                logW[i] = particleArray.logW_h(i);;
+                ar_logW[i] = particleArray.ar_logW_h(i);
+            }
 
-        // Check logW and ar_logW are equal on particleArray and particleSystem
-        //for(i=0;i<nparticles;i++){
-        //    double lw_cpu = logW[i];
-        //    double lw_gpu = particleArray.logW_h(i);
-        //    double ar_lw_cpu = ar_logW[i];
-        //    double ar_lw_gpu = particleArray.ar_logW_h(i);
-        //    if (fabs(lw_cpu - lw_gpu) > 1e-10 || fabs(ar_lw_cpu - ar_lw_gpu) > 1e-10) {
-        //        cout << "Error: logW or ar_logW mismatch at particle " << i << " at time " << t << endl;
-        //        cout << "CPU: logW = " << lw_cpu << ", ar_logW = " << ar_lw_cpu << endl;
-        //        cout << "GPU: logW = " << lw_gpu << ", ar_logW = " << ar_lw_gpu << endl;
-        //        die = true;
-        //        break;
-        //    }
-        //}
+            utils::w_from_logW(logW,w,nparticles);
+            utils::w_from_logW(ar_logW,ar_w,nparticles);
 
-        for(i=0;i<nparticles;i++){
-            logW[i] = particleArray.logW_h(i);;
-            ar_logW[i] = particleArray.ar_logW_h(i);
+            gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w);
+            gsl_ran_discrete_t *ar_rdisc = gsl_ran_discrete_preproc(nparticles, ar_w);
+
+            // Ancestor resampling of particle 0
+            a = gsl_ran_discrete(rng,ar_rdisc);
+            particleSystem[t][0].ancestor = a;
+
+            // Resampling particles 1:nparticles
+            for(i=1;i<nparticles;i++){
+                a = gsl_ran_discrete(rng,rdisc);
+                particleSystem[t][i].ancestor = a;
+            }
+
+            // Copy ancestors to device memory
+            for(i=0;i<nparticles;i++)
+                particleArray.new_ancestors_h(i) = particleSystem[t][i].ancestor;
+            Kokkos::deep_copy(particleArray.new_ancestors, particleArray.new_ancestors_h);
+
+            gsl_ran_discrete_free(rdisc);
+            gsl_ran_discrete_free(ar_rdisc);
         }
-
-        utils::w_from_logW(logW,w,nparticles);
-        utils::w_from_logW(ar_logW,ar_w,nparticles);
-
-        gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w);
-        gsl_ran_discrete_t *ar_rdisc = gsl_ran_discrete_preproc(nparticles, ar_w);
-
-        // Ancestor resampling of particle 0
-        a = gsl_ran_discrete(rng,ar_rdisc);
-        particleSystem[t][0].ancestor = a;
-        
-        // Resampling particles 1:nparticles
-        for(i=1;i<nparticles;i++){
-            a = gsl_ran_discrete(rng,rdisc);
-            particleSystem[t][i].ancestor = a;
-        }
-
-        // Copy ancestors to device memory
-        for(i=0;i<nparticles;i++)
-            particleArray.new_ancestors_h(i) = particleSystem[t][i].ancestor;
-        Kokkos::deep_copy(particleArray.new_ancestors, particleArray.new_ancestors_h);
 
         // // Pregenerate noise so we can have noise that is not dependent on the thread execution order
         // double dt = 1.0/constants->sampling_frequency;
@@ -811,27 +815,56 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
         particleArray.move_and_weight(t, data_y_view, par, constants, g_noise_view, u_noise, u_noise_view, params);
 
         //die = !particleArray.check_particle_system(t, particleSystem);
-
-        gsl_ran_discrete_free(rdisc);
-        gsl_ran_discrete_free(ar_rdisc);
         
     }
 
-    // Copy the partilce system back to the CPU
-    particleArray.copy_to_host();
-    for(t=1;t<TIME;++t)
-       for(i=0;i<nparticles;i++)
-            particleArray.get_particle(t, i, particleSystem[t][i]);
-		
-    // Now use the last particle set to resample the new trajectory
-    for(i=0;i<nparticles;i++){
-        logW[i] = particleSystem[TIME-1][i].logWeight;
+    if (resampling.device) {
+        ancestor_sampler->check();
+        // GSL discrete takes one uniform per draw. Nothing else consumes GSL
+        // inside the timestep loop; preserve its position before terminal draw.
+        const uint64_t skipped = uint64_t(nparticles) * (TIME - 1);
+        for (uint64_t draw = 0; draw < skipped; ++draw) gsl_rng_uniform(rng);
+    }
+
+    if (resampling.selected_trajectory) {
+        // Keep the terminal GSL draw, transferring only its N weights once.
+        const auto history = particleArray.logWeight;
+        const auto terminal = particleArray.logW;
+        const unsigned int last = TIME - 1;
+        Kokkos::parallel_for("terminal_weights", Kokkos::RangePolicy<ExecSpace>(0, nparticles),
+            KOKKOS_LAMBDA(int j) { terminal(j) = history(j, last); });
+        Kokkos::deep_copy(particleArray.logW_h, terminal);
+        for(i=0;i<nparticles;i++) logW[i] = particleArray.logW_h(i);
+    } else {
+        // The full-cloud path remains the default and fixed-history reference.
+        particleArray.copy_to_host();
+        for(t=1;t<TIME;++t)
+            for(i=0;i<nparticles;i++)
+                particleArray.get_particle(t, i, particleSystem[t][i]);
+        for(i=0;i<nparticles;i++) logW[i] = particleSystem[TIME-1][i].logWeight;
     }
 
     utils::w_from_logW(logW,w,nparticles);
 
     gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w);
     i = gsl_ran_discrete(rng,rdisc);
+    gsl_ran_discrete_free(rdisc);
+
+    if (resampling.selected_trajectory) {
+        pgas::SelectedTrajectory<ExecSpace> selected(TIME);
+        const auto trajectory = selected.gather(i, particleArray.ancestor,
+            particleArray.B, particleArray.burst, particleArray.C, particleArray.S);
+        arma::vec state(12);
+        for(t=0;t<TIME;++t) {
+            traj_out.B(t) = trajectory(t).baseline;
+            traj_out.burst(t) = trajectory(t).burst;
+            traj_out.S(t) = trajectory(t).spikes;
+            for(int k=0;k<12;++k) state(k) = trajectory(t).calcium[k];
+            traj_out.C(t) = model->getDFF(state);
+            traj_out.Y(t) = data_y(t);
+        }
+        return;
+    }
 
     t=TIME;
 
