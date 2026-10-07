@@ -299,6 +299,13 @@ PYTHONPATH=src python scripts/export_downsampled_mat_dir.py \
 ```
 
 ## PGAS on your data (produce `param_samples_*.dat`)
+
+For an opt-in queue of already independent windows sharing one allocated GPU,
+see the [independent-fit launcher](#independent-fit-gpu-queue). It provides frozen
+manifests, bounded subprocesses, CPU placement, verified MPS attachment and
+explicit resume/retry handling. Existing inference entry points remain serial
+by default.
+
 To run PGAS and write its output files (including `param_samples_*.dat` used for distillation), the easiest entrypoint is `scripts/demo_compare_methods.py` with ENS2/CASCADE disabled:
 
 ```bash
@@ -341,6 +348,109 @@ Notes:
 - Remove `--method pgas` to run ENS2/CASCADE too (requires the `results/Pretrained_models` symlink above if you keep models in repo-root `Pretrained_models/`).
 - To run a *custom* ENS2 checkpoint, pass either `--ens2-pretrained-root Pretrained_models/<model_name>` or resolve by sweep tag via `--ens2-model-tag <tag> --ens2-model-root Pretrained_models`.
 - If your CASCADE models live outside `results/Pretrained_models`, set `--cascade-model-root Pretrained_models`.
+
+### Independent-fit GPU queue
+
+`python -m c_spikes.cli.pgas_pool` runs complete, **already independent** windows
+on one assigned GPU, returning results in manifest order. It needs Linux, Python
+3.9+, an explicit Slurm CPU allocation and exactly one visible GPU. Each fit uses
+a fresh process; defaults are one worker and MPS off. It never splits recordings
+or changes scientific settings. The Python API is `run_manifest` in
+`c_spikes.pgas.pool`; manifest preparation is in `c_spikes.pgas.manifest`.
+
+**Prepare on a CPU node.** Create `fits.json` with one entry per independent fit;
+paths are relative to this file. Each NPZ must contain finite 1-D `time` and
+`fluorescence` arrays of equal length, with strictly increasing time. Supply the
+sampling rate used by your inference workflow and choose appropriate settings:
+
+```json
+{"fits": [{"fit_id": "cell01_epoch00", "replicate": 0,
+  "input_file": "windows/cell01_epoch00.npz", "constants_file": "constants.json",
+  "gparam_file": "sensor.dat", "raw_fs": 120.0,
+  "config": {"niter": 200, "burnin": 100, "keep_output_dat_files": true}}]}
+```
+
+```bash
+python -m c_spikes.cli.pgas_pool --prepare fits.json \
+  --binary /absolute/path/pgas_bound_gpu.cpython-310-x86_64-linux-gnu.so \
+  --manifest frozen.json --workers 2 --mps require --cpu-placement separate
+```
+
+Preparation does not load CUDA. It freezes effective config defaults, seeded base
+constants, input/binary/Python source hashes, dependency versions and execution
+policies, including the [GPU options](docs/pgas_gpu_options.md). It refuses to
+overwrite a manifest. CPU seeds depend on fit ID and replicate, not queue order;
+the native GPU movement generator still resets to seed 42 each sweep, so CPU
+replicates do not imply independent GPU random streams. Output/cache paths belong
+to the launcher; `edges` and ground-truth-dependent noise masking are unsupported.
+Supply pre-windowed inputs; existing per-fit noise calibration records its derived
+settings in output metadata.
+
+**Run inside the allocation**, with the same pinned installation and GPU options:
+
+```bash
+python -m c_spikes.cli.pgas_pool --manifest /absolute/frozen.json \
+  --output /absolute/results/run1 --mps-service-file /absolute/job/service-scope.json
+```
+
+For serial execution prepare with `--workers 1 --mps off --cpu-placement shared`
+and omit the service file. `separate` requires distinct allocated physical cores;
+`shared` uses the first core. Slots are reused as fits finish. Optional
+`--worker-cpus 7,27` and `--coordinator-cpu 7` must stay within the allocation;
+separate slots cannot be SMT siblings. Numerical-library threads are limited to
+one per worker. Runtime flags may restate, but cannot change, frozen policies.
+
+**Resume, retry or cancel.** Repeat the run command with `--resume` to reuse
+successful fits; add `--retry-failed` for one fresh attempt at incomplete, failed
+or damaged fits. Reuse requires matching identity, intact hashed outputs, a
+completion receipt **and successful process exit**. Old attempts remain under
+`<output>/<fit_id>/attempt-NNNN/`; partial chains are never appended to. A new
+allocation may use different core IDs and a new service scope. Changed settings,
+worker count, modes or installation require a new manifest/output root.
+
+SIGINT/SIGTERM stops admission and terminates only this invocation's worker
+groups (CLI exit 130; failures exit 1). Output locks exclude concurrent
+coordinators and remain held by workers after coordinator SIGKILL. Node loss or
+SIGKILL may leave incomplete records; Slurm owns allocation cleanup. Inspect
+`batch.json`, retained `run-*/batch.json`, `worker.log`, `worker-error.json`,
+`process.json`, `execution-start.json`, `mps-start.json`, `mps-end.json` and gate
+`decision.json` for diagnostics. Fully cached queues do not contact MPS.
+
+**Della setup.** Load the same CUDA/Python environment used for preparation. The
+[batch script](scripts/della_mps.sbatch) requests one `intel&gpu40` GPU slice,
+two physical CPU cores, 8 GiB memory and site-managed `--gpu-mps`; Della selects
+the partition. Supply your account and a time limit based on measured duration:
+
+```bash
+sbatch --account=YOUR_ACCOUNT --time=00:30:00 scripts/della_mps.sbatch \
+  /absolute/frozen.json /absolute/results/run1
+# Append --resume --retry-failed for recovery in a new allocation.
+```
+
+The time above is a template, not a queue estimate. Verify current resource
+availability against [Princeton's GPU guidance](https://researchcomputing.princeton.edu/support/knowledge-base/gpu-computing).
+The script retains per-job diagnostics and uses `python -m c_spikes.cli.slurm_mps
+--output NEW_DIRECTORY` to discover the existing service. The helper verifies
+same-user ownership, current-job cgroup, endpoint PID/start identity, CPU scope
+and assigned GPU UUID. If daemon visibility is implicit, it requires enabled
+device cgroups and CUDA driver API 12.8+ enumeration in the identical service
+cgroup. Both on/off modes require the driver's MPS-enabled attribute; missing
+evidence fails explicitly.
+
+Every actual MPS worker passes device, default CUDA scheduling and service
+membership checks before inference and rechecks attachment at completion. The
+initial group gates together; replacements gate independently. A gate failure
+stops the queue; an ordinary fit failure leaves other fits running. There are no
+automatic retries or silent MPS fallback. Off mode uses a fresh private empty
+pipe directory. Slurm owns service startup/shutdown: never redirect an existing
+daemon to an assumed private pipe, contact another job's endpoint, change GPU
+compute modes or reconfigure MIG. Ambiguous scope is rejected; same-user MPS
+jobs coexisting on one node remain unvalidated.
+
+CPU tests cover subprocess scheduling, containment and recovery with simulated
+CUDA evidence. They do not validate full-A100 throughput, longer GPU queues or
+combined optimization performance. Budget complete-fit memory and startup/failure
+time; count only newly completed fits when reporting throughput.
 
 ## Distill PGAS → custom ENS2 (synthetic training)
 Once you have one or more `param_samples_*.dat` files, you can generate synthetic ground-truth datasets and train a custom ENS2 checkpoint:
