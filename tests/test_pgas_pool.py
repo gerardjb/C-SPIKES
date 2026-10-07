@@ -9,7 +9,7 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform != "linux" or sys.version_info < (3, 9),
                                 reason="Launcher requires Linux and Python 3.9+")
 
-from c_spikes import pgas_pool as pool
+from c_spikes.pgas import pool
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def campaign(tmp_path, monkeypatch):
     fake = tmp_path / "fake.py"
     fake.write_text('''
 import json, os, pathlib, time
-from c_spikes.pgas_pool import atomic_json, task_identity, sha256, apply_worker_affinity
+from c_spikes.pgas.pool import atomic_json, task_identity, sha256, apply_worker_affinity
 out=pathlib.Path.cwd()
 task=json.loads((out/'task.json').read_text())
 inherited_affinity=sorted(os.sched_getaffinity(0))

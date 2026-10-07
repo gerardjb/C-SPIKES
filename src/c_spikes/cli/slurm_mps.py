@@ -10,8 +10,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True,
                         help='New directory for scope, control-query evidence and available logs')
     args = parser.parse_args()
-    from c_spikes.pgas_pool import allocation_environment
-    from c_spikes.mps_gate import discover_service
+    from c_spikes.pgas.pool import allocation_environment
+    from c_spikes.pgas.mps_gate import discover_service
     allocation_environment(1)
     assigned = os.environ['CUDA_VISIBLE_DEVICES']
     if not assigned.startswith(('MIG-', 'GPU-')):

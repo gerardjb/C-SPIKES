@@ -22,7 +22,7 @@ umask 077
 mkdir -p "$output/site"
 diagnostics=$(mktemp -d "$output/site/${SLURM_JOB_ID}.XXXXXX")
 # Preserve scope/query/log evidence. Slurm owns the service lifecycle.
-python -m c_spikes.slurm_mps --output "$diagnostics/scope"
-exec python -m c_spikes.pgas_pool --manifest "$manifest" --output "$output" \
+python -m c_spikes.cli.slurm_mps --output "$diagnostics/scope"
+exec python -m c_spikes.cli.pgas_pool --manifest "$manifest" --output "$output" \
   --workers 2 --mps require --cpu-placement separate \
   --mps-service-file "$diagnostics/scope/service-scope.json" "$@"

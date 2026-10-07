@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 
-from c_spikes.pgas_pool import atomic_json
+from c_spikes.pgas.pool import atomic_json
 
 
 def environment():
@@ -182,7 +182,7 @@ def device_scope_probe(target, daemon, assigned_uuid):
             env=dict(os.environ,CUDA_MPS_PIPE_DIRECTORY=private)
             env.pop('CUDA_VISIBLE_DEVICES',None)
             output=Path(target)/'device-scope-enumeration.json'
-            result=subprocess.run([sys.executable,'-m','c_spikes.mps_device_scope',str(output)],
+            result=subprocess.run([sys.executable,'-m','c_spikes.pgas.mps_device_scope',str(output)],
                                   env=env,text=True,capture_output=True,timeout=15)
             record['enumeration_process']=dict(returncode=result.returncode,stdout=result.stdout,stderr=result.stderr)
             enumeration=json.loads(output.read_text());record['enumeration']=enumeration
@@ -217,7 +217,7 @@ def scoped_pipe():
 
 def diagnostic_snapshot(expected, path):
     """Write driver, environment and control evidence before any rejection."""
-    from c_spikes import pgas_mps as mps
+    from c_spikes.pgas import mps
     record = dict(pid=os.getpid(), expected=expected, environment=environment(),
                   cpu_affinity=sorted(os.sched_getaffinity(0)), verified=False, queries=[])
     try:
@@ -290,7 +290,7 @@ def wait_for_release(barrier, label, ready):
 def snapshot_in_environment(ids, env, target):
     """Keep allocation-specific environment out of coordinator globals/threads."""
     output = Path(target) / 'service-check.json'
-    result = subprocess.run([sys.executable, '-m', 'c_spikes.mps_gate', str(output),
+    result = subprocess.run([sys.executable, '-m', 'c_spikes.pgas.mps_gate', str(output),
                              *map(str, ids)], env=env, text=True, capture_output=True, timeout=30)
     if result.returncode:
         raise RuntimeError(f'Service verification failed: {result.stderr}; see {output}')
@@ -299,7 +299,7 @@ def snapshot_in_environment(ids, env, target):
 
 def release_when_verified(barrier, failed, expected_pids=None, env=None):
     """All participants stay alive/idle while one simultaneous membership is checked."""
-    from c_spikes.pgas_mps import service_snapshot
+    from c_spikes.pgas.mps import service_snapshot
     root = Path(barrier['directory'])
     decision = dict(token=barrier['token'], released=False)
     try:
@@ -334,7 +334,7 @@ def release_when_verified(barrier, failed, expected_pids=None, env=None):
 
 
 if __name__ == '__main__':
-    from c_spikes.pgas_mps import service_snapshot
+    from c_spikes.pgas.mps import service_snapshot
     try:
         atomic_json(Path(sys.argv[1]), service_snapshot([int(pid) for pid in sys.argv[2:]]))
     except Exception as exc:

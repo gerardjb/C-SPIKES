@@ -12,8 +12,8 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform != "linux" or sys.version_info < (3, 9),
                                 reason="Launcher requires Linux and Python 3.9+")
 
-from c_spikes import pgas_pool as pool
-from c_spikes.pgas_manifest import prepare_manifest
+from c_spikes.pgas import pool
+from c_spikes.pgas.manifest import prepare_manifest
 
 
 @pytest.fixture
@@ -36,9 +36,35 @@ def test_preparation_freezes_defaults_settings_seeds_and_environment(spec, tmp_p
     assert prepared['python_environment'] == pool.python_environment()
     assert 'pgas_bound_gpu' not in sys.modules
     assert value['fits'][0]['config'] == {'niter': 200, 'burnin': 100}
+    # Relocating the launcher must still pin the whole package, including CLI
+    # and inference defaults outside the pgas subpackage.
+    package = Path(pool.__file__).resolve().parents[1]
+    for relative in ('pgas/pool.py', 'cli/pgas_pool.py', 'cli/slurm_mps.py', 'inference/pgas.py'):
+        path = package / relative
+        assert prepared['runtime_files_sha256'][str(path)] == pool.sha256(path)
     pool.validate_manifest(prepared)
     changed = copy.deepcopy(prepared); changed['python_environment']['numpy'] = 'different'
     with pytest.raises(ValueError, match='environment changed'): pool.validate_manifest(changed)
+
+
+@pytest.mark.parametrize('variable,value', [
+    ('C_SPIKES_PGAS_RESAMPLING', 'device'),
+    ('C_SPIKES_PGAS_TRAJECTORY', 'selected'),
+    ('C_SPIKES_PGAS_ANCESTOR_SEED', '123'),
+])
+def test_changed_native_options_rejected_before_launch(spec, tmp_path, monkeypatch, variable, value):
+    source, binary = spec
+    for name in ('C_SPIKES_PGAS_RESAMPLING', 'C_SPIKES_PGAS_TRAJECTORY', 'C_SPIKES_PGAS_ANCESTOR_SEED'):
+        monkeypatch.delenv(name, raising=False)
+    prepared = prepare_manifest(source, binary, base=tmp_path)
+    monkeypatch.setenv('SLURM_JOB_ID', 'fake-test-job')
+    monkeypatch.setenv('SLURM_CPUS_PER_TASK', '1')
+    monkeypatch.setenv('CUDA_VISIBLE_DEVICES', 'MIG-test-only')
+    monkeypatch.setenv(variable, value)
+    root = tmp_path / 'out'
+    with pytest.raises(ValueError, match='execution modes differ'):
+        pool.run_manifest(prepared, root, resume=True)
+    assert not root.exists()
 
 
 @pytest.mark.parametrize('override', [{'mystery_mode': True}, {'use_cache': True},
@@ -53,19 +79,22 @@ def test_cli_prepare_and_help_do_not_need_a_gpu_or_slurm(spec, tmp_path):
     source = tmp_path/'fits.json'; source.write_text(json.dumps(value))
     target = tmp_path/'frozen.json'
     env = dict(os.environ); env.pop('SLURM_JOB_ID', None); env['CUDA_VISIBLE_DEVICES'] = ''
-    argv = [sys.executable, '-m', 'c_spikes.pgas_pool', '--prepare', str(source),
+    argv = [sys.executable, '-m', 'c_spikes.cli.pgas_pool', '--prepare', str(source),
             '--binary', str(binary), '--manifest', str(target)]
     result = subprocess.run(argv, env=env, text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     frozen = json.loads(target.read_text())
     assert frozen['execution']['workers'] == 1 and frozen['execution']['mps'] == 'off'
     assert subprocess.run(argv, env=env, capture_output=True).returncode != 0
-    assert subprocess.run([sys.executable, '-m', 'c_spikes.pgas_pool', '--help'], env=env,
+    assert subprocess.run([sys.executable, '-m', 'c_spikes.cli.pgas_pool', '--help'], env=env,
                           capture_output=True).returncode == 0
 
 
 def test_prepared_manifest_drives_python_api_without_repeating_modes(spec, tmp_path, monkeypatch):
     value, binary = spec
+    monkeypatch.setenv('C_SPIKES_PGAS_RESAMPLING', 'device')
+    monkeypatch.setenv('C_SPIKES_PGAS_TRAJECTORY', 'selected')
+    monkeypatch.setenv('C_SPIKES_PGAS_ANCESTOR_SEED', '123')
     prepared = prepare_manifest(value, binary, workers=2, mps='off', base=tmp_path)
     monkeypatch.setenv('SLURM_JOB_ID', 'test')
     monkeypatch.setenv('SLURM_CPUS_PER_TASK', str(len(os.sched_getaffinity(0))))
@@ -76,3 +105,21 @@ def test_prepared_manifest_drives_python_api_without_repeating_modes(spec, tmp_p
     report = pool.run_manifest(prepared, tmp_path/'out')
     assert report['workers'] == 2 and report['execution']['mps'] == 'off'
     assert report['new_successes'] == 1
+    result = json.loads((Path(report['fits'][0]['output']) / 'answer.json').read_text())
+    assert result['pgas_environment'] == prepared['execution']['pgas_environment']
+
+
+def test_default_worker_entrypoint_preserves_failure_diagnostics(spec, tmp_path, monkeypatch):
+    value, binary = spec
+    prepared = prepare_manifest(value, binary, base=tmp_path)
+    monkeypatch.setenv('SLURM_JOB_ID', 'fake-test-job')
+    monkeypatch.setenv('SLURM_CPUS_PER_TASK', '1')
+    monkeypatch.setenv('CUDA_VISIBLE_DEVICES', 'MIG-test-only')
+    # Use the real relocated worker entry point. This intentionally invalid
+    # binary fails before CUDA, and must still leave the worker's diagnostics.
+    report = pool.run_manifest(prepared, tmp_path / 'out')
+    assert report['failures'] == 1
+    attempt = Path(report['fits'][0]['output'])
+    error = json.loads((attempt / 'worker-error.json').read_text())
+    assert error['error'].startswith('ImportError:')
+    assert json.loads((attempt / 'process-start.json').read_text())['argv'][2] == 'c_spikes.cli.pgas_pool'

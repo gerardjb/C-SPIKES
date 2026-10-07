@@ -1,12 +1,11 @@
 """Opt-in fresh-process PGAS window launcher. The existing serial API is unchanged.
 
-Run ``python -m c_spikes.pgas_pool --help``. Each manifest entry describes one
+Run ``python -m c_spikes.cli.pgas_pool --help``. Each manifest entry describes one
 already-independent window; this module never splits recordings or calibrations.
 The coordinator uses only the standard library and never initializes CUDA.
 """
 from __future__ import annotations
 
-import argparse
 from contextlib import contextmanager
 import hashlib
 import json
@@ -168,7 +167,7 @@ def allocation_environment(workers):
     env.update({key: "1" for key in THREAD_VARIABLES})
     env.update(C_SPIKES_PGAS_BACKEND="gpu", PYTHONDONTWRITEBYTECODE="1")
     # Keep the parent's verified package first; do not inherit another worktree.
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     return env
 
 
@@ -200,7 +199,7 @@ def verify_completion(attempt, task):
                 if not check['verified'] or check['driver_mps_enabled'] != int(mode == 'require'):
                     raise ValueError('Completion lacks verified MPS mode')
                 if mode == 'require':
-                    from c_spikes.pgas_mps import pids
+                    from c_spikes.pgas.mps import pids
                     if receipt['pid'] not in pids(check['service']['client_list']['stdout']):
                         raise ValueError('Completion lacks actual client membership')
             if mode == 'require':
@@ -256,7 +255,7 @@ def previous_result(root, task, resume=False, retry_failed=False):
 
 def run_one(task, root, env, resume=False, retry_failed=False, command=None, children=None):
     """One fresh process; preserve failure evidence and never automatically retry."""
-    from c_spikes.pgas_queue import Children
+    from c_spikes.pgas.queue import Children
     children = children or Children()
     previous = previous_result(root, task, resume, retry_failed)
     if previous is not None:
@@ -271,7 +270,7 @@ def run_one(task, root, env, resume=False, retry_failed=False, command=None, chi
     attempt = fit_dir / f'attempt-{number:04d}'
     attempt.mkdir()
     atomic_json(attempt / 'task.json', task)
-    argv = command or [sys.executable, '-m', 'c_spikes.pgas_pool', '--fit', str(attempt / 'task.json')]
+    argv = command or [sys.executable, '-m', 'c_spikes.cli.pgas_pool', '--fit', str(attempt / 'task.json')]
     record = dict(fit_id=fit_id, output=str(attempt), returncode=None,
                   task_sha256=task_identity(task), status='failed')
     started = time.monotonic()
@@ -310,7 +309,7 @@ def run_one(task, root, env, resume=False, retry_failed=False, command=None, chi
 
 def run_manifest(manifest, root, workers=None, resume=False, retry_failed=False,
                  worker_cpus=None, coordinator_cpu=None, mps_expected=None, **options):
-    from c_spikes.pgas_queue import run_queue
+    from c_spikes.pgas.queue import run_queue
     return run_queue(manifest, root, workers, resume, retry_failed,
                      worker_cpus, coordinator_cpu, mps_expected, **options)
 
@@ -322,7 +321,7 @@ def fit_worker(task_file):
         _fit_worker(task_file)
     except BaseException as exc:
         import traceback
-        from c_spikes.mps_gate import environment, diagnostic_snapshot
+        from c_spikes.pgas.mps_gate import environment, diagnostic_snapshot
         record = dict(pid=os.getpid(), error=f'{type(exc).__name__}: {exc}',
                       traceback=traceback.format_exc(), environment=environment(),
                       cpu_affinity=sorted(os.sched_getaffinity(0)))
@@ -348,11 +347,11 @@ def _fit_worker(task_file):
     apply_worker_affinity(task)
     fit = task["fit"]
     if 'mps_expected' in task:
-        from c_spikes.mps_gate import diagnostic_snapshot, environment, wait_for_release
+        from c_spikes.pgas.mps_gate import diagnostic_snapshot, environment, wait_for_release
         atomic_json(out/'execution-start.json', dict(pid=os.getpid(), stage='before native import',
                     environment=environment(), cpu_affinity_start=sorted(os.sched_getaffinity(0))))
         if task['mps_expected'] and task.get('schema_version') == 2:
-            from c_spikes.mps_gate import scoped_pipe
+            from c_spikes.pgas.mps_gate import scoped_pipe
             scoped_pipe()  # Never initialize CUDA against an unverified service.
     verify_files(task["runtime_files_sha256"])
     verify_files(fit["files_sha256"])
@@ -462,64 +461,3 @@ def _fit_worker(task_file):
         receipt["execution"] = task["execution"]
     receipt.update(execution)
     atomic_json(out / "completion.json", receipt)
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path)
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--workers", type=int, help="Bounded process count; default 1 or frozen manifest value")
-    parser.add_argument("--mps", choices=('off', 'require'), help="Default off; require rejects CUDA fallback")
-    parser.add_argument("--cpu-placement", choices=('shared', 'separate'))
-    parser.add_argument("--worker-cpus", help="Comma-separated allocated logical CPU IDs, one per reusable slot")
-    parser.add_argument("--coordinator-cpu", type=int)
-    parser.add_argument("--mps-service-file", type=Path, help="Verified current-allocation scope from site setup")
-    parser.add_argument("--prepare", type=Path, metavar='SPEC', help="Freeze input spec to --manifest without CUDA")
-    parser.add_argument("--binary", type=Path, help="Native GPU extension for --prepare")
-    parser.add_argument("--resume", action="store_true")
-    parser.add_argument("--retry-failed", action="store_true")
-    parser.add_argument("--fit", type=Path, help=argparse.SUPPRESS)
-    args = parser.parse_args()
-    if args.fit:
-        fit_worker(args.fit)
-    elif args.prepare:
-        if not args.binary or not args.manifest:
-            parser.error('--prepare requires --binary and --manifest')
-        if args.manifest.exists():
-            parser.error('Refusing to replace an existing frozen manifest')
-        from c_spikes.pgas_manifest import prepare_manifest
-        manifest = prepare_manifest(json.loads(args.prepare.read_text()), args.binary,
-            workers=args.workers if args.workers is not None else 1, mps=args.mps or 'off',
-            cpu_placement=args.cpu_placement or 'shared', base=args.prepare.resolve().parent)
-        atomic_json(args.manifest, manifest)
-    else:
-        if not args.manifest or not args.output:
-            parser.error("--manifest and --output are required")
-        manifest = json.loads(args.manifest.read_text())
-        policy = manifest.get('execution', {})
-        try:
-            report = run_manifest(manifest, args.output,
-                workers=args.workers if args.workers is not None else policy.get('workers', 1),
-                resume=args.resume, retry_failed=args.retry_failed,
-                mps_mode=args.mps or policy.get('mps', 'off'),
-                cpu_placement=args.cpu_placement or policy.get('cpu_placement', 'shared'),
-                slot_cpus=[int(c) for c in args.worker_cpus.split(',')] if args.worker_cpus else None,
-                coordinator_cpu=args.coordinator_cpu, service_file=args.mps_service_file)
-        except Exception as exc:
-            from c_spikes.mps_gate import environment
-            try:
-                args.output.mkdir(parents=True, exist_ok=True)
-                atomic_json(args.output/f'launcher-error-{os.getpid()}-{time.time_ns()}.json',
-                            dict(error=f'{type(exc).__name__}: {exc}', environment=environment()))
-            except OSError:
-                pass  # stderr still reports failures when the output is not writable.
-            parser.exit(1, f'{type(exc).__name__}: {exc}\n')
-        print(json.dumps({k: v for k, v in report.items() if k != "fits"}, indent=2))
-        if report['cancelled']:
-            sys.exit(130)
-        if report["failures"] or report['error']:
-            sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

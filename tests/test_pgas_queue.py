@@ -14,7 +14,7 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform != "linux" or sys.version_info < (3, 9),
                                 reason="Launcher requires Linux and Python 3.9+")
 
-from c_spikes import pgas_pool as pool, pgas_queue as queue, mps_gate as gate
+from c_spikes.pgas import pool, queue, mps_gate as gate
 
 FAKE = Path(__file__).with_name('pgas_fake_worker.py')
 
@@ -188,11 +188,12 @@ def test_signal_cancellation_cleans_only_owned_groups_and_cli_resume(jobs, tmp_p
     driver = tmp_path/'cli.py'
     driver.write_text('''
 import sys
-from c_spikes import pgas_pool as p
+from c_spikes.pgas import pool as p
 original=p.run_one
 fake=sys.argv.pop(1)
 p.run_one=lambda *a,**k: original(*a,**k,command=[sys.executable,fake])
-p.main()
+from c_spikes.cli.pgas_pool import main
+main()
 ''')
     argv = [sys.executable, str(driver), str(FAKE), '--manifest', str(source),
             '--output', str(root), '--workers', '2']
@@ -272,7 +273,7 @@ def test_coordinator_sigkill_keeps_output_locked_until_owned_workers_exit(jobs, 
     driver = tmp_path/'coordinator.py'
     driver.write_text('''
 import json, pathlib, sys
-from c_spikes import pgas_pool as p
+from c_spikes.pgas import pool as p
 original=p.run_one
 fake=sys.argv[1]
 p.run_one=lambda *a,**k: original(*a,**k,command=[sys.executable,fake])

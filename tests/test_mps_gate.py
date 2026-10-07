@@ -12,7 +12,7 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform != "linux" or sys.version_info < (3, 9),
                                 reason="Launcher requires Linux and Python 3.9+")
 
-from c_spikes import mps_gate as gate, pgas_mps as mps
+from c_spikes.pgas import mps_gate as gate, mps
 
 
 def test_scope_requires_job_uuid_and_allocated_cores(monkeypatch):
@@ -87,7 +87,7 @@ def test_unscoped_control_endpoint_is_never_contacted(tmp_path,monkeypatch):
 def test_inference_identity_error_keeps_environment_and_diagnostics(tmp_path,monkeypatch):
     import importlib.util
     import numpy  # CPU import before mocking the native extension loader.
-    from c_spikes import pgas_pool as pool
+    from c_spikes.pgas import pool
     cpu=min(os.sched_getaffinity(0))
     task=tmp_path/'task.json'
     task.write_text(json.dumps(dict(fit={'fit_id':'test','files_sha256':{}},
@@ -117,7 +117,7 @@ def test_two_real_processes_cannot_start_work_before_joint_verification(tmp_path
     config=tmp_path/'barrier.json';config.write_text(json.dumps(barrier))
     child=tmp_path/'child.py';child.write_text('''
 import json, os, pathlib, sys, time
-from c_spikes.mps_gate import wait_for_release
+from c_spikes.pgas.mps_gate import wait_for_release
 barrier=json.loads(pathlib.Path(sys.argv[1]).read_text());label=sys.argv[2]
 time.sleep(float(sys.argv[3]))
 if sys.argv[4]=='fail': raise SystemExit(2)

@@ -10,7 +10,7 @@ import subprocess
 
 def private_pipe():
     if os.environ.get('C_SPIKES_MPS_SERVICE_FILE'):
-        from c_spikes.mps_gate import scoped_pipe
+        from c_spikes.pgas.mps_gate import scoped_pipe
         return scoped_pipe()
     path = Path(os.environ["CUDA_MPS_PIPE_DIRECTORY"])
     off = os.environ.get('C_SPIKES_MPS_OFF_DIRECTORY')
@@ -69,7 +69,7 @@ def process_identity(pid):
     pipe = private_pipe()
     if os.environ.get('C_SPIKES_MPS_SERVICE_FILE'):
         import json
-        from c_spikes.mps_gate import verify_scope
+        from c_spikes.pgas.mps_gate import verify_scope
         scope=json.loads(Path(os.environ['C_SPIKES_MPS_SERVICE_FILE']).read_text())
         verify_scope(dict(uid=os.getuid(),cgroup=cgroup,environment=env,thread_affinity=masks),
                      visible,allowed,pipe,scope.get('device_scope'))

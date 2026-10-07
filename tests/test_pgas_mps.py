@@ -7,7 +7,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux" or sys.version_info < (3, 9),
                                 reason="Launcher requires Linux and Python 3.9+")
-from c_spikes import pgas_mps as mps
+from c_spikes.pgas import mps
 
 
 def test_pid_evidence_is_not_a_substring_or_device_column():

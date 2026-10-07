@@ -6,8 +6,8 @@ import subprocess
 import sys
 import time
 
-from c_spikes.pgas_pool import atomic_json, apply_worker_affinity, sha256, task_identity
-from c_spikes.mps_gate import wait_for_release
+from c_spikes.pgas.pool import atomic_json, apply_worker_affinity, sha256, task_identity
+from c_spikes.pgas.mps_gate import wait_for_release
 
 out = Path.cwd()
 task = json.loads((out/'task.json').read_text())
@@ -27,7 +27,12 @@ if fit.get('grandchild'):
     atomic_json(out/'grandchild.json', dict(pid=child.pid))
 time.sleep(fit.get('delay', .02))
 atomic_json(out/'answer.json', dict(begin=begin, end=time.monotonic(), pid=os.getpid(),
-            affinity=sorted(os.sched_getaffinity(0)), seed=fit['seed']))
+            affinity=sorted(os.sched_getaffinity(0)), seed=fit['seed'],
+            pgas_environment={
+                'C_SPIKES_PGAS_RESAMPLING': os.environ.get('C_SPIKES_PGAS_RESAMPLING', 'host'),
+                'C_SPIKES_PGAS_TRAJECTORY': os.environ.get('C_SPIKES_PGAS_TRAJECTORY', 'full'),
+                'C_SPIKES_PGAS_ANCESTOR_SEED': os.environ.get('C_SPIKES_PGAS_ANCESTOR_SEED'),
+            }))
 if fit.get('fail_first') and out.name == 'attempt-0001':
     raise SystemExit(8)
 check = dict(verified=True, driver_mps_enabled=int(task['execution']['mps'] == 'require'),

@@ -4,8 +4,8 @@ import json
 import math
 from pathlib import Path
 
-from c_spikes.pgas_pool import sha256, stable_seed, validate_manifest, python_environment
-from c_spikes.pgas_queue import execution_policy
+from c_spikes.pgas.pool import sha256, stable_seed, validate_manifest, python_environment
+from c_spikes.pgas.queue import execution_policy
 
 
 def prepare_manifest(spec, binary, *, workers=1, mps='off', cpu_placement='shared', base=None):
@@ -64,7 +64,7 @@ def prepare_manifest(spec, binary, *, workers=1, mps='off', cpu_placement='share
             raise ValueError('Particle count must be positive')
         fit['seeded_constants'] = dict(constants, MCMC=dict(constants['MCMC'], seed=expected))
         fits.append(fit)
-    package = Path(__file__).resolve().parent
+    package = Path(__file__).resolve().parents[1]
     # Pin the installed implementation, including config defaults, not a checkout name.
     runtime = {str(p): sha256(p) for p in package.rglob('*.py') if p.name != '_version.py'}
     runtime[str(binary)] = sha256(binary)

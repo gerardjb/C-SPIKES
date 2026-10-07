@@ -69,16 +69,21 @@ def execution_policy(workers, mps_mode, placement):
         raise ValueError('MPS mode must be off or require')
     if placement not in ('shared', 'separate', 'inherit', 'explicit'):
         raise ValueError('Unknown CPU placement')
-    from c_spikes.pgas_pool import THREAD_VARIABLES
+    from c_spikes.pgas.pool import THREAD_VARIABLES
     return dict(workers=workers, backend='gpu', mps=mps_mode,
                 cpu_placement=placement, cuda_wait_policy='default',
+                pgas_environment={
+                    'C_SPIKES_PGAS_RESAMPLING': os.environ.get('C_SPIKES_PGAS_RESAMPLING', 'host'),
+                    'C_SPIKES_PGAS_TRAJECTORY': os.environ.get('C_SPIKES_PGAS_TRAJECTORY', 'full'),
+                    'C_SPIKES_PGAS_ANCESTOR_SEED': os.environ.get('C_SPIKES_PGAS_ANCESTOR_SEED'),
+                },
                 thread_limits={name: '1' for name in THREAD_VARIABLES},
                 cpu_seed_policy='sha256-fit-id-replicate-v1',
                 gpu_seed=42, gpu_seed_lifecycle='reset each sweep (unchanged native)')
 
 
 def cpu_slots(workers, placement, allocated, requested=None):
-    from c_spikes.pgas_pool import cpu_identity
+    from c_spikes.pgas.pool import cpu_identity
     cores = {}
     for cpu in allocated:
         detail = cpu_identity(cpu)
@@ -108,7 +113,7 @@ def run_queue(manifest, root, workers=None, resume=False, retry_failed=False,
               worker_cpus=None, coordinator_cpu=None, mps_expected=None,
               *, mps_mode=None, cpu_placement=None, slot_cpus=None,
               service_file=None, stop_event=None, startup_timeout=60):
-    from c_spikes import pgas_pool as pool
+    from c_spikes.pgas import pool
     import fcntl
     pool.validate_manifest(manifest)
     frozen_policy = manifest.get('execution', {})
@@ -204,7 +209,7 @@ def run_queue(manifest, root, workers=None, resume=False, retry_failed=False,
                 futures[future] = (index, slot)
                 new.append(future)
             if barrier:
-                from c_spikes.mps_gate import release_when_verified
+                from c_spikes.pgas.mps_gate import release_when_verified
                 decision = release_when_verified(barrier,
                     lambda: children.stop.is_set() or any(f.done() for f in new),
                     expected_pids=children.pids, env=env)
