@@ -1,0 +1,1 @@
+Private compatibility routines adapt Armadillo 14.2.2 algorithms under Apache-2.0. Original notices are retained in model_algorithm_compat.cpp; algorithm adaptations and fixed-size wrappers are C-SPIKES changes. Sources and hashes are recorded in G2ag/G2ah evidence. No upstream NOTICE file was identified in the installed license record.

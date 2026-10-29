@@ -1,0 +1,15 @@
+# This profile is deliberately ELF-only. Mach-O/PE export controls and their
+# numerical providers need independent qualification, not GNU-option fallback.
+function(csp_isolate_python_module target)
+ get_target_property(kind "${target}" TYPE)
+ if(NOT kind STREQUAL "MODULE_LIBRARY" OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  message(FATAL_ERROR "Unsupported Python-module isolation target/platform")
+ endif()
+ if(NOT target MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
+  message(FATAL_ERROR "Invalid Python extension entry-point name")
+ endif()
+ set(exports "${CMAKE_CURRENT_BINARY_DIR}/${target}.exports")
+ file(GENERATE OUTPUT "${exports}" CONTENT "{ global: PyInit_${target}; local: *; };\n")
+ target_link_options("${target}" PRIVATE "LINKER:--version-script,${exports}")
+ set_property(TARGET "${target}" APPEND PROPERTY LINK_DEPENDS "${exports}")
+endfunction()

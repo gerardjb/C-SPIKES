@@ -8,6 +8,7 @@ import numpy as np
 from c_spikes.inference.pgas_cache import load_pgas_samples_from_cache
 
 from .synth_gen import synth_gen
+from .state_history import simulate_state_history, simulate_state_occupancies
 
 
 def build_synthetic_ground_truth_from_pgas(
@@ -145,7 +146,7 @@ def build_synthetic_ground_truth_from_pgas(
     return cparams
 
 
-__all__ = ["synth_gen", "build_synthetic_ground_truth_from_pgas", "build_synthetic_ground_truth_batch"]
+__all__ = ["simulate_state_history", "synth_gen", "build_synthetic_ground_truth_from_pgas", "build_synthetic_ground_truth_batch"]
 
 
 def _parse_param_samples_source(source: Path | str) -> tuple[Path, Optional[int]]:

@@ -1,0 +1,24 @@
+{
+  "after": {
+    "member": {
+      "status": "ok",
+      "value": "111f4b627759e840"
+    },
+    "view": {
+      "status": "ok",
+      "value": "111f4b627759e840"
+    }
+  },
+  "before": {
+    "member": {
+      "status": "ok",
+      "value": "0000000000000000"
+    },
+    "view": {
+      "status": "ok",
+      "value": "0000000000000000"
+    }
+  },
+  "id": "B03",
+  "ok": true
+}

@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "member": {
+        "message": "Mat::elem(): index out of bounds",
+        "status": "out_of_range"
+      },
+      "view": {
+        "message": "Mat::elem(): index out of bounds",
+        "status": "out_of_range"
+      }
+    }
+  ],
+  "id": "B05",
+  "ok": true
+}

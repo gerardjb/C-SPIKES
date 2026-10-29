@@ -5,6 +5,12 @@ project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION} LANGUAGES CXX
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(C_SPIKES_BUILD_OASIS "Build the OASIS native extension." ON)
+option(C_SPIKES_OBSERVATIONAL_DIAGNOSTICS "Enable optional numerical observations and context reporting." OFF)
+add_library(csp_diagnostics_config INTERFACE)
+target_compile_definitions(csp_diagnostics_config INTERFACE
+    C_SPIKES_OBSERVATIONAL_DIAGNOSTICS=$<BOOL:${C_SPIKES_OBSERVATIONAL_DIAGNOSTICS}>)
+
+option(CSP_NATIVE_CORE_INSTALL "Enable the qualified opt-in native-core installation profile." OFF)
 
 if(C_SPIKES_BUILD_OASIS)
     find_package(Python COMPONENTS Interpreter Development.Module NumPy REQUIRED)
@@ -18,7 +24,7 @@ endif()
 add_subdirectory(dependencies)
 
 find_package(pybind11 CONFIG REQUIRED)
-find_package(Armadillo CONFIG REQUIRED)
+include(cmake/PinnedNumericalProvider.cmake)
 find_package(jsoncpp CONFIG REQUIRED)
 find_package(GSL REQUIRED)
 find_package(OpenMP REQUIRED)
@@ -55,7 +61,7 @@ else()
     endif()
 endif()
 
-set(PGAS_COMMON_LIBS armadillo JsonCpp::JsonCpp GSL::gsl GSL::gslcblas OpenMP::OpenMP_CXX Kokkos::kokkos)
+set(PGAS_COMMON_LIBS csp_diagnostics_config JsonCpp::JsonCpp GSL::gsl GSL::gslcblas csp_numerical_provider OpenMP::OpenMP_CXX Kokkos::kokkos)
 
 option(C_SPIKES_TEST_RESAMPLING "Build focused native ancestor sampling checks." OFF)
 if(C_SPIKES_TEST_RESAMPLING)
@@ -95,6 +101,7 @@ target_compile_options(pgas_bound_cpu PRIVATE -Wno-error=cpp)
 target_compile_definitions(pgas_bound_cpu PRIVATE PGAS_PYBIND_MODULE=pgas_bound_cpu)
 target_include_directories(pgas_bound_cpu PRIVATE src/spike_find/pgas)
 target_link_libraries(pgas_bound_cpu PRIVATE ${PGAS_COMMON_LIBS})
+csp_isolate_python_module(pgas_bound_cpu)
 
 if(_pgas_build_gpu)
     add_library(pgas_obj_gpu OBJECT ${PGAS_SRCS})
@@ -108,6 +115,7 @@ if(_pgas_build_gpu)
     target_compile_definitions(pgas_bound_gpu PRIVATE PGAS_PYBIND_MODULE=pgas_bound_gpu)
     target_include_directories(pgas_bound_gpu PRIVATE src/spike_find/pgas)
     target_link_libraries(pgas_bound_gpu PRIVATE ${PGAS_COMMON_LIBS})
+    csp_isolate_python_module(pgas_bound_gpu)
 endif()
 
 install(TARGETS pgas_bound_cpu DESTINATION ${SKBUILD_PROJECT_NAME}/pgas)
@@ -120,4 +128,45 @@ if(C_SPIKES_BUILD_OASIS)
         LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}/oasis
         RUNTIME DESTINATION ${SKBUILD_PROJECT_NAME}/oasis
     )
+endif()
+
+if(CSP_NATIVE_CORE_INSTALL)
+    include(cmake/NativeCoreInstall.cmake)
+endif()
+
+# Isolated-process checked API validation only; normal public builds stay unchanged.
+option(C_SPIKES_TEST_CHECKED_CPU "Build the isolated checked CPU API test surface." OFF)
+if(C_SPIKES_TEST_CHECKED_CPU)
+    if(_pgas_build_gpu)
+        message(FATAL_ERROR "Checked API validation requires PGAS_BUILD_GPU=OFF")
+    endif()
+    foreach(_target pgas_obj_cpu pgas_bound_cpu)
+        target_compile_definitions(${_target} PRIVATE C_SPIKES_CHECKED_CPU C_SPIKES_CHECKED_TESTING)
+        target_compile_features(${_target} PRIVATE cxx_std_17)
+        target_include_directories(${_target} PRIVATE src/c_spikes/pgas/include tests/native/g1e)
+    endforeach()
+endif()
+
+option(C_SPIKES_TEST_SWEEP_CPU "Enable the isolated opt-in sweep preparation boundary." OFF)
+if(C_SPIKES_TEST_SWEEP_CPU)
+    if(_pgas_build_gpu OR NOT C_SPIKES_TEST_CHECKED_CPU)
+        message(FATAL_ERROR "Sweep preparation validation requires CPU-only checked API validation")
+    endif()
+    foreach(_target pgas_obj_cpu pgas_bound_cpu)
+        target_compile_definitions(${_target} PRIVATE C_SPIKES_CHECKED_SWEEP_CPU)
+    endforeach()
+endif()
+
+option(C_SPIKES_TEST_SWEEP_RUN_CPU "Enable isolated opt-in single CPU sweep validation." OFF)
+if(C_SPIKES_TEST_SWEEP_RUN_CPU)
+    if(_pgas_build_gpu OR NOT C_SPIKES_TEST_SWEEP_CPU)
+        message(FATAL_ERROR "Sweep execution validation requires CPU checked sweep preparation")
+    endif()
+    foreach(_target pgas_obj_cpu pgas_bound_cpu)
+        target_compile_definitions(${_target} PRIVATE C_SPIKES_CHECKED_SWEEP_RUN_CPU)
+    endforeach()
+endif()
+
+if(C_SPIKES_TEST_RESAMPLING)
+    include(tests/native/standalone.cmake)
 endif()

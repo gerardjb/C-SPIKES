@@ -71,7 +71,7 @@ class synth_gen():
       # Default GCaMP parameter file colocated with the PGAS module
       gparam_path = Path(__file__).resolve().parents[1] / "pgas" / "20230525_gold.dat"
       Gparams = np.loadtxt(gparam_path)
-      self.gcamp = pgas.GCaMP(Gparams, cell_params)
+      self.gcamp = pgas.GCaMP(Gparams, np.array(cell_params, dtype=np.float64, copy=True))
     else:
       self.gcamp = GCaMP_model
     
@@ -227,7 +227,7 @@ class synth_gen():
     print(f"[syn_gen] Generating synthetic data to {synth_dir}")
     
     #Pass in Cparams and initialize the model
-    Cparams = Cparams if Cparams else self.Cparams
+    Cparams = np.array(self.Cparams if Cparams is None else Cparams, dtype=np.float64, copy=True)
     self.gcamp.setParams(Cparams[0],Cparams[1],Cparams[2],Cparams[3],\
       Cparams[4],Cparams[5])
     self.gcamp.init()

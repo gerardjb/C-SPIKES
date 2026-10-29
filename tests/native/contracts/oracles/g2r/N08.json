@@ -1,0 +1,30 @@
+{
+  "id": "N08",
+  "ok": true,
+  "records": [
+    {
+      "error": "out_of_range:Mat::elem(): index out of bounds",
+      "logs": [],
+      "rates_after": [
+        "ab585031cf61ee3f",
+        "cdfe867a3af0ed3f"
+      ],
+      "rates_before": [
+        "ab585031cf61ee3f",
+        "cdfe867a3af0ed3f"
+      ]
+    },
+    {
+      "error": "out_of_range:Mat::elem(): index out of bounds",
+      "logs": [],
+      "rates_after": [
+        "ab585031cf61ee3f",
+        "cdfe867a3af0ed3f"
+      ],
+      "rates_before": [
+        "ab585031cf61ee3f",
+        "cdfe867a3af0ed3f"
+      ]
+    }
+  ]
+}

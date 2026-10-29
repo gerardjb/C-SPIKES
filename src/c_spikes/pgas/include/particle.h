@@ -4,14 +4,16 @@
 #include<iostream>
 #include"param.h"
 #include"constants.h"
-#include"mvn.h"
-#include<armadillo>
+
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #include<string>
 #include"GCaMP_model.h"
 #include"particle_array.h"
 #include"resampling_options.h"
+#include "application_observation.h"
+#include "trajectory_storage.h"
+#include "particle_storage.h"
 
 #include <Kokkos_Core.hpp>
 
@@ -25,7 +27,7 @@ class Particle
         Particle& operator=(const Particle&);
         double B;
         int burst;
-        arma::vec C;
+        csp_application::ParticleState C;
         int S;
         double logWeight;
         int ancestor;
@@ -39,15 +41,12 @@ class Trajectory
     public:
         Trajectory(unsigned int, string);
         unsigned int size;
-        arma::vec B;
-        arma::ivec burst;
-        arma::vec C;  // this is only DFF
-        arma::vec S;
-        arma::vec Y;
+        csp_application::TrajectorySamples B;
+        csp_application::TrajectoryBursts burst;
+        csp_application::TrajectorySamples C;  // this is only DFF
+        csp_application::TrajectorySamples S;
+        csp_application::TrajectorySamples Y;
 
-        void simulate(gsl_rng*, const param&, const constpar*);
-        void simulate_doubles(gsl_rng*, const param&, const constpar*);
-        void simulate_doubles2(gsl_rng*, const param&, const constpar*,int);
         void write(ofstream &, unsigned int idx=0);
         double logp(const param*, const constpar*);
         Trajectory& operator=(const Trajectory&);
@@ -56,12 +55,29 @@ class Trajectory
 
 };
 
+#ifdef C_SPIKES_CHECKED_SWEEP_CPU
+namespace checked {
+struct SweepPreparation {
+    Report report;
+    std::optional<GCaMP_params> handoff;
+};
+#ifdef C_SPIKES_CHECKED_SWEEP_RUN_CPU
+struct SweepRun {
+    Report preparation;
+    bool sweep_returned = false;
+};
+#endif
+struct SweepAccess;
+}
+#endif
+
 class SMC{
+#ifdef C_SPIKES_CHECKED_SWEEP_CPU
+    friend struct checked::SweepAccess;
+#endif
     public:
 
-        SMC(string,int,constpar&,bool,int seed=0, unsigned int maxlen=0, string GParam_file=""); 
-        SMC(arma::vec,arma::vec,int,constpar&,bool,int seed=0, unsigned int maxlen=0, string GParam_file=""); 
-        SMC(arma::vec&,constpar&,bool verbose); 
+        SMC(csp_application::ObservationVector,csp_application::ObservationVector,int,constpar&,bool,int seed=0, unsigned int maxlen=0, string GParam_file="");
         ~SMC();
 
         double logf(const Particle&,const Particle&, const param&);
@@ -71,28 +87,33 @@ class SMC{
         void rmu(Particle &, double, const param &, bool); // draw initial state
         
         void PGAS(const param &theta, const Trajectory &traj_in, Trajectory &traj_out);
+#ifdef C_SPIKES_CHECKED_SWEEP_CPU
+        checked::SweepPreparation try_prepare_sweep(const param&, const checked::Context&);
+#endif
 
-        void PF(const param &theta); // to draw the initial trajectory
+#ifdef C_SPIKES_CHECKED_SWEEP_RUN_CPU
+        checked::SweepRun try_PGAS(const param&, const Trajectory&, Trajectory&, const checked::Context&);
+#endif
 
-        void MCMC(int iterations);
+
 
         void sampleParameters(const param&, param &, Trajectory&);
 
         unsigned int nparticles;
         unsigned int TIME;
 
-        arma::vec data_y;
-        arma::vec data_time;
+        csp_application::ObservationVector data_y;
+        csp_application::ObservationVector data_time;
 
         vector<Particle*> particleSystem;
 
         GCaMP* model;
 
     private:
+        void PGAS_impl(const param&, const Trajectory&, Trajectory&, bool prepared);
         pgas::ResamplingOptions resampling;
         uint64_t ancestor_sweep = 0;
         gsl_rng *rng;
-        arma::mat tracemat;
         constpar *constants;
         bool verbose;
 

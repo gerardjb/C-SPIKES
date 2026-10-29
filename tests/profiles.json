@@ -1,0 +1,43 @@
+{
+  "native_core": [
+    "tests/test_oasis_deconvolution.py",
+    "tests/test_oasis_numerical_contract.py",
+    "tests/test_oasis_parity.py",
+    "tests/test_oasis_validation.py",
+    "tests/test_pgas.py",
+    "tests/test_state_history.py",
+    "tests/test_syn_gen_unit.py"
+  ],
+  "python_contracts": [
+    "tests/test_oasis_cache.py",
+    "tests/test_oasis_inference.py",
+    "tests/test_smoothing.py",
+    "tests/test_inference_eval.py",
+    "tests/test_gui_oasis_app.py",
+    "tests/test_contract_epochwise_counts.py",
+    "tests/test_contract_noise_calibration.py",
+    "tests/test_contract_pgas_cache_consumers.py",
+    "tests/test_contract_pgas_cache_payload.py",
+    "tests/test_contract_psd_noise_calibration.py"
+  ],
+  "optional_package": [
+    "tests/test_dependency_imports.py",
+    "tests/test_gui_oasis_inference.py",
+    "tests/test_gui_oasis_plotting.py",
+    "tests/test_gui_paths.py",
+    "tests/test_inference_smoke.py",
+    "tests/test_mps_gate.py",
+    "tests/test_oasis_cli.py",
+    "tests/test_oasis_demo.py",
+    "tests/test_oasis_pipeline.py",
+    "tests/test_oasis_workflow.py",
+    "tests/test_package_contents.py",
+    "tests/test_pgas_manifest.py",
+    "tests/test_pgas_mps.py",
+    "tests/test_pgas_pool.py",
+    "tests/test_pgas_queue.py",
+    "tests/test_pipeline.py",
+    "tests/test_resampling_options.py",
+    "tests/test_smc_viz_cache.py"
+  ]
+}

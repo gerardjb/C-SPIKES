@@ -4,6 +4,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <armadillo>
+#include <cstring>
 
 namespace py = pybind11;
 namespace pybind11 {
@@ -89,7 +90,19 @@ public:
         size_t size = buf.shape(0);
         value = arma::vec(size);
         
-        std::memcpy(value.memptr(), buf.data(), size * sizeof(double));
+        if (size != 0) {
+            const auto *data = reinterpret_cast<const char *>(buf.data());
+            const py::ssize_t stride = buf.strides(0);
+            if (stride == static_cast<py::ssize_t>(sizeof(double))) {
+                std::memcpy(value.memptr(), data, size * sizeof(double));
+            } else {
+                // Copy logical elements, including reversed and broadcast views.
+                // memcpy also permits NumPy arrays with unaligned data pointers.
+                for (py::ssize_t i = 0; i < buf.shape(0); ++i) {
+                    std::memcpy(value.memptr() + i, data + i * stride, sizeof(double));
+                }
+            }
+        }
 		//std::cout << "Successfully casted to arma::vec with size: " << size << std::endl;
         return true;
     }

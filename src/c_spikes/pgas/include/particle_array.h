@@ -5,7 +5,7 @@
 #include <Kokkos_Random.hpp>
 #include "param.h"
 #include "constants.h"
-#include "GCaMP_model.h"
+#include "GCaMP_params.h"
 
 // Define the scalar type for the Kokkos views
 using Scalar = double;

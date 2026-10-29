@@ -2,7 +2,7 @@
 #include "include/constants.h"
 #include "include/param.h"
 #include "include/particle.h"
-#include "include/GCaMP_model.h"
+#include "include/GCaMP_params.h"
 #include "include/utils.h"
 #include <Kokkos_Random.hpp>
 
@@ -237,7 +237,7 @@ void ParticleArray::set_particle(int t, int idx, const Particle &p)
 {
     B_h(idx,t) = p.B;
     burst_h(idx,t) = p.burst;
-    for(int i=0;i<12;i++) C_h(idx,t,i) = p.C(i);
+    for(int i=0;i<12;i++) C_h(idx,t,i) = csp_application::particle_at(p.C,i);
     S_h(idx,t) = p.S;
     logWeight_h(idx,t) = p.logWeight;
     ancestor_h(idx,t) = p.ancestor;
@@ -248,7 +248,7 @@ void ParticleArray::get_particle(int t, int idx, Particle &p)
 {
     p.B = B_h(idx,t);
     p.burst = burst_h(idx,t);
-    for(int i=0;i<12;i++) p.C(i) = C_h(idx,t,i);
+    for(int i=0;i<12;i++) csp_application::particle_at(p.C,i) = C_h(idx,t,i);
     p.S = S_h(idx,t);
     p.logWeight = logWeight_h(idx,t);
     p.ancestor = ancestor_h(idx,t);
@@ -301,8 +301,8 @@ bool ParticleArray::check_particle_system(int t, std::vector<Particle*> & partic
             die = true;
         }
         for(int j=0;j<12;j++){
-            if (fabs(p_cpu.C(j) - p_gpu.C(j)) > 1e-10) {
-                cout << "TIME=" << t << "  Particle(" << i << "): CPU C(" << j << ")=" << p_cpu.C(j) <<  " GPU C(" << j << ")=" << p_gpu.C(j) << endl;
+            if (fabs(csp_application::particle_at(p_cpu.C,j) - csp_application::particle_at(p_gpu.C,j)) > 1e-10) {
+                cout << "TIME=" << t << "  Particle(" << i << "): CPU C(" << j << ")=" << csp_application::particle_at(p_cpu.C,j) <<  " GPU C(" << j << ")=" << csp_application::particle_at(p_gpu.C,j) << endl;
                 die = true;
             }
         }

@@ -1,0 +1,39 @@
+{
+  "duplicate": "ad62ebf2a657a13f",
+  "id": "S06",
+  "records": [
+    {
+      "dff": "ad62ebf2a657a13f",
+      "initial": [
+        "37043d054ebcee3e",
+        "bd5ef71eca8ba03e",
+        "c8725abd669f6d3e",
+        "06ef59ac6ddc883e",
+        "54a325854ee8063f",
+        "9ca105d12aae873e",
+        "dc1266d91869433e",
+        "42318d4dd326b43e",
+        "3b101ce5a6111b3e",
+        "064e8e25d2c4c03e",
+        "48afbc9af2d77a3e",
+        "48afbc9af2d77a3e"
+      ],
+      "state": [
+        "37043d054ebcee3e",
+        "bd5ef71eca8ba03e",
+        "c8725abd669f6d3e",
+        "06ef59ac6ddc883e",
+        "54a325854ee8063f",
+        "9ca105d12aae873e",
+        "dc1266d91869433e",
+        "42318d4dd326b43e",
+        "3b101ce5a6111b3e",
+        "064e8e25d2c4c03e",
+        "48afbc9af2d77a3e",
+        "48afbc9af2d77a3e"
+      ],
+      "steps": 0
+    }
+  ],
+  "reordered": "6ed2b66010f3b53f"
+}

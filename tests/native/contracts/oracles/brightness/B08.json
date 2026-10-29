@@ -1,0 +1,34 @@
+{
+  "id": "B08",
+  "inf": {
+    "member": {
+      "status": "ok",
+      "value": "+inf"
+    },
+    "view": {
+      "status": "ok",
+      "value": "+inf"
+    }
+  },
+  "nan": {
+    "member": {
+      "status": "ok",
+      "value": "nan"
+    },
+    "view": {
+      "status": "ok",
+      "value": "nan"
+    }
+  },
+  "ok": true,
+  "zero_denominator": {
+    "member": {
+      "status": "ok",
+      "value": "nan"
+    },
+    "view": {
+      "status": "ok",
+      "value": "nan"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "errors": [
+    "out_of_range:Mat::elem(): index out of bounds",
+    "out_of_range:Mat::elem(): index out of bounds",
+    "out_of_range:Mat::elem(): index out of bounds",
+    "out_of_range:Mat::elem(): index out of bounds"
+  ],
+  "id": "I07",
+  "ok": true
+}

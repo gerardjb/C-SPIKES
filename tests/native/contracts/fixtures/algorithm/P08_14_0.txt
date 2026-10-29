@@ -1,0 +1,14 @@
+-NaN
++INF
+1e999
+-1e-999
+-0
++nAn
+-NaN
++INF
+1e999
+-1e-999
+-0
++nAn
+-NaN
++INF

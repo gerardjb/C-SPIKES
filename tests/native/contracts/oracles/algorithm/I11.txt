@@ -1,0 +1,25 @@
+logic_error:interp1(): X must have at least two unique elements
+4045000000000000 8000000000000000 
+
+
+
+logic_error:interp1(): X and Y must have the same number of elements
+4045000000000000 8000000000000000 
+0 3ff0000000000000 
+3ff0000000000000 
+0 
+logic_error:interp1(): X must have at least two unique elements
+4045000000000000 8000000000000000 
+0 
+3ff0000000000000 
+0 
+logic_error:interp1(): X must have at least two unique elements
+4045000000000000 8000000000000000 
+3ff0000000000000 3ff0000000000000 
+3ff0000000000000 4000000000000000 
+
+
+
+0 3ff0000000000000 
+3ff0000000000000 4000000000000000 
+

@@ -33,7 +33,7 @@ dependencies = [
 # invoked via, e.g., "pip install -e .[test]"
 [project.optional-dependencies]
  test = [
-   "pytest >=6",
+   "pytest >=7",
    "pytest-cov >=3",
  ]
  docs = [
@@ -61,6 +61,10 @@ dependencies = [
   # '-DCMAKE_CXX_FLAGS=-g -O0',
   # Or for Release
   '-DCMAKE_BUILD_TYPE=Release',
+
+  # Optional numerical observations; set ON for diagnostic builds.
+  # This does not disable required validation or select the checked solver.
+  '-DC_SPIKES_OBSERVATIONAL_DIAGNOSTICS=OFF',
 
   # Kokkos Debug
   #'-DKokkos_ENABLE_DEBUG=ON',
@@ -93,21 +97,3 @@ dependencies = [
  test-command = "pytest {project}/tests"
  test-extras = ["test"]
  test-skip = ["*universal2:arm64"]
-
- [tool.pytest.ini_options]
- minversion = "6.0"
- addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config", "-m", "not slow"]
- xfail_strict = true
- filterwarnings = [
-   "error",
- ]
- markers = [
-   "slow: long-running integration or inference checks (run with -m slow)",
-   "port_parity: temporary parity checks for main_cache_noise_port; delete after port validation",
-   "requires_torch: requires PyTorch to be installed",
-   "requires_tensorflow: requires TensorFlow to be installed",
- ]
- log_cli_level = "INFO"
- testpaths = [
-   "tests",
- ]

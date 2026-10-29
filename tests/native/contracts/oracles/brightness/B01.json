@@ -1,0 +1,14 @@
+{
+  "id": "B01",
+  "ok": true,
+  "values": {
+    "member": {
+      "status": "ok",
+      "value": "0000000000000000"
+    },
+    "view": {
+      "status": "ok",
+      "value": "0000000000000000"
+    }
+  }
+}
