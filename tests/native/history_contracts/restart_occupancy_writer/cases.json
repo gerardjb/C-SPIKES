@@ -1,0 +1,157 @@
+{
+  "groups": {
+    "append": {
+      "pairs": [
+        "A01",
+        "A02"
+      ],
+      "candidate": [
+        "A03",
+        "A04",
+        "A05",
+        "A06",
+        "A07",
+        "A08",
+        "A09",
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14"
+      ]
+    },
+    "occupancy": {
+      "pairs": [
+        "O01",
+        "O02",
+        "O03",
+        "O04",
+        "O05",
+        "O06",
+        "O07",
+        "O08"
+      ]
+    },
+    "writer": {
+      "pairs": [
+        "W01",
+        "W02",
+        "W03",
+        "W04"
+      ],
+      "candidate": [
+        "W05",
+        "W06",
+        "W07",
+        "W08",
+        "W09",
+        "W10",
+        "W11",
+        "W12"
+      ]
+    }
+  },
+  "fixtures": [
+    {
+      "id": "P01",
+      "time_hex": [
+        "0x0.0p+0",
+        "0x1.a36e2eb1c432dp-15",
+        "0x1.a36e2eb1c432dp-14",
+        "0x1.a36e2eb1c432dp-13",
+        "0x1.0624dd2f1a9fcp-10"
+      ],
+      "spikes_hex": [],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-25",
+      "reset": true,
+      "mode": "FIXEDLA"
+    },
+    {
+      "id": "P02",
+      "time_hex": [
+        "0x0.0p+0",
+        "0x1.a36e2eb1c432dp-15",
+        "0x1.a36e2eb1c432dp-14",
+        "0x1.a36e2eb1c432dp-13",
+        "0x1.0624dd2f1a9fcp-10"
+      ],
+      "spikes_hex": [
+        "0x1.0624dd2f1a9fcp-11"
+      ],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-24",
+      "reset": false,
+      "mode": "FIXEDLA"
+    },
+    {
+      "id": "P03",
+      "time_hex": [
+        "0x1.0000000000000p+0",
+        "0x1.000346dc5d639p+0",
+        "0x1.00068db8bac71p+0",
+        "0x1.000d1b71758e2p+0",
+        "0x1.004189374bc6ap+0"
+      ],
+      "spikes_hex": [
+        "0x1.0020c49ba5e35p+0"
+      ],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-25",
+      "reset": true,
+      "mode": "FIXEDLA"
+    },
+    {
+      "id": "P04",
+      "time_hex": [
+        "0x1.0000000000000p+0",
+        "0x1.000346dc5d639p+0",
+        "0x1.00068db8bac71p+0",
+        "0x1.000d1b71758e2p+0",
+        "0x1.004189374bc6ap+0"
+      ],
+      "spikes_hex": [],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-24",
+      "reset": false,
+      "mode": "FIXEDLA"
+    }
+  ],
+  "append_cases": {
+    "A01": "fresh trim1 target2 seed17 exact baseline files",
+    "A02": "fresh trim1 target3 seed29 exact baseline files",
+    "A03": "11 distinct restored values, append target2; no parameter proposals",
+    "A04": "fresh trim2 target3, zero-based output indices 0..2",
+    "A05": "warm restart trim2 existing2 target3, prefix unchanged",
+    "A06": "already complete target1 no-op and byte preservation",
+    "A07": "missing parameter file, no output creation",
+    "A08": "header-only parameter file, untouched",
+    "A09": "truncated parameter row",
+    "A10": "old nine-column schema",
+    "A11": "malformed numeric parameter token",
+    "A12": "missing trajectory or logp companion",
+    "A13": "mismatched trajectory index/count or logp count",
+    "A14": "zero trim rejected before file changes"
+  },
+  "occupancy_cases": {
+    "O01": "P01 reset true; owned fractions, canonical pool sums",
+    "O02": "P02 reset false nonresting/spike raw parity",
+    "O03": "P03 offset endpoint raw parity and input validation/no files/RNG",
+    "O04": "P04 reset false offset no spike; mutation independence",
+    "O05": "P01 altered Gtot 3e-5 scalar setter, authoritative getter not Cparams",
+    "O06": "P01 repeated calls/current totals and retained snapshot independence",
+    "O07": "P01 raw pair plus derived-only zero/negative/NaN/Inf denominator metadata (no invalid native evolution)",
+    "O08": "P01 raw pair plus derived-only NaN/Inf numerator preservation, independent arrays/no clipping"
+  },
+  "writer_cases": {
+    "W01": "real model supplied/list params, fixed seed17, two finite noise records, actual spike generator",
+    "W02": "real model supplied/list override, seed29, two finite records, exact fields/RNG/init parity",
+    "W03": "injected data model NaN/Inf DFF/noise, unchanged cleaning/logging and unknown fields",
+    "W04": "injected finite model, subset and multiple seeds exact selection/formula/RNG",
+    "W05": "default constructor/list and ndarray explicit override identical native output; no ambiguous truth",
+    "W06": "supplied-model representation list/array parity, reset and no parameter value changes",
+    "W07": "actual Cascade reader roundtrip units/time/DFF; public import (no training)",
+    "W08": "actual ENS2 reader finite known 3-second trace/spikes schema fixture; no training",
+    "W09": "public wrapper existing-directory overwrite refusal leaves files intact",
+    "W10": "explicit None versus stored parameter selection; stored empty override not truth-fallback",
+    "W11": "nonfinite time repair/spike removal compatibility, isolated injected writer-data fixture",
+    "W12": "missing output fields added, unknown fields preserved, exact schema/formula/absolute event units"
+  },
+  "comparison": "Exact named arrays/files/RNG for unchanged paired behavior (nonfinite arrays equal class, finite bits exact). MAT compare parsed schema/fields, not header bytes. New fractions compare division by captured pools, no renormalization. Numerical envelopes unchanged. Repaired append uses explicit new record-count/status expectations; historical old outcomes retained."
+}

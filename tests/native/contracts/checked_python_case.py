@@ -2,9 +2,9 @@ import sys,importlib.util,json,numpy as np,gc
 extension,case,gpfile,cpfile=sys.argv[1:]
 spec=importlib.util.spec_from_file_location('pgas_bound_cpu',extension);mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
 context=mod.CheckedContext.owned_isolated_process();gp=np.loadtxt(gpfile);cp=np.loadtxt(cpfile)
-legacy={'setParams','setGmat','flux','steady_state','init','setState','setTimeStepMode','evolve','fixedStep','fixedStep_LA','getDFF','getAmplitude','integrateOverTime','integrateOverTime2','getDFFValues','getGValues','getStates'}
+legacy={'setParams','setGmat','flux','steady_state','init','setState','setTimeStepMode','evolve','fixedStep','fixedStep_LA','getDFF','getAmplitude','integrateOverTime','getPoolTotals','getDFFValues','getGValues','getStates'}
 assert {x for x in dir(mod.GCaMP) if not x.startswith('_')}==legacy|{'try_set_params','try_set_state','try_init','try_set_params_and_init','try_steady_state'}
-assert {x for x in dir(mod.Analyzer) if not x.startswith('_')}=={'run','add_parameter_sample','get_parameter_samples'}
+assert {x for x in dir(mod.Analyzer) if not x.startswith('_')}=={'run','add_parameter_sample','get_parameter_samples','get_run_status','get_run_message'}
 assert {x for x in dir(mod) if not x.startswith('_')}=={'GCaMP','Analyzer','TimeStepMode','CheckedContext','CheckedStatus','CheckedReport','try_create_gcamp'}
 if case=='T12':
  gs=np.ascontiguousarray(gp[::-1])[::-1];cs=np.ascontiguousarray(cp[::-1])[::-1]

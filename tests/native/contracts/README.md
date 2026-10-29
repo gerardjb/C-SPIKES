@@ -38,7 +38,7 @@ directory and a bounded deadline. Use `--build-manifest`,
 values. Set OMP_NUM_THREADS, OPENBLAS_NUM_THREADS, MKL_NUM_THREADS and
 NUMEXPR_NUM_THREADS to 1; do not use Python `-O`.
 
-The manifest describes 37 fresh processes, preserving grouped subcase order and
+The manifest describes 38 fresh processes, preserving grouped subcase order and
 exact JSON/text comparisons. Multiline JSON framing, diagnostic-ID isolation,
 child cleanup and fail-on-missing-reference behavior are retained. Failures keep
 stdout/stderr and a ledger. This orchestration composition and build hook have not
@@ -61,7 +61,7 @@ unexpected output files. These checks cover preparation rollback and tiny single
 sweeps, not inference accuracy or performance. The preparation fixture separately
 protects returned handoff snapshot independence.
 
-These additional fixtures are not included in the 37-process runner. Paired
+These additional fixtures are not included in the 38-process runner. Paired
 numerical/RNG comparisons require independent reference outputs and their scorer;
 the executable under test must not generate its own replacement oracle. Reference
 routing and the complete collection configuration need validation before this is
@@ -72,3 +72,7 @@ Existing ancestor/selected-trajectory tests protect distinct sampling/copy behav
 Optional-package tests remain separate from native checks. No GPU, arbitrary
 embedded-host, wheel portability or full inference qualification follows from this
 CPU subset. Required third-party notices remain with the derived code and fixtures.
+
+History boundary checks include a compile-time absence check for the retired
+alternative method. Obsolete alternative-call and offset-undercoverage cases are
+excluded; endpoint coverage is checked independently by the history fixtures.

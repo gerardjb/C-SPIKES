@@ -66,6 +66,8 @@ PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
              py::arg("verbose") = true, py::arg("gtSpikes") = 0, py::arg("has_trained_priors") = false, py::arg("has_gtspikes") = false,
              py::arg("maxlen") = 0, py::arg("Gparam_file") = "", py::arg("seed") = 0)
         .def("run", &Analyzer::run, py::call_guard<csp_diagnostics::PythonScope>())
+        .def("get_run_status", &Analyzer::get_run_status)
+        .def("get_run_message", &Analyzer::get_run_message)
         .def("add_parameter_sample", &Analyzer::add_parameter_sample)
         .def("get_parameter_samples", &Analyzer::get_parameter_samples);
 		    //.def("get_final_params", &get_final_params, "Get final parameters as a NumPy array");
@@ -93,8 +95,12 @@ PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
         .def("getDFF", py::overload_cast<>(&GCaMP::getDFF), py::call_guard<csp_diagnostics::PythonScope>())
         .def("getDFF", [](GCaMP& g, const csp_python::ScalarInputCopy& x){return g.getDFF(x.view());}, py::call_guard<csp_diagnostics::PythonScope>())
         .def("getAmplitude", &GCaMP::getAmplitude, py::call_guard<csp_diagnostics::PythonScope>())
+        .def("getPoolTotals", [](const GCaMP &g) {
+            const auto totals = g.getPoolTotals();
+            py::dict result; result["G_tot_M"] = totals[0]; result["B_tot_M"] = totals[1];
+            return result;
+        })
         .def("integrateOverTime", [](GCaMP& g, const csp_python::ScalarInputCopy& t, const csp_python::ScalarInputCopy& spikes){g.integrateOverTime(t.view(),spikes.view());}, py::arg("time"), py::arg("spike_times"), py::call_guard<csp_diagnostics::PythonScope>())
-        .def("integrateOverTime2", [](GCaMP& g, const csp_python::ScalarInputCopy& t, const csp_python::ScalarInputCopy& spikes){g.integrateOverTime2(t.view(),spikes.view());}, py::arg("time"), py::arg("spike_times"), py::call_guard<csp_diagnostics::PythonScope>())
         .def("getDFFValues", [](const GCaMP& g){return csp_python::numpy_copy(g.getDFFValues());}, py::call_guard<csp_diagnostics::PythonScope>())
         .def("getGValues", [](const GCaMP& g){return csp_python::numpy_copy(g.getGValues());}, py::call_guard<csp_diagnostics::PythonScope>())
         .def("getStates", [](const GCaMP &g) {

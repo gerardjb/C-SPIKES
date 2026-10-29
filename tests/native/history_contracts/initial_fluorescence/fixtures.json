@@ -1,0 +1,103 @@
+{
+  "gate": "L3f",
+  "root": "ac2536614793964e8ff3e9390dd8b823c3eb0514",
+  "cases": [
+    {
+      "id": "P01",
+      "time_hex": [
+        "0x0.0p+0",
+        "0x1.a36e2eb1c432dp-15",
+        "0x1.a36e2eb1c432dp-14",
+        "0x1.a36e2eb1c432dp-13",
+        "0x1.0624dd2f1a9fcp-10"
+      ],
+      "spikes_hex": [],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-25",
+      "reset": true,
+      "mode": "FIXEDLA"
+    },
+    {
+      "id": "P02",
+      "time_hex": [
+        "0x0.0p+0",
+        "0x1.a36e2eb1c432dp-15",
+        "0x1.a36e2eb1c432dp-14",
+        "0x1.a36e2eb1c432dp-13",
+        "0x1.0624dd2f1a9fcp-10"
+      ],
+      "spikes_hex": [
+        "0x1.0624dd2f1a9fcp-11"
+      ],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-24",
+      "reset": false,
+      "mode": "FIXEDLA"
+    },
+    {
+      "id": "P03",
+      "time_hex": [
+        "0x1.0000000000000p+0",
+        "0x1.000346dc5d639p+0",
+        "0x1.00068db8bac71p+0",
+        "0x1.000d1b71758e2p+0",
+        "0x1.004189374bc6ap+0"
+      ],
+      "spikes_hex": [
+        "0x1.0020c49ba5e35p+0"
+      ],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-25",
+      "reset": true,
+      "mode": "FIXEDLA"
+    },
+    {
+      "id": "P04",
+      "time_hex": [
+        "0x1.0000000000000p+0",
+        "0x1.000346dc5d639p+0",
+        "0x1.00068db8bac71p+0",
+        "0x1.000d1b71758e2p+0",
+        "0x1.004189374bc6ap+0"
+      ],
+      "spikes_hex": [],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-24",
+      "reset": false,
+      "mode": "FIXEDLA"
+    }
+  ],
+  "processes": 16,
+  "native_pairs": 4,
+  "public_cases": 4,
+  "contracts": {
+    "C01": "repeat after restoring initial calcium",
+    "C02": "fluorescence getter owns returned storage",
+    "C03": "nonresting initial fluorescence follows formula and is nonzero",
+    "C04": "zero normalization denominator stays visibly nonfinite"
+  },
+  "mechanism": "Assign temporary fluorescence sample zero from actual initial G using unchanged fluorescence normalization before interpolation.",
+  "falsifier": "Initial formula mismatch or changes to grid/spikes/concentration histories/defined later fluorescence.",
+  "scorer": "Exact baseline/candidate bytes for grids, spike inputs, all 12 pre/post-interpolation states and fluorescence tail i>=1; returned fluorescence outside first interpolation interval exact. Candidate initial formula independent sum over 2,3,5,6,8: rounding bound 32eps times (abs(Ginit)+sum(abs(Gbright)))/abs(denominator), plus max(abs(a),abs(b),tiny). Independently interpolate captured tail with initial formula; same rounding bound where first interval involved, otherwise 32eps max adjacent magnitudes. No comparison against uninitialized baseline sample zero.",
+  "deadlines": {
+    "startup": 30,
+    "body": 3,
+    "runner": 165,
+    "admission": 163
+  },
+  "reservations": {
+    "build": 360,
+    "test": 180,
+    "recovery": 60
+  },
+  "cap_cpu_and_billing_seconds": 600,
+  "max_memory_mib": 4096,
+  "scratch_bytes": 268435456,
+  "retained_bytes": 26214400,
+  "initial_usage_remaining": 76,
+  "exclusions": [
+    "other integrators",
+    "equations/state/reset/init changes",
+    "endpoint/grid changes",
+    "helper/export changes",
+    "new invalid-normalization filtering or exceptions",
+    "main/merge/push/tag"
+  ],
+  "created_utc": "2026-10-25T01:17:57.510929+00:00"
+}

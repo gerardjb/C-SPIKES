@@ -656,6 +656,15 @@ void GCaMP::integrateOverTime(csp_model::ScalarInputView time_input, csp_model::
 
 //    arma::vec timesteps = arma::regspace(time_vect(0), fine_dt, time_vect(time_vect.size() - 1));
     auto grid_storage = csp_model::workspace::positive_grid_compat(time_vect(0), fine_dt, new_t_end);
+    // Preserve the existing absolute lattice and its prefix; add only missing support.
+    while (grid_storage(grid_storage.size() - 1) < t_end) {
+        const std::size_t next_index = grid_storage.size();
+        csp_model::HistoryVector extended_grid;
+        extended_grid.set_size(next_index + 1);
+        for (std::size_t j = 0; j < next_index; ++j) extended_grid(j) = grid_storage(j);
+        extended_grid(next_index) = t_start + static_cast<double>(next_index) * fine_dt;
+        grid_storage = std::move(extended_grid);
+    }
     const auto& timesteps = grid_storage;
     size_t num_steps = timesteps.size();
     csp_model::HistoryVector calcium_input;
@@ -683,6 +692,8 @@ void GCaMP::integrateOverTime(csp_model::ScalarInputView time_input, csp_model::
     BCa_values(0) = BCa;
     Ca_values(0) = Ca;
     Ca_in_values(0) = Ca_in;
+    temp_DFF_values(0) = (csp_model::indexed_brightness_sum5(G.memptr(), G.n_elem, bright_indices) - Ginit) /
+                         (Ginit - G0 + (Gsat - G0) / (Rf - 1));
 
     for (unsigned int i = 1; i < timesteps.size(); ++i) {
         diagnostic.step(TSMode, "integrateOverTime", t_end-t_start, fine_dt, i, Ca, BCa, Ca_in);
@@ -779,86 +790,7 @@ void GCaMP::integrateOverTime(csp_model::ScalarInputView time_input, csp_model::
 }
 
 //
-void GCaMP::integrateOverTime2(csp_model::ScalarInputView time_input, csp_model::ScalarInputView spike_input) {
-    // Strict read-only descriptors preserve live native alias reads. These local
-    // const objects never write, resize, own or retain the borrowed input storage.
-    const auto time_vect = time_input;
-    const auto spike_times = spike_input;
-    const auto bright_indices = brightStates;
-    Scope diagnostic("GCaMP.integrateOverTime2");
-    diagnostic.mode(TSMode);
-    diagnostic.array(state, "initial_state", state_value);
-    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
-    
-		DFF_values.reset();  // Clear previous DFF values
-		
-		double fine_dt = 100e-6; // Hard code this near instability edge for hardest G/Cparams
 
-		auto G = csp_model::workspace::indicator_copy(state);
-    double BCa = state(9);
-    double Ca = state(10);
-    double Ca_in = state(11);
-    double dBCa_dt, dCa_dt, dCa_in_dt, Gflux, Cflux_out, Cflux_in;
-
-    // Generate timesteps, prep calcium vect
-    auto grid_storage = csp_model::workspace::positive_grid_compat(time_vect(0), fine_dt, time_vect(time_vect.size() - 1));
-    const auto& timesteps = grid_storage;
-    csp_model::HistoryVector calcium_input;
-    calcium_input.set_size(timesteps.size());
-    for (std::size_t j=0; j<calcium_input.size(); ++j) calcium_input(j)=0.;
-
-		// Temporary vector to store intermediate DFF values
-    auto temp_DFF_values = csp_model::workspace::zeroed_temporary_compat(timesteps.size());
-
-    // Find all timesteps that are within fine_timestep of one of the elements of spike_times
-    for (std::size_t spike_index=0; spike_index<spike_times.size(); ++spike_index) {
-        const double spike_time = spike_times(spike_index);
-        csp_model::workspace::fill_spike_matches(calcium_input, grid_storage, spike_time, fine_dt/2, DCaT/fine_dt);
-    }
-
-    for (unsigned int i = 1; i < timesteps.size(); ++i) {
-        diagnostic.step(TSMode, "integrateOverTime2", time_vect(time_vect.size()-1)-time_vect(0), fine_dt, i, Ca, BCa, Ca_in);
-				
-				/*
-					Updated version with proper internal cal handling
-				*/
-				setGmat(Ca);
-				csp_model::workspace::Indicator9 dG_dt;
-        csp_model::workspace::product9_compat(Gmat, G, dG_dt);
-				Gflux = flux(Ca,{G.memptr(),G.n_elem});
-				
-				Cflux_out = -gamma*(Ca-c0) - Gflux;
-				Cflux_in = - gam_in*(Ca-c0) + gam_out*(Ca-c0);
-        dBCa_dt = (Cflux_out + Cflux_in + calcium_input(i))*kapB/(kapB + 1);
-        dCa_in_dt = -Cflux_in*kapB/(1+kapB);
-				dCa_dt  = (Cflux_in + Cflux_out + calcium_input(i))*1/(kapB+1);
-						
-				csp_model::workspace::advance9_compat(G, fine_dt, dG_dt);
-        BCa = BCa +  fine_dt*dBCa_dt;
-        Ca  = Ca  +  fine_dt*dCa_dt;
-        Ca_in = Ca_in + fine_dt*dCa_in_dt;
-        diagnostic.array(G, "G", state_value);
-        diagnostic.scalar(BCa, "BCa", state_value, 9);
-        diagnostic.scalar(Ca, "Ca", state_value, 10);
-        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
-
-        // Store DFF value at each timestep
-        temp_DFF_values(i) = (csp_model::indexed_brightness_sum5(G.memptr(), G.n_elem, bright_indices) - Ginit) /
-                             (Ginit - G0 + (Gsat - G0) / (Rf - 1));
-    }
-
-    // Interpolate back onto original time vector
-		//cout<<"Size of timesteps = "<<timesteps.size()<<"; Size of temp_DFF_values = "<<temp_DFF_values.size()<<endl;
-    {
-        auto dff_history_bridge = csp_model::linear_interpolate_compat(
-            {timesteps.data(),timesteps.size()}, {temp_DFF_values.data(),temp_DFF_values.size()},
-            {time_vect.data(),time_vect.size()});
-        DFF_values.set_size(dff_history_bridge.size());
-        for(std::size_t i=0;i<DFF_values.size();++i)DFF_values(i)=dff_history_bridge(i);
-    }
-		//cout<<"Size of DFF_values after interp1 = "<<DFF_values.n_elem<<endl;
-    diagnostic.array(csp_model::scan_view(DFF_values), "DFF_history", output_value);
-}
 
 // Giovanni's methods for passing compressed states around the SMC sampler
 double GCaMP::getDFF(){

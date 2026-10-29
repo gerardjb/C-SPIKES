@@ -22,6 +22,7 @@
     "g2g.cpp": "1ff66eab53d81d21c899f95bcf3bf30a83afa7fb54dc32ce63dd1091d8f5ab65",
     "g2r.cpp": "6124a4ad0904deab46b550655dad0dff438ac1b451d688180d185ea3a0d8a53b",
     "factory.cpp": "0af5aa69425e810a7f8b5ba91fd4dca5a19aaee2e29f021784df52d652da857f",
+    "g2v.cpp": "23a64204fde3db657874311a7df24f595bd82803ee109c94e19a2dce3d7a4436",
     "sweep_run.cpp": "6f116b8fd14304340743bd2c2772d307bcce5d60d600a4a1357eaa9dc7157ce2",
     "fixtures/history_pattern.json": "1a470ab412d69e351d9e0894bbdf31b87dd6c6ee35885501f5343a95b15d8071",
     "fixtures/logging_gparams.dat": "1280692b5bc842d0d0f8effa17dcd6bdf5eb9cfa856d2c41aab85337a1cb3883",
@@ -124,6 +125,20 @@
     "oracles/g2r/N07.json": "f11af4427b92a47caad9644f788e95b7d6b8baec1212611b66b76f845ea6d1c2",
     "oracles/g2r/N01.json": "15244b4c44326d4c7ce77929f7c0d6b854827f77db95066926e59e2574228820",
     "oracles/g2r/N04.json": "68e0b91ad89b6e32a39f7d90b32aed6b00f742335eb229c149a432c98de9901a",
+    "oracles/g2v/V14.json": "046da5493b6a534d904b56eccab7504d4f1dd21237954eba65e3059e1b33fac7",
+    "oracles/g2v/V12.json": "bc039b68eb615d2981961a1963567fdd9c9c891a79a36d0c0192ae2015a0022b",
+    "oracles/g2v/V10.json": "6e4851092943b222e5f8b903e0812aa01974c056c8de50018c1faff2729c58c9",
+    "oracles/g2v/V04.json": "190509a23c22dd6a02e71c4dcd17f347f80fc8c068a045d3ac089684ac8c951b",
+    "oracles/g2v/V16.json": "99c854a8fff88ea898cb56f070b80756a170dca76d2640d045ae21d3d96f1708",
+    "oracles/g2v/V15.json": "8032e69b43932a1ac9524b1eceec1e7d0ad760606b3bdb35223e9c7175c4fa32",
+    "oracles/g2v/V13.json": "ccd7a1f712235cd873c1de0444134e226831ab3d03f44a0343de12375ed6dd5e",
+    "oracles/g2v/V06.json": "71094d1d37e14a356409331faed3f11b3d51844dda6af0e776d77561dd8fb6da",
+    "oracles/g2v/V07.json": "f098aab0a99b2fdbcbebae13c53992746f0a77f706d967b4e6373fcf2849bf01",
+    "oracles/g2v/V03.json": "75943df4e47f627b17540332f933f3d2566845ceea414fbe62744f80e5f47211",
+    "oracles/g2v/V01.json": "975cd73dc34a3db75ff33faeffb1907cc10155e23bbdcb3a8f9ea0533bbd2ec1",
+    "oracles/g2v/V09.json": "4565e840b0c8a37f3733f717da8d28430921d865f0fdb6eb6f15f1bb9108d598",
+    "oracles/g2v/V08.json": "23d5b4653df78610e7393b5c52e585095b2bc6d3f1b4de7ac04e71c232d33c7d",
+    "oracles/g2v/V11.json": "22dbfd43026953a1bc05e809438790f3005f25722d18efb9b40492cddea643dd",
     "oracles/g2t/T01.json": "9841031286434a9ac9c98e08a0efea512b1d76fa0023028333dd854d7f7a897a",
     "oracles/g2t/T02.json": "5c6ae97b0958dd906f3149b9aca9b54f87bed0e08984febbdc96dc72692e9c1d",
     "oracles/g2t/T07.json": "fcb790f6f2e845041ddc9b42d698e10ee0cb461b26df0fc3a2f2a89c9bace4e4",
@@ -252,6 +267,7 @@
   "limitations": "Hashes identify the current staged fixtures. The maintained owned-type probes and frozen references are retained; preparation-only fixtures have explicit owned-interface adaptations. This does not assert that every file is byte-identical to either complete revision or that this runner/build hook has executed.",
   "source_revisions": [
     "bbd392f2b9cab1951cfca04a9dd67783f4fb6aa6",
-    "af6e6af924a69fc43258bb945a4d8f51a2c59ef5"
+    "af6e6af924a69fc43258bb945a4d8f51a2c59ef5",
+    "aa0a0b04fd88da2e3958b8e95b674aac46b7f8d2"
   ]
 }

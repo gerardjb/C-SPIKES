@@ -22,7 +22,11 @@ public:
     }
 	std::vector<double> final_params;
 
+    const std::string& get_run_status() const { return run_status; }
+    const std::string& get_run_message() const { return run_message; }
 private:
+    std::string run_status = "not_started";
+    std::string run_message;
     csp_application::ObservationVector time;
     csp_application::ObservationVector data;
     std::string constants_file;

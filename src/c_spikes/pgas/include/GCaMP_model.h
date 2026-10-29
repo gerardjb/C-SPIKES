@@ -86,7 +86,6 @@ public:
 		
 		// Methods for making and retrieving GCaMP simulations via python bindings
 		void integrateOverTime(csp_model::ScalarInputView time_input, csp_model::ScalarInputView spike_input);
-		void integrateOverTime2(csp_model::ScalarInputView time_input, csp_model::ScalarInputView spike_input);
 		
     // Method to retrieve the stored DFF and state values
     //const arma::vec& getDFFValues() const;
@@ -98,6 +97,8 @@ public:
     
     // method required for kokkos
     void read_params(GCaMP_params & params);
+
+    std::array<double,2> getPoolTotals() const { return {{G_tot, B_tot}}; }
 
 private:
     // parameters that are allowed to vary

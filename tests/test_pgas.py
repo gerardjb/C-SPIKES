@@ -1,81 +1,38 @@
-import numpy as np
-import c_spikes.pgas.pgas_bound as pgas
-from c_spikes.utils import load_Janelia_data, spike_times_2_binary
+"""Small seeded CPU Analyzer schema, ownership and finite-output contract.
+
+This is a two-sweep smoke fixture, not an inference-accuracy benchmark.
+"""
 from pathlib import Path
+import numpy as np
+from c_spikes.pgas import pgas_bound as pgas
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-def test_pgas_single_iteration(tmp_path, monkeypatch):
-    """
-    Test PGAS with a single iteration using a sample dataset.
-    This test checks if the PGAS runs correctly and produces expected output files
-    """
-    monkeypatch.chdir(tmp_path)
-
-    # Load sample data matching the demo configuration
-    time, data, spike_times = load_Janelia_data(
-        str(REPO_ROOT / 'gt_data' / 'jGCaMP8f_ANM471993_cell03.mat'))
-
-    time1 = np.float64(time[0, 1000:2000]).copy()
-    data1 = np.float64(data[0, 1000:2000]).copy()
-    binary_spikes = np.float64(spike_times_2_binary(spike_times, time1))
-
-    analyzer = pgas.Analyzer(
-        time=time1,
-        data=data1,
-        constants_file=str(REPO_ROOT / 'parameter_files' / 'constants_GCaMP8_soma.json'),
-        output_folder=str(tmp_path),
-        column=1,
-        tag='unit',
-        niter=1,
-        append=False,
-        verbose=0,
-        gtSpikes=binary_spikes,
-        has_gtspikes=True,
-        maxlen=1000,
-        Gparam_file=str(REPO_ROOT / 'src' / 'c_spikes' / 'pgas' / '20230525_gold.dat'),
-        seed=2,
-    )
-    analyzer.run()
-
-    param_file = tmp_path / 'param_samples_unit.dat'
-    traj_file = tmp_path / 'traj_samples_unit.dat'
-    logp_file = tmp_path / 'logp_unit.dat'
-
-    assert param_file.exists(), 'parameter sample file missing'
-    assert traj_file.exists(), 'trajectory sample file missing'
-    assert logp_file.exists(), 'logp file missing'
-
-    params = np.atleast_2d(np.loadtxt(param_file, delimiter=',', skiprows=1))
-    # These are from a known run of PGAS with the same parameters
-    expected = np.array([6.13335e-05, 668.019, 1.3976e-05, 5.24437,
-                         5.19405, 5.29991, 0.00566783, 0.539858,
-                         1.10651, 0.0602791, 0.0593417])
-    # Ensure single sample and values within +/-20% of expected
-    assert params.shape == (1, expected.size)
-    assert np.all(np.abs(params[0] - 1*expected) <= np.abs(expected))
-
-    with open(traj_file) as f:
-        header = f.readline().strip()
-        assert header == 'index,burst,B,S,C,Y'
-        lines = [f.readline().strip() for _ in range(4)]
-
-    # Check trajectory samples against expected values from a known run
-    expected_lines = [
-        '0,0,-3.9919e-05,0,-2.08756e-15,0.223743',
-        '0,0,-0.00130078,0,-3.28516e-15,0.170749',
-        '0,0,0.00164983,0,-4.30697e-15,0.0866747',
-        '0,0,0.0045333,0,-4.66954e-15,0.182529',
-    ]
-    for line, ref in zip(lines, expected_lines):
-        vals = np.array([float(v) for v in line.split(',')])
-        ref_vals = np.array([float(v) for v in ref.split(',')])
-        assert not any(np.isnan(vals))
-        assert np.allclose(vals[[0,2,4,5]], ref_vals[[0,2,4,5]], rtol=1,atol=1)#, atol=abs(ref_vals[-1])) # erlaxing for now, might retighten later
-
-    # Sanjeev reports that logp values sometimes come back as NaN especially with low sample rates
-    # Haven't had a chance to look into this yet, but for now just assuring that doesn't happen in the unit test
-    logp_vals = np.loadtxt(logp_file)
-    assert not np.isnan(logp_vals).any()
+def test_analyzer_owned_samples_and_saved_schema(tmp_path):
+    fixture = Path(__file__).parent / "fixtures/native_core"
+    time = np.array([0., .001, .002]); data = np.zeros(3); spikes = np.array([0.])
+    before = tuple(x.tobytes() for x in (time, data, spikes))
+    model = pgas.Analyzer(time=time, data=data, constants_file=str(fixture / "analyzer.json"),
+        output_folder=str(tmp_path), column=0, tag="test", niter=2, trainedPriorFile="",
+        append=False, trim=1, verbose=False, gtSpikes=spikes, has_trained_priors=False,
+        has_gtspikes=False, maxlen=0, Gparam_file=str(fixture / "gparams.dat"), seed=17)
+    assert model.get_parameter_samples().shape == (0, 0)
+    assert model.run() is None
+    assert model.get_run_status() == "completed"
+    first, second = model.get_parameter_samples(), model.get_parameter_samples()
+    assert first.shape == second.shape == (2, 6)
+    assert first.dtype == np.float64 and first.flags.owndata and second.flags.owndata
+    assert not np.shares_memory(first, second) and np.isfinite(first).all()
+    saved = second.tobytes(); first[:] = -123
+    assert second.tobytes() == model.get_parameter_samples().tobytes() == saved
+    assert tuple(x.tobytes() for x in (time, data, spikes)) == before
+    parameter = (tmp_path / "param_samples_test.dat").read_text().splitlines()
+    assert parameter[0] == "G_tot,gamma,DCaT,Rf,gam_in,gam_out,sigma2,r0,r1,w01,w10"
+    assert len(parameter) == 3 and all(len(row.split(',')) == 11 for row in parameter[1:])
+    trajectory = (tmp_path / "traj_samples_test.dat").read_text().splitlines()
+    assert trajectory[0] == "index,burst,B,S,C,Y"
+    values = np.loadtxt(tmp_path / "traj_samples_test.dat", delimiter=',', skiprows=1, ndmin=2)
+    assert values.shape == (6, 6) and np.isfinite(values).all()
+    assert np.array_equal(values[:, 0], [0, 0, 0, 1, 1, 1])
+    logp = np.loadtxt(tmp_path / "logp_test.dat", ndmin=1)
+    assert logp.shape == (2,) and np.isfinite(logp).all()
+    assert (tmp_path / "last_params_test.dat").stat().st_size > 0

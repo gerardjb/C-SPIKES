@@ -708,6 +708,35 @@
       "oracle_group": null,
       "body_limit_seconds": 5,
       "fresh_process": true
+    },
+    {
+      "id": "native-g2v",
+      "target": "csp_contract_g2v",
+      "args": [
+        "{fixtures}/gparams.dat",
+        "{fixtures}/cparams.dat",
+        "{fixtures}/loader"
+      ],
+      "score": "grouped",
+      "cases": [
+        "V01",
+        "V03",
+        "V04",
+        "V06",
+        "V07",
+        "V08",
+        "V09",
+        "V10",
+        "V11",
+        "V12",
+        "V13",
+        "V14",
+        "V15",
+        "V16"
+      ],
+      "oracle_group": "g2v",
+      "body_limit_seconds": 5,
+      "fresh_process": true
     }
   ],
   "deferred_to_P3": [

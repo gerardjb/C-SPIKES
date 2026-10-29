@@ -1,0 +1,61 @@
+{
+  "BM": {
+    "bm_sigma": 0.0001
+  },
+  "data": {
+    "sampling_frequency": 1000
+  },
+  "preproc": {
+    "baseline_frames": 0,
+    "nospike_before": 0,
+    "normalization_index": 0
+  },
+  "priors": {
+    "alpha rate 0": 1.0,
+    "beta rate 0": 1.0,
+    "alpha rate 1": 1.0,
+    "beta rate 1": 1.0,
+    "alpha w01": 1.0,
+    "beta w01": 1.0,
+    "alpha w10": 1.0,
+    "beta w10": 1.0,
+    "alpha sigma2": 1.0,
+    "beta sigma2": 1.0,
+    "G_tot mean": 6.04700454e-05,
+    "G_tot sd": 1.0,
+    "gamma mean": 1000,
+    "gamma sd": 1.0,
+    "DCaT mean": 1e-05,
+    "DCaT sd": 1.0,
+    "Rf mean": 5,
+    "Rf sd": 1.0,
+    "gam_in mean": 40,
+    "gam_in sd": 1.0,
+    "gam_out mean": 4,
+    "gam_out sd": 1.0
+  },
+  "proposals": {
+    "G_tot prop sd": 0.0,
+    "gamma prop sd": 0.0,
+    "DCaT prop sd": 0.0,
+    "Rf prop sd": 0.0,
+    "gam_in prop sd": 0.0,
+    "gam_out prop sd": 0.0
+  },
+  "MCMC": {
+    "seed": 17,
+    "niter": 2,
+    "nparticles": 2,
+    "SAMPLE_PARAMETERS": false,
+    "KNOWN_SPIKES": false,
+    "maxspikes": 2,
+    "c0_is_first_y": false
+  },
+  "ODE": {
+    "time step mode": 1
+  },
+  "physics_frequency_hz": 100.0,
+  "substeps_per_frame": 1,
+  "min_substeps": 1,
+  "time_integrated_observations": true
+}
