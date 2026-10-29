@@ -43,9 +43,10 @@ notices and relocation to a second prefix with the first removed. They used
 CPython 3.10.16, NumPy 2.1.3, SciPy 1.15.3 and a pinned LP64 serial provider profile.
 Those versions describe the tested environment, not universal dependency minima.
 
-The reusable 80-case intent and explicit preparation requirements are in
-`tests/packaging/native_install`. Import origins must resolve to the installed
-prefix from an empty working directory. Preserve installed bytes across relocation;
+The repository does not currently supply a complete installation/relocation test
+controller. The notice inputs are in `tests/packaging/native_install/notices`.
+For installation validation, import origins must resolve to the installed prefix
+from an empty working directory. Preserve installed bytes across relocation;
 build-tree and installed hashes may differ when CMake removes RPATH. Verify that
 transformation rather than accepting arbitrary differences.
 

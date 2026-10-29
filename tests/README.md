@@ -14,25 +14,27 @@ explicitly selects all Python profiles. Unexecuted profiles are not qualified.
 Selection occurs before module imports so optional stacks do not become default
 native-core collection requirements. Unknown profiles and empty final selections
 are errors. Slow tests remain excluded unless explicitly selected with `-m slow`.
+To include both slow and non-slow tests, use
+`python -m pytest --csp-profile=all -o addopts=`.
 Review their workload and resource requirements before execution.
 
-`profiles.json` is the authoritative file inventory; `TEST_DISPOSITIONS.json`
-explains retained, replaced and consolidated coverage. Temporary port-parity
-wrappers and their environment opt-in have retired; their useful cache/noise/window
-assertions now live in `test_contract_*`. The earlier loose real-data PGAS test
-has been replaced, not preserved as an independent numerical oracle.
+`profiles.json` is the authoritative file inventory. The `test_contract_*` files
+protect cache payloads/consumers, noise calibration and windowing without requiring
+native inference. The seeded PGAS smoke checks schema and ownership; it is not an
+independent inference-accuracy oracle.
 
 `native/contracts` provides explicit CPU probes and an integrity-checked runner
-for its listed subset. `native/history_contracts` provides independent history,
-restart and writer fixture/scorer kernels. Neither directory is default pytest.
-See their READMEs and `native/REFERENCE_REQUIREMENTS.md` for build, reference and
-controller prerequisites. Historical identifiers are stable fixture labels, not
-additional supported APIs. Do not regenerate expectations from the binary under
+for its listed subset; it is not default pytest. See its README for build,
+reference and controller prerequisites. `run_supplemental.py` dispatches the additional checked factory/sweep/Python
+fixtures separately. `C_SPIKES_TEST_RESAMPLING=ON` connects ancestor sampling,
+selected trajectory, terminal-weight copying and diagnostic-header fixtures to
+CTest; CUDA fixtures require a CUDA build and GPU. Historical identifiers
+are stable fixture labels, not additional supported APIs. Do not regenerate expectations from the binary under
 test or convert missing references into skips.
 
-The native qualification controller, reference adapters and profile routing must
-be validated on the completed source tree. Earlier execution of the assertions
-does not validate a newly assembled runner, wheel or dependency combination.
+Use separate ordinary and checked build directories and the explicit dependency
+and manifest admission described in `native/contracts/README.md`. Source-tree
+results do not validate a wheel or a different dependency combination.
 Runtime/provider collision checks, installation/relocation, GPU smoke and matched
 inference performance require their own explicit profiles and resource plans.
 They are not implied by a passing default pytest invocation.

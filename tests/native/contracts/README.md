@@ -4,7 +4,8 @@ These opt-in checks protect owned storage, column-major layout, parsing, signed
 indices, gathers/reductions, numerical failure ordering, output ownership, aliases,
 checked transactions and diagnostic context. The small serialized references are
 comparison inputs, not inference datasets. Identifiers in `cases.json` are stable
-fixture labels. `TEST_SOURCES.json` identifies the source revisions and hashes.
+fixture labels. `INPUTS.json` pins the current source and fixture bytes required
+by the runner. Git history retains earlier fixture revisions.
 
 ## Build and dependency contract
 
@@ -24,9 +25,9 @@ pinned numerical-provider profile, GSL/CBLAS, JsonCpp, CPU Kokkos and compatible
 compiler/Python/NumPy dependencies. Dependency installation and backend substitution
 are not performed by the test runner.
 
-This observation/context build hook requires `C_SPIKES_OBSERVATIONAL_DIAGNOSTICS=ON`.
-Essential protections also require their own diagnostics-disabled checks; success
-of the observational fixtures does not establish that behavior.
+The exact observation/context runner requires `C_SPIKES_OBSERVATIONAL_DIAGNOSTICS=ON`.
+The build hook also supports OFF for self-asserting math, transaction, factory and
+sweep guards; ON-only output references must not be applied to OFF builds.
 
 ## Runner and exact comparisons
 
@@ -41,9 +42,9 @@ NUMEXPR_NUM_THREADS to 1; do not use Python `-O`.
 The manifest describes 38 fresh processes, preserving grouped subcase order and
 exact JSON/text comparisons. Multiline JSON framing, diagnostic-ID isolation,
 child cleanup and fail-on-missing-reference behavior are retained. Failures keep
-stdout/stderr and a ledger. This orchestration composition and build hook have not
-yet been execution-validated. Hash manifests must be deliberately reviewed and
-refrozen when source changes; do not regenerate them automatically during a run.
+stdout/stderr and a ledger. Hash manifests must be deliberately reviewed and refrozen when source changes;
+do not regenerate them automatically during a run. Passing these checks applies
+to the admitted source, binaries and dependency profile.
 
 ## Additional checked factory and sweep fixtures
 
@@ -63,9 +64,8 @@ protects returned handoff snapshot independence.
 
 These additional fixtures are not included in the 38-process runner. Paired
 numerical/RNG comparisons require independent reference outputs and their scorer;
-the executable under test must not generate its own replacement oracle. Reference
-routing and the complete collection configuration need validation before this is
-represented as a complete regression suite. Injected failures do not establish
+the executable under test must not generate its own replacement oracle. The supplemental runner exercises their local assertions; it does not supply
+independent numerical/RNG parity scoring. Injected failures do not establish
 actual SVD nonconvergence or universal exception safety.
 
 Existing ancestor/selected-trajectory tests protect distinct sampling/copy behavior.
@@ -75,4 +75,19 @@ CPU subset. Required third-party notices remain with the derived code and fixtur
 
 History boundary checks include a compile-time absence check for the retired
 alternative method. Obsolete alternative-call and offset-undercoverage cases are
-excluded; endpoint coverage is checked independently by the history fixtures.
+excluded. The maintained runner does not independently check endpoint interpolation
+or the initial-fluorescence formula.
+
+## Direct-fixture dispatch
+
+`run_supplemental.py` runs the existing factory/sweep/Python assertions in fresh
+processes. Supply `--build-dir`, `--extension`, `--python`, a new `--output`
+directory and `--deadline-seconds`. For an OFF build add `--include-core-guards`
+to include checked math and transaction cases. Admit the matching checked/test
+build and one-thread environment first; inputs and binaries are hashed into the
+ledger. This runner checks local assertions only, not independent numerical/RNG
+parity of the emitted P-case records. It never regenerates expectations.
+
+`C_SPIKES_TEST_RESAMPLING=ON` also registers terminal-copy CPU/CUDA fixtures and
+the standalone diagnostic-header OFF/ON fixtures with CTest. Use `ctest -N` to
+inspect dispatch and select the appropriate CPU or CUDA targets explicitly.
