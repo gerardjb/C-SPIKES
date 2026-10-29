@@ -421,7 +421,7 @@
     "tests/native/contracts/fixtures/examples/references/P04.json": "09bf4aae552b6660f3ca7956938d428e18757ccc7f1cc1a9fb78ac64843aeb23",
     "tests/native/g1e/test_access.h": "d51d81a53372058372a901dc9635a803b78ed8b3907874ab4a765c686eaf3ecf",
     "CMakeLists.txt": "c2bc4722ca7a87ce57fccf4826e1d2d0a9509dd20b24d2f3ae581ef9aa0e0884",
-    "pyproject.toml": "3ac0892614fde0a99be707399fdbb72d9b27371e0e37b878b41cb5fd687233b4",
+    "pyproject.toml": "3953691eb64925370b5250513c008962cb51ecfbb98789d0387bf71d25f2c3b9",
     "tests/native/contracts/README.md": "7e0a76185a40a1188c79af6fd2fd6ad7efbf750f7200d7d032a3a79b6a462559",
     "tests/native/contracts/TEST_SOURCES.json": "3f4d5613826632ccd325ac7b7044f1a8a426313d7e702e334ef5aedae9baf4f1",
     "tests/native/contracts/sweep_preparation.cpp": "a60dba53079c7bea0ca3faa7b1aa43a7b8f9f5b273dadbace25245d28e69d939",

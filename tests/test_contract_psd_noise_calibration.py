@@ -1,6 +1,3 @@
-# TEMPORARY PORT PARITY TESTS:
-# Remove after main_cache_noise_port is validated and the port commits are accepted.
-
 from __future__ import annotations
 
 import os
@@ -18,13 +15,6 @@ from c_spikes.inference.pgas import estimate_noise_calibration_for_trials
 from c_spikes.inference.types import TrialSeries
 
 
-pytestmark = [
-    pytest.mark.port_parity,
-    pytest.mark.skipif(
-        os.environ.get("C_SPIKES_RUN_PORT_PARITY") != "1",
-        reason="Temporary port parity test; set C_SPIKES_RUN_PORT_PARITY=1 to run.",
-    ),
-]
 
 
 def test_psd_white_noise_variance_estimate_matches_known_scale():

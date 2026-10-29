@@ -1,6 +1,3 @@
-# TEMPORARY PORT PARITY TESTS:
-# Remove after main_cache_noise_port is validated and the port commits are accepted.
-
 from __future__ import annotations
 
 import os
@@ -16,13 +13,6 @@ from c_spikes.syn_gen import _load_pgas_parameter_samples
 from c_spikes.viz.trialwise_plots import DEFAULT_COLORS, DEFAULT_LABELS
 
 
-pytestmark = [
-    pytest.mark.port_parity,
-    pytest.mark.skipif(
-        os.environ.get("C_SPIKES_RUN_PORT_PARITY") != "1",
-        reason="Temporary port parity test; set C_SPIKES_RUN_PORT_PARITY=1 to run.",
-    ),
-]
 
 
 def _write_synthetic_pgas_outputs(root, tag: str) -> None:

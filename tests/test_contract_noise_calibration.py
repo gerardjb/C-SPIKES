@@ -1,6 +1,3 @@
-# TEMPORARY PORT PARITY TESTS:
-# Remove after main_cache_noise_port is validated and the port commits are accepted.
-
 from __future__ import annotations
 
 import json
@@ -25,13 +22,6 @@ from c_spikes.inference.pgas import (
 from c_spikes.inference.types import TrialSeries
 
 
-pytestmark = [
-    pytest.mark.port_parity,
-    pytest.mark.skipif(
-        os.environ.get("C_SPIKES_RUN_PORT_PARITY") != "1",
-        reason="Temporary port parity test; set C_SPIKES_RUN_PORT_PARITY=1 to run.",
-    ),
-]
 
 
 def _constants_file(tmp_path):

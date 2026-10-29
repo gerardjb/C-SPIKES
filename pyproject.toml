@@ -93,21 +93,3 @@ dependencies = [
  test-command = "pytest {project}/tests"
  test-extras = ["test"]
  test-skip = ["*universal2:arm64"]
-
- [tool.pytest.ini_options]
- minversion = "6.0"
- addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config", "-m", "not slow"]
- xfail_strict = true
- filterwarnings = [
-   "error",
- ]
- markers = [
-   "slow: long-running integration or inference checks (run with -m slow)",
-   "port_parity: temporary parity checks for main_cache_noise_port; delete after port validation",
-   "requires_torch: requires PyTorch to be installed",
-   "requires_tensorflow: requires TensorFlow to be installed",
- ]
- log_cli_level = "INFO"
- testpaths = [
-   "tests",
- ]
