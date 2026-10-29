@@ -1,3 +1,4 @@
+#include "include/application_arithmetic_compat.h"
 #include "include/numerical_diagnostics.h"
 #include <iostream>
 #include <iomanip>
@@ -8,12 +9,13 @@
 #include "include/utils.h"
 #include <getopt.h>
 #include "include/Analyzer.h"
+#include "include/application_result_compat.h"
 
 using namespace std;
 
- Analyzer::Analyzer(const arma::vec& time, const arma::vec& data, const std::string& constants_file, const std::string& output_folder,
+ Analyzer::Analyzer(const csp_application::ObservationVector& time, const csp_application::ObservationVector& data, const std::string& constants_file, const std::string& output_folder,
              unsigned int column, const std::string& tag, unsigned int niter, const std::string& trainedPriorFile,
-             bool append, unsigned int trim, bool verbose, const arma::vec& gtSpikes,
+             bool append, unsigned int trim, bool verbose, const csp_application::ObservationVector& gtSpikes,
              bool has_trained_priors, bool has_gtspikes, unsigned int maxlen, const std::string& Gparam_file, int seed)
         : time(time), data(data), constants_file(constants_file), output_folder(output_folder), column(column), tag(tag),
           niter(niter), trainedPriorFile(trainedPriorFile), append(append), trim(trim), verbose(verbose),
@@ -89,7 +91,7 @@ void Analyzer::run() {
         constants.KNOWN_SPIKES = true;
         //gtSpikes.load(gtSpike_file, arma::raw_ascii);
     }
-    if (gtSpikes.n_elem==1){
+    if (gtSpikes.size()==1){
         constants.KNOWN_SPIKES = false;
         has_gtspikes = false;
     }
@@ -125,16 +127,16 @@ void Analyzer::run() {
     Trajectory traj_sam1(sampler.TIME, ""), traj_sam2(sampler.TIME, output_folder + "/traj_samples_" + tag + ".dat");
     
     for (unsigned int t = 0; t < sampler.TIME; ++t) {
-        traj_sam1.B(t) = 0;
-        traj_sam1.burst(t) = 0;
-        traj_sam1.C(t) = 0;
-        traj_sam1.S(t) = 0;
-        if (has_gtspikes) traj_sam1.S(t) = gtSpikes(t);
-        traj_sam1.Y(t) = 0;
+        csp_application::trajectory_at(traj_sam1.B,t) = 0;
+        csp_application::trajectory_at(traj_sam1.burst,t) = 0;
+        csp_application::trajectory_at(traj_sam1.C,t) = 0;
+        csp_application::trajectory_at(traj_sam1.S,t) = 0;
+        if (has_gtspikes) csp_application::trajectory_at(traj_sam1.S,t) = csp_application::observation_at(gtSpikes,t);
+        csp_application::trajectory_at(traj_sam1.Y,t) = 0;
     }
     // Set initial calcium value to first observation if specified in config
     if (constants.c0_is_first_y) {
-        traj_sam1.C(0) = data(0);
+        csp_application::trajectory_at(traj_sam1.C,0) = csp_application::observation_at(data,0);
     }
 
     // set initial parameters 
@@ -190,24 +192,18 @@ void Analyzer::run() {
 				
 
         if (i % trim == 0) {
-            std::vector<double> parameter_sample = {testpar.G_tot,
+            std::array<double,6> parameter_sample = {testpar.G_tot,
             testpar.gamma,
             testpar.DCaT,
             testpar.Rf,
             testpar.gam_in,
             testpar.gam_out};
-            arma::rowvec new_row(parameter_sample);
-            if (parameter_samples.n_cols==0){
-                parameter_samples = arma::mat(new_row);
-            }
-            else{
-                parameter_samples = arma::join_cols(parameter_samples, arma::mat(new_row));
-            }
+            csp_application::append_parameter_row(parameter_samples, parameter_sample);
             testpar.write(parsamples, constants.sampling_frequency);
             traj_sam2.write(trajsamples, i / trim);
             logp << testpar.logPrior(constants) + traj_sam2.logp(&testpar, &constants) << endl;
         }
-        if (verbose) cout << "iteration:" << setw(5) << i << ", spikes: " << setw(5) << arma::accu(traj_sam1.S) << '\r' << flush;
+        if (verbose) cout << "iteration:" << setw(5) << i << ", spikes: " << setw(5) << csp_application::sample_sum_compat(csp_application::TrajectorySamples(traj_sam1.S)) << '\r' << flush;
     }
 
     parsamples.close();

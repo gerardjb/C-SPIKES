@@ -1,6 +1,8 @@
+#include "include/application_arithmetic_compat.h"
 #include "include/ancestor_sampler.h"
 #include "include/selected_trajectory.h"
 #include <memory>
+#include <array>
 #include"include/particle.h"
 #include"include/particle_array.h"
 #include"include/utils.h"
@@ -15,11 +17,20 @@
 
 using namespace std;
 
+namespace {
+void assign_particle_model_state(csp_application::ParticleState& destination,
+                                 const csp_model::State12& source) {
+    destination.resize(12);
+    std::copy(source.begin(), source.end(), destination.begin());
+}
+
+}
+
 // PARTICLE CLASS
 // -----------------------------------------------------------
 //
 Particle::Particle(){
-    C.set_size(12);
+    C.resize(12, 0.0); // Storage placeholders; physical initialization remains in rmu/evolution.
     B=0;
     burst=0;
     S=0;
@@ -30,14 +41,14 @@ Particle::Particle(){
 Particle& Particle::operator=(const Particle& p){
     B=p.B;
     burst=p.burst;
-    C=p.C;
+    csp_application::assign_particle_state(C,p.C);
     S=p.S;
     logWeight=p.logWeight;
     return *this;
 }
 
 void Particle::print(){
-    cout<<"    C    : "<<C(0)<<endl
+    cout<<"    C    : "<<csp_application::particle_at(C,0)<<endl
         <<"    B    : "<<B<<endl
         <<"    burst: "<<burst<<endl
         <<"    S    : "<<S<<endl;
@@ -54,7 +65,7 @@ Trajectory::Trajectory(unsigned int s, string fname){
     burst.resize(s);
     C.resize(s);
     S.resize(s);
-    S.zeros();
+    std::fill(S.begin(), S.end(), 0.);
     Y.resize(s);
 
 }
@@ -68,27 +79,27 @@ void Trajectory::write(ofstream &outfile, unsigned int index){
 
     for(unsigned int i=0;i<size;++i){
         outfile<<index<<','
-            <<burst(i)<<','
-            <<B(i)<<','
-            <<S(i)<<','
-            <<C(i)<<','
-            <<Y(i)<<endl;
+            <<csp_application::trajectory_at(burst,i)<<','
+            <<csp_application::trajectory_at(B,i)<<','
+            <<csp_application::trajectory_at(S,i)<<','
+            <<csp_application::trajectory_at(C,i)<<','
+            <<csp_application::trajectory_at(Y,i)<<endl;
     }
 
 }
 
 Trajectory& Trajectory::operator=(const Trajectory& traj){
-        this->burst = traj.burst;
-        this->B     = traj.B;
-        this->S     = traj.S;
-        this->C     = traj.C;
-        this->Y     = traj.Y;
+        csp_application::assign_trajectory_values(this->burst, traj.burst);
+        csp_application::assign_trajectory_values(this->B, traj.B);
+        csp_application::assign_trajectory_values(this->S, traj.S);
+        csp_application::assign_trajectory_values(this->C, traj.C);
+        csp_application::assign_trajectory_values(this->Y, traj.Y);
 
         return *this ;
 }
 
 double Trajectory::logp(const param* p, const constpar* constants){
-    double logp = -0.5 * pow( B(0)/1e-4, 2) -0.5 * pow( (Y(0) - B(0)), 2)/p->sigma2 ;
+    double logp = -0.5 * pow( csp_application::trajectory_at(B,0)/1e-4, 2) -0.5 * pow( (csp_application::trajectory_at(Y,0) - csp_application::trajectory_at(B,0)), 2)/p->sigma2 ;
     double dt = 1.0/constants->sampling_frequency;
     double W[2][2] = {{1-p->wbb[0]*dt, p->wbb[0]*dt},
         {p->wbb[1]*dt, 1-p->wbb[1]*dt}};
@@ -96,10 +107,10 @@ double Trajectory::logp(const param* p, const constpar* constants){
 
     for(unsigned int i=1;i<size;++i){
         
-        logp += log(W[burst(i-1)][burst(i)]) +
-                S(i)*log(rate[burst(i)])-rate[burst(i)] - log(gsl_sf_gamma(S(i)+1)) +
-                -0.5*pow((B(i)-B(i-1))/(constants->bm_sigma*sqrt(dt)),2) +
-                -0.5 * pow( (Y(i) - C(i) - B(i)), 2)/p->sigma2;
+        logp += log(W[csp_application::trajectory_at(burst,i-1)][csp_application::trajectory_at(burst,i)]) +
+                csp_application::trajectory_at(S,i)*log(rate[csp_application::trajectory_at(burst,i)])-rate[csp_application::trajectory_at(burst,i)] - log(gsl_sf_gamma(csp_application::trajectory_at(S,i)+1)) +
+                -0.5*pow((csp_application::trajectory_at(B,i)-csp_application::trajectory_at(B,i-1))/(constants->bm_sigma*sqrt(dt)),2) +
+                -0.5 * pow( (csp_application::trajectory_at(Y,i) - csp_application::trajectory_at(C,i) - csp_application::trajectory_at(B,i)), 2)/p->sigma2;
 
     }
 
@@ -112,7 +123,7 @@ double Trajectory::logp(const param* p, const constpar* constants){
 // SMC class
 // -------------------------------------------------------------------
 //
-SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_header, int seed, unsigned int maxlen, string Gparam_file){
+SMC::SMC(csp_application::ObservationVector time, csp_application::ObservationVector data, int index, constpar& cst, bool has_header, int seed, unsigned int maxlen, string Gparam_file){
 		
     resampling = pgas::ResamplingOptions::from_environment((seed==0) ? cst.seed : seed);
     rng = gsl_rng_alloc(gsl_rng_mt19937);
@@ -121,7 +132,6 @@ SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_head
     model = new GCaMP(cst.G_tot_mean,cst.gamma_mean,cst.DCaT_mean,cst.Rf_mean,cst.gam_in_mean, cst.gam_out_mean, Gparam_file);
     model->setTimeStepMode((TimeStepMode)cst.TSMode);
 
-    arma::field <string> header;
 
     /*
     Stripping out un-needed calls to arma loading - this should more broadly prbably be re-worked such that the SMC constructor is more agnostic to the type of data (time, F) that is being passed in 
@@ -143,7 +153,7 @@ SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_head
 
     // The time units here are assumed to be seconds
     data_time = time;
-    constants->sampling_frequency = 1.0 / (data_time(2)-data_time(1));
+    constants->sampling_frequency = 1.0 / (csp_application::observation_at(data_time,2)-csp_application::observation_at(data_time,1));
     cout << "setting sampling frequency to: "<<constants->sampling_frequency << endl;
     constants->set_time_scales();
     data_y = data;
@@ -151,7 +161,7 @@ SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_head
     // set number of particles
     nparticles=constants->nparticles;
 
-    TIME = data_time.n_elem;
+    TIME = data_time.size();
     cout<<"nparticles: "<<nparticles<<endl;
     cout<<"TIME      : "<<TIME<<endl;
 
@@ -194,7 +204,7 @@ void SMC::rmu(Particle &p, double y, const param &par, bool set=false){
         p.B     = gsl_ran_gaussian(rng,1e-4);
     }
 
-    p.C=model->initial_state;
+    assign_particle_model_state(p.C,model->initial_state);
 
     p.logWeight=-0.5*log(2*M_PI*par.sigma2)-0.5/par.sigma2*pow(y-0-p.B,2); // from g(y|x) only
                 
@@ -217,6 +227,7 @@ double SMC::logf(const Particle &pin, const Particle &pout, const param &par){
 // Here part.S is supposed to be given.
 //
 void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, const param &par, double g_noise, double u_noise, bool set=false){
+    if(model->TSMode != FIXEDLA) throw std::logic_error("SMC::move_and_weight_GTS requires FIXEDLA");
 
     double probs[2];
     double log_probs[2];
@@ -235,8 +246,8 @@ void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, 
                    dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2))};
     double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));
     
-    arma::vec state_out(12);
-    model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
+    csp_model::State12 state_out; state_out.fill(0.);
+    model->evolve_threadsafe(dt, (int)ns, {parent.C.data(),parent.C.size()}, {state_out.data(),12}, ct);
     
     log_probs[0] = log(W[parent.burst][0]);
     log_probs[0] += ns*log(rate[0]) - log(gsl_sf_gamma(ns+1)) -rate[0];
@@ -256,17 +267,18 @@ void SMC::move_and_weight_GTS(Particle &part, const Particle& parent, double y, 
         int idx = utils::gsl_ran_discrete_from_uniform(rdisc, u_noise);
 
         part.burst = idx;
-        part.B     = z[0]*parent.B+z[1]*(y-parent.C(0)) + g_noise;
+        part.B     = z[0]*parent.B+z[1]*(y-csp_application::particle_at(parent.C,0)) + g_noise;
 
         gsl_ran_discrete_free(rdisc);
     }
     
     // part.C     = model->state;
-    part.C = state_out;
+    assign_particle_model_state(part.C,state_out);
 
 }
 
 void SMC::move_and_weight(Particle &part, const Particle& parent, double y, const param &par, double g_noise, double u_noise, bool set=false){
+    if(model->TSMode != FIXEDLA) throw std::logic_error("SMC::move_and_weight requires FIXEDLA");
 
     //const int maxspikes = 2;  // The number of spikes goes from 0 to maxspikes-1
     const auto maxspikes = constants->maxspikes;
@@ -285,13 +297,13 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
                    dt*pow(constants->bm_sigma,2)/(par.sigma2+dt*pow(constants->bm_sigma,2))};
     //double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));
     
-    arma::vec state_out(12); // <xxx flag for removal xxx>
+    csp_model::State12 state_out; state_out.fill(0.);
     for(unsigned int i=0;i<2*maxspikes;i++){
 
         burst = floor(i/maxspikes);
         ns    = i%maxspikes;
 
-        model->evolve_threadsafe(dt, (int)ns, parent.C, state_out, ct);
+        model->evolve_threadsafe(dt, (int)ns, {parent.C.data(),parent.C.size()}, {state_out.data(),12}, ct);
         
         log_probs[i] = log(W[parent.burst][burst]);
         log_probs[i] += ns*log(rate[burst]) - log(tgamma(ns+1)) -rate[burst];
@@ -318,8 +330,8 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
         gsl_ran_discrete_free(rdisc);
     }
     
-    model->evolve_threadsafe(dt, part.S, parent.C, state_out, ct);
-    part.C     = state_out;
+    model->evolve_threadsafe(dt, part.S, {parent.C.data(),parent.C.size()}, {state_out.data(),12}, ct);
+    assign_particle_model_state(part.C,state_out);
 
 }
 
@@ -330,7 +342,7 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
     int counts[2][2] = {{0,0},{0,0}};
 
     for(unsigned int t=1;t<traj.size;t++){
-        counts[traj.burst(t-1)][traj.burst(t)]++;
+        counts[csp_application::trajectory_at(traj.burst,t-1)][csp_application::trajectory_at(traj.burst,t)]++;
     }
     double dt = 1.0/constants->sampling_frequency;
 
@@ -344,20 +356,22 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
 
     // Sampling the posterior firing rates
     //
-    arma::uvec which_b0 = arma::find(traj.burst==0);
-    double alpha_rate_b0_post = constants->alpha_rate_b0 + arma::accu(traj.S(which_b0));
-    double beta_rate_b0_post  = constants->beta_rate_b0  + which_b0.n_elem*dt;
+    const auto burst_snapshot = csp_application::TrajectoryBursts(traj.burst);
+    const auto spike_snapshot = csp_application::TrajectorySamples(traj.S);
+    const auto which_b0 = csp_application::find_burst_indices(burst_snapshot,0);
+    double alpha_rate_b0_post = constants->alpha_rate_b0 + csp_application::gathered_sum_compat(spike_snapshot,which_b0);
+    double beta_rate_b0_post  = constants->beta_rate_b0  + which_b0.size()*dt;
 
-    arma::uvec which_b1 = arma::find(traj.burst==1);
-    double alpha_rate_b1_post = constants->alpha_rate_b1 + arma::accu(traj.S(which_b1));
-    double beta_rate_b1_post  = constants->beta_rate_b1  + which_b1.n_elem*dt;
+    const auto which_b1 = csp_application::find_burst_indices(burst_snapshot,1);
+    double alpha_rate_b1_post = constants->alpha_rate_b1 + csp_application::gathered_sum_compat(spike_snapshot,which_b1);
+    double beta_rate_b1_post  = constants->beta_rate_b1  + which_b1.size()*dt;
 
     pout.r0 = gsl_ran_gamma(rng,alpha_rate_b0_post,1.0/beta_rate_b0_post);
     pout.r1 = gsl_ran_gamma(rng,alpha_rate_b1_post,1.0/beta_rate_b1_post);
 
     // Sampling standard deviation
     //
-    double res = pow(arma::norm(data_y - traj.B - traj.C),2);
+    double res = pow(csp_application::residual_norm_compat(data_y,traj.B,traj.C),2);
     pout.sigma2 = 1.0 / gsl_ran_gamma(rng, constants->alpha_sigma2 + traj.size / 2.0, 1.0 / (constants->beta_sigma2 + 0.5 * res));
     //pout.sigma2=pin.sigma2;
 
@@ -400,9 +414,9 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
     double gam_in_test  = pin.gam_in *((1-var_selec[4])+var_selec[4]*proposal_factors[4]);
     double gam_out_test = pin.gam_out*((1-var_selec[5])+var_selec[5]*proposal_factors[5]);
     
-    arma::vec partest={G_tot_test,gamma_test,DCaT_test,Rf_test,gam_in_test,gam_out_test};
+    std::array<double,6> partest={G_tot_test,gamma_test,DCaT_test,Rf_test,gam_in_test,gam_out_test};
     string parnames[] = {"G_tot", "gamma","DCaT","Rf","gam_in","gam_out"};
-    arma::vec C_test(traj.size);
+    csp_application::TrajectorySamples C_test(traj.size);
     double res_test;
 
     // resetting the GCaMP model
@@ -411,9 +425,9 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
 
     res_test=0;
     for(unsigned int t=0;t<traj.size;t++) {
-        model->evolve(dt,traj.S(t));
-        res_test += pow(data_y(t)-traj.B(t)-model->DFF,2);
-        C_test(t) = model->DFF;
+        model->evolve(dt,csp_application::trajectory_at(traj.S,t));
+        res_test += pow(csp_application::observation_at(data_y,t)-csp_application::trajectory_at(traj.B,t)-model->DFF,2);
+        csp_application::trajectory_at(C_test,t) = model->DFF;
     }
 
     double log_alpha_MH = -0.5*pow((G_tot_test-constants->G_tot_mean)/constants->G_tot_sd,2) + 0.5*pow((pin.G_tot-constants->G_tot_mean)/constants->G_tot_sd,2) 
@@ -440,7 +454,7 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
         pout.Rf     = Rf_test;
         pout.gam_in = gam_in_test;
         pout.gam_out= gam_out_test;
-        traj.C      = C_test;
+        csp_application::assign_trajectory_values(traj.C, C_test);
     } else {
         pout.G_tot  = pin.G_tot;
         pout.gamma  = pin.gamma;
@@ -492,12 +506,12 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
     }
 		
     for(t=0;t<TIME;t++){
-        particleSystem[t][0].B=traj_in.B(t);
-        particleSystem[t][0].burst=traj_in.burst(t);
-        particleSystem[t][0].S=traj_in.S(t);
+        particleSystem[t][0].B=csp_application::trajectory_at(traj_in.B,t);
+        particleSystem[t][0].burst=csp_application::trajectory_at(traj_in.burst,t);
+        particleSystem[t][0].S=csp_application::trajectory_at(traj_in.S,t);
 
-        model->evolve(dt,traj_in.S(t));
-        particleSystem[t][0].C=model->state;
+        model->evolve(dt,csp_application::trajectory_at(traj_in.S,t));
+        assign_particle_model_state(particleSystem[t][0].C,model->state);
 				
         particleSystem[t][0].ancestor=0;
 				
@@ -510,7 +524,7 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
     if(constants->KNOWN_SPIKES){
         for(t=0;t<TIME;t++){
             for(i=0;i<nparticles;i++){
-                particleSystem[t][i].S=traj_in.S(t);
+                particleSystem[t][i].S=csp_application::trajectory_at(traj_in.S,t);
             }
         }
     }
@@ -522,7 +536,7 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
 	
     // initialize all particles at time 0 (excluded particle 0) and set all weights
     for(i=0;i<nparticles;++i){
-        rmu(particleSystem[0][i],data_y(0),par,i==0); // i==0 allows to generate latent states only if i!=0
+        rmu(particleSystem[0][i],csp_application::observation_at(data_y,0),par,i==0); // i==0 allows to generate latent states only if i!=0
     }
 
     vector<double> g_noise(nparticles);
@@ -541,10 +555,10 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
     particleArray.copy_to_device();
 
     // Create a GPU view of the data_y vector
-    VectorType data_y_view = VectorType("data_y_view", data_y.n_elem);
+    VectorType data_y_view = VectorType("data_y_view", data_y.size());
     VectorType::HostMirror data_y_h = Kokkos::create_mirror_view(data_y_view);
-    for (unsigned int i = 0; i < data_y.n_elem; i++)
-        data_y_h(i) = data_y(i);
+    for (unsigned int i = 0; i < data_y.size(); i++)
+        data_y_h(i) = csp_application::observation_at(data_y,i);
     Kokkos::deep_copy(data_y_view, data_y_h);
 
     // Create the noise views
@@ -678,14 +692,15 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
         pgas::SelectedTrajectory<ExecSpace> selected(TIME);
         const auto trajectory = selected.gather(i, particleArray.ancestor,
             particleArray.B, particleArray.burst, particleArray.C, particleArray.S);
-        arma::vec state(12);
+        csp_model::State12 state;
+        state.fill(0.);
         for(t=0;t<TIME;++t) {
-            traj_out.B(t) = trajectory(t).baseline;
-            traj_out.burst(t) = trajectory(t).burst;
-            traj_out.S(t) = trajectory(t).spikes;
+            csp_application::trajectory_at(traj_out.B,t) = trajectory(t).baseline;
+            csp_application::trajectory_at(traj_out.burst,t) = trajectory(t).burst;
+            csp_application::trajectory_at(traj_out.S,t) = trajectory(t).spikes;
             for(int k=0;k<12;++k) state(k) = trajectory(t).calcium[k];
-            traj_out.C(t) = model->getDFF(state);
-            traj_out.Y(t) = data_y(t);
+            csp_application::trajectory_at(traj_out.C,t) = model->getDFF({state.data(),12});
+            csp_application::trajectory_at(traj_out.Y,t) = csp_application::observation_at(data_y,t);
         }
         return;
     }
@@ -697,11 +712,11 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
 
     while(t>0){
         t--;
-        traj_out.B(t)=particleSystem[t][i].B;
-        traj_out.burst(t)=particleSystem[t][i].burst;
-        traj_out.C(t)=model->getDFF(particleSystem[t][i].C);
-        traj_out.S(t)=particleSystem[t][i].S;
-        traj_out.Y(t)=data_y(t);
+        csp_application::trajectory_at(traj_out.B,t)=particleSystem[t][i].B;
+        csp_application::trajectory_at(traj_out.burst,t)=particleSystem[t][i].burst;
+        csp_application::trajectory_at(traj_out.C,t)=model->getDFF({particleSystem[t][i].C.data(),particleSystem[t][i].C.size()});
+        csp_application::trajectory_at(traj_out.S,t)=particleSystem[t][i].S;
+        csp_application::trajectory_at(traj_out.Y,t)=csp_application::observation_at(data_y,t);
         //if(t>0) cout<<" -> "<<i<<" -> "<<particleSystem[t][i].ancestor;
         if(t>0){
             i=particleSystem[t][i].ancestor;

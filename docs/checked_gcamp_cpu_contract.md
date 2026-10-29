@@ -31,7 +31,7 @@ for setup and limitations.
 
 These contracts do not establish GPU execution, inference quality, concurrent-host
 safety, arbitrary embedded-Python safety, allocation-failure behavior or performance.
-The current implementation still requires Armadillo; checked execution remains opt-in.
+The native module no longer links libarmadillo; checked execution remains opt-in.
 
 ## Checked factory evolution default
 

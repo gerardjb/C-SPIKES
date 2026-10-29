@@ -1,0 +1,36 @@
+{
+  "dff": {
+    "cols": 1,
+    "rows": 0,
+    "values": []
+  },
+  "history": {
+    "BCa": {
+      "cols": 1,
+      "rows": 0,
+      "values": []
+    },
+    "Ca": {
+      "cols": 1,
+      "rows": 0,
+      "values": []
+    },
+    "Ca_in": {
+      "cols": 1,
+      "rows": 0,
+      "values": []
+    },
+    "G": {
+      "cols": 0,
+      "rows": 0,
+      "values": []
+    },
+    "fine": {
+      "cols": 0,
+      "rows": 0,
+      "values": []
+    }
+  },
+  "id": "O01",
+  "ok": true
+}

@@ -1,6 +1,7 @@
 #include "GCaMP_model.h"
 #include "checked_equilibrium.h"
 #include "test_access.h"
+#include "parameter_block_arma_bridge.h"
 #include <gsl/gsl_errno.h>
 #include <json/json.h>
 #include <iostream>
@@ -22,8 +23,8 @@ int main(int argc,char**argv){try{
  checked::CellParameters cell{cp[0],cp[1],cp[2],cp[3],cp[4],cp[5]};if(id=="P02")cell={3e-5,1000,1e-5,5,30,10};
  Json::Value out;out["id"]=id;
  if(id=="P04"){
-  GCaMP a(gp,cp),b(cp[0],cp[1],cp[2],cp[3],cp[4],cp[5],argv[2]),c(std::string{argv[2]},std::string{argv[3]});
-  for(auto* m:{&a,&b,&c}){m->Cparams=cp;need(m->TSMode==FIXED,"legacy default changed");out["legacy"].append(observe(*m));}
+  GCaMP a({gp.memptr(),gp.n_elem},{cp.memptr(),cp.n_elem}),b(cp[0],cp[1],cp[2],cp[3],cp[4],cp[5],argv[2]),c(std::string{argv[2]},std::string{argv[3]});
+  for(auto* m:{&a,&b,&c}){csp_model::assign_from_armadillo(m->Cparams,cp);need(m->TSMode==FIXED,"legacy default changed");out["legacy"].append(observe(*m));}
  }else if(id=="C02"){
   const auto raw_before=raw;const auto cp_before=values(cp);
   for(int call=1;call<=4;++call){checked::testing::reset();auto& f=checked::testing::fault();f.call=call;f.status=Status::backend_failed;auto r=checked::try_create_gcamp(raw,cell,ctx);need(!r.model&&!r.report.committed&&r.report.status==Status::backend_failed&&r.report.solve_count==call,"failed factory publication");restored();}

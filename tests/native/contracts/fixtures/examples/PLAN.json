@@ -1,0 +1,99 @@
+{
+  "gate": "L3g",
+  "root": "4b027368da02fca8949eabf779d329c1be5621c2",
+  "cases": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "R01",
+    "R02",
+    "V01",
+    "V02"
+  ],
+  "fixtures": [
+    {
+      "id": "P01",
+      "time_hex": [
+        "0x0.0p+0",
+        "0x1.a36e2eb1c432dp-15",
+        "0x1.a36e2eb1c432dp-14",
+        "0x1.a36e2eb1c432dp-13",
+        "0x1.0624dd2f1a9fcp-10"
+      ],
+      "spikes_hex": [],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-25",
+      "reset": true,
+      "mode": "FIXEDLA"
+    },
+    {
+      "id": "P02",
+      "time_hex": [
+        "0x0.0p+0",
+        "0x1.a36e2eb1c432dp-15",
+        "0x1.a36e2eb1c432dp-14",
+        "0x1.a36e2eb1c432dp-13",
+        "0x1.0624dd2f1a9fcp-10"
+      ],
+      "spikes_hex": [
+        "0x1.0624dd2f1a9fcp-11"
+      ],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-24",
+      "reset": false,
+      "mode": "FIXEDLA"
+    },
+    {
+      "id": "P03",
+      "time_hex": [
+        "0x1.0000000000000p+0",
+        "0x1.000346dc5d639p+0",
+        "0x1.00068db8bac71p+0",
+        "0x1.000d1b71758e2p+0",
+        "0x1.004189374bc6ap+0"
+      ],
+      "spikes_hex": [
+        "0x1.0020c49ba5e35p+0"
+      ],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-25",
+      "reset": true,
+      "mode": "FIXEDLA"
+    },
+    {
+      "id": "P04",
+      "time_hex": [
+        "0x1.0000000000000p+0",
+        "0x1.000346dc5d639p+0",
+        "0x1.00068db8bac71p+0",
+        "0x1.000d1b71758e2p+0",
+        "0x1.004189374bc6ap+0"
+      ],
+      "spikes_hex": [],
+      "initial_ca_hex": "0x1.ad7f29abcaf48p-24",
+      "reset": false,
+      "mode": "FIXEDLA"
+    }
+  ],
+  "extension": {
+    "path": "/scratch/gpfs/WANG/gerardjb/temp/C-SPIKES_operations/legacy_l3f_20261025_pass1/build/candidate/pgas_bound_cpu.cpython-310-x86_64-linux-gnu.so",
+    "sha256": "1adc29d2aae0a30c866f5dde1c126ecbd15e2be77e8e57834d95b19af32fdd41"
+  },
+  "startup_seconds": 30,
+  "body_seconds": 3,
+  "runner_seconds": 300,
+  "job_seconds": 360,
+  "cpu_billing_cap": 360,
+  "cpus": 1,
+  "memory_mib": 4096,
+  "scratch_mib": 128,
+  "retained_mib": 10,
+  "retries": 0,
+  "mechanism": "Document existing public model construction and history inspection; verify real CPU shim/helper route using saved L3f expectations.",
+  "falsifier": "Public route unavailable, changed numerical/ownership/input behavior or need for production repair.",
+  "max_model_calls_per_process": {
+    "P01-P04": "2 constructions,2 history integrations",
+    "R01": "2 constructions,4 history integrations",
+    "R02": "1 construction,2 history integrations",
+    "V01-V02": "1 construction,1 valid integration,1 invalid helper call before model access"
+  },
+  "no_builds_or_production_changes": true
+}

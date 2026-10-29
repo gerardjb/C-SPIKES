@@ -1,6 +1,6 @@
 #ifndef UTILS_H
 #define UTILS_H
-#include<armadillo>
+#include <cstddef>
 #include <gsl/gsl_randist.h>
 
 using namespace std;

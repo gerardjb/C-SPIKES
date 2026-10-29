@@ -1,0 +1,24 @@
+{
+  "duplicates": {
+    "member": {
+      "status": "ok",
+      "value": "3ea10d42fec3a0bf"
+    },
+    "view": {
+      "status": "ok",
+      "value": "3ea10d42fec3a0bf"
+    }
+  },
+  "id": "B02",
+  "ok": true,
+  "reversed": {
+    "member": {
+      "status": "ok",
+      "value": "0000000000000000"
+    },
+    "view": {
+      "status": "ok",
+      "value": "0000000000000000"
+    }
+  }
+}

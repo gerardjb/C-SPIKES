@@ -1,0 +1,117 @@
+{
+  "id": "N07",
+  "long": {
+    "DFF": {
+      "error": "",
+      "logs": [],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "3b34e7e9c545b93f"
+    },
+    "explicit": {
+      "error": "",
+      "logs": [],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "c2152b7f78ff233f"
+    },
+    "flux": {
+      "error": "",
+      "logs": [],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "2e5ae37bc016243f"
+    },
+    "input": [
+      "3a8c30e28e79453e",
+      "3a8c30e28e79553e",
+      "2c69a4292b1b603e",
+      "3a8c30e28e79653e",
+      "48afbc9af2d76a3e",
+      "2c69a4292b1b703e",
+      "b37aea055dca723e",
+      "3a8c30e28e79753e",
+      "c19d76bec028783e",
+      "48afbc9af2d77a3e",
+      "d0c0027724877d3e",
+      "2c69a4292b1b803e",
+      "ef71c717c472813e",
+      "b37aea055dca823e",
+      "76830df4f521843e"
+    ]
+  },
+  "ok": true,
+  "twelve": {
+    "DFF": {
+      "error": "",
+      "logs": [],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "5c1b60bb61b8c03f"
+    },
+    "explicit": {
+      "error": "",
+      "logs": [],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "c2152b7f78ff233f"
+    },
+    "flux": {
+      "error": "",
+      "logs": [],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "ab585031cf61ee3f",
+        "cdfe867a3af0ed3f"
+      ],
+      "value": "2e5ae37bc016243f"
+    },
+    "input": [
+      "3a8c30e28e79453e",
+      "3a8c30e28e79553e",
+      "2c69a4292b1b603e",
+      "3a8c30e28e79653e",
+      "48afbc9af2d76a3e",
+      "2c69a4292b1b703e",
+      "b37aea055dca723e",
+      "3a8c30e28e79753e",
+      "c19d76bec028783e",
+      "48afbc9af2d77a3e",
+      "d0c0027724877d3e",
+      "2c69a4292b1b803e"
+    ]
+  }
+}

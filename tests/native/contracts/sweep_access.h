@@ -1,5 +1,5 @@
 #pragma once
-#include "particle.h"
+#include "trajectory_test_compat.h"
 #include "test_access.h"
 #include <sstream>
 #include <vector>
@@ -8,6 +8,7 @@ struct Bytes {
  std::string s;
  template<class T> void scalar(const T& x){s.append(reinterpret_cast<const char*>(&x),sizeof(x));}
  template<class T> void array(const T& x){scalar(x.n_rows);scalar(x.n_cols);if(x.n_elem)s.append(reinterpret_cast<const char*>(x.memptr()),x.n_elem*sizeof(*x.memptr()));}
+ template<class T> void array(const std::vector<T>& x){const arma::uword rows=x.size(),cols=1;scalar(rows);scalar(cols);if(rows)s.append(reinterpret_cast<const char*>(x.data()),rows*sizeof(T));}
  void text(const std::string& x){scalar(x.size());s+=x;}
 };
 inline std::string config_bytes(const constpar& c){Bytes b;
@@ -80,9 +81,10 @@ inline std::vector<double> handoff_values(const GCaMP_params& p){
 #ifdef C_SPIKES_CHECKED_SWEEP_CPU
 namespace checked {
 struct SweepAccess {
+ static void route(SMC& m,bool device,bool selected){m.resampling.device=device;m.resampling.selected_trajectory=selected;m.resampling.seed=17;}
  static void seed(SMC& m){m.verbose=false;m.ancestor_sweep=29;}
- static std::string private_state(const SMC& m){Bytes b;b.scalar(m.ancestor_sweep);b.scalar(m.verbose);b.scalar(m.resampling.device);b.scalar(m.resampling.selected_trajectory);b.scalar(m.resampling.seed);b.array(m.tracemat);b.s.append(static_cast<const char*>(gsl_rng_state(m.rng)),gsl_rng_size(m.rng));return b.s;}
- static std::vector<const void*> addresses(const SMC& m){std::vector<const void*> a={&m,m.model,m.constants,m.rng,gsl_rng_state(m.rng),m.data_time.memptr(),m.data_y.memptr()};for(auto row:m.particleSystem){a.push_back(row);for(unsigned j=0;j<m.nparticles;++j)a.push_back(row[j].C.memptr());}return a;}
+ static std::string private_state(const SMC& m){Bytes b;b.scalar(m.ancestor_sweep);b.scalar(m.verbose);b.scalar(m.resampling.device);b.scalar(m.resampling.selected_trajectory);b.scalar(m.resampling.seed);b.s.append(static_cast<const char*>(gsl_rng_state(m.rng)),gsl_rng_size(m.rng));return b.s;}
+ static std::vector<const void*> addresses(const SMC& m){std::vector<const void*> a={&m,m.model,m.constants,m.rng,gsl_rng_state(m.rng),m.data_time.data(),m.data_y.data()};for(auto row:m.particleSystem){a.push_back(row);for(unsigned j=0;j<m.nparticles;++j)a.push_back(pointer(row[j].C));}return a;}
 };
 }
 #endif

@@ -1,0 +1,20 @@
+{
+  "empty": {
+    "message": "Mat::elem(): index out of bounds",
+    "status": "out_of_range"
+  },
+  "id": "B06",
+  "long": {
+    "status": "ok",
+    "value": "110111dc28d24641"
+  },
+  "ok": true,
+  "one": {
+    "status": "ok",
+    "value": "139af8ff6bb1b5bf"
+  },
+  "short": {
+    "message": "Mat::elem(): index out of bounds",
+    "status": "out_of_range"
+  }
+}

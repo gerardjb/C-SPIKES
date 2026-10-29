@@ -4,13 +4,16 @@
 #include<iostream>
 #include"param.h"
 #include"constants.h"
-#include<armadillo>
+
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #include<string>
 #include"GCaMP_model.h"
 #include"particle_array.h"
 #include"resampling_options.h"
+#include "application_observation.h"
+#include "trajectory_storage.h"
+#include "particle_storage.h"
 
 #include <Kokkos_Core.hpp>
 
@@ -24,7 +27,7 @@ class Particle
         Particle& operator=(const Particle&);
         double B;
         int burst;
-        arma::vec C;
+        csp_application::ParticleState C;
         int S;
         double logWeight;
         int ancestor;
@@ -38,11 +41,11 @@ class Trajectory
     public:
         Trajectory(unsigned int, string);
         unsigned int size;
-        arma::vec B;
-        arma::ivec burst;
-        arma::vec C;  // this is only DFF
-        arma::vec S;
-        arma::vec Y;
+        csp_application::TrajectorySamples B;
+        csp_application::TrajectoryBursts burst;
+        csp_application::TrajectorySamples C;  // this is only DFF
+        csp_application::TrajectorySamples S;
+        csp_application::TrajectorySamples Y;
 
         void write(ofstream &, unsigned int idx=0);
         double logp(const param*, const constpar*);
@@ -74,7 +77,7 @@ class SMC{
 #endif
     public:
 
-        SMC(arma::vec,arma::vec,int,constpar&,bool,int seed=0, unsigned int maxlen=0, string GParam_file=""); 
+        SMC(csp_application::ObservationVector,csp_application::ObservationVector,int,constpar&,bool,int seed=0, unsigned int maxlen=0, string GParam_file="");
         ~SMC();
 
         double logf(const Particle&,const Particle&, const param&);
@@ -99,8 +102,8 @@ class SMC{
         unsigned int nparticles;
         unsigned int TIME;
 
-        arma::vec data_y;
-        arma::vec data_time;
+        csp_application::ObservationVector data_y;
+        csp_application::ObservationVector data_time;
 
         vector<Particle*> particleSystem;
 
@@ -111,7 +114,6 @@ class SMC{
         pgas::ResamplingOptions resampling;
         uint64_t ancestor_sweep = 0;
         gsl_rng *rng;
-        arma::mat tracemat;
         constpar *constants;
         bool verbose;
 

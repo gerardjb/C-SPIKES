@@ -15,7 +15,7 @@ int case_entry(int argc,char** argv){
  if(argc!=4)return 64;
  const std::string id(argv[1]);arma::vec gp,cp;gp.load(argv[2],arma::raw_ascii);cp.load(argv[3],arma::raw_ascii);
  if(id=="P06"){
-  {Scope run("repeated-model-run",capture);GCaMP g(gp,cp);for(int i=0;i<3;++i){g.setState(1e-6);g.fixedStep(.001,1);}}
+  {Scope run("repeated-model-run",capture);GCaMP g({gp.memptr(),gp.n_elem},{cp.memptr(),cp.n_elem});for(int i=0;i<3;++i){g.setState(1e-6);g.fixedStep(.001,1);}}
   require(records==1 && last.detections>1 && last.first.mode==-1 && std::strcmp(last.first.integrator,"not_applicable")==0 && !last.first.timing_known && last.first.requested_dt==0 && last.first.h==0 && last.first.substep==-1 && std::strcmp(last.first.method,"GCaMP.setGmat")==0 && std::strcmp(last.first.field,"generator")==0 && last.complete);
   char a[1024],b[768],c[512];format(last,a,sizeof(a),b,sizeof(b),c,sizeof(c));
   require(std::strstr(a,"nominal_h=") && std::strstr(b,"suppressed="));
@@ -27,7 +27,7 @@ int case_entry(int argc,char** argv){
   stderr_sink(last);
  }else if(id=="P14"){
   const auto start=std::chrono::steady_clock::now();
-  {Scope run("bounded-valid-timing",capture);GCaMP g(gp,cp);for(int i=0;i<64;++i){g.init();g.evolve(.001,1);require(std::isfinite(g.getDFF()));}}
+  {Scope run("bounded-valid-timing",capture);GCaMP g({gp.memptr(),gp.n_elem},{cp.memptr(),cp.n_elem});for(int i=0;i<64;++i){g.init();g.evolve(.001,1);require(std::isfinite(g.getDFF()));}}
   require(records==0);
   std::cout<<"elapsed_seconds="<<std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()<<" calls=64 comparable_baseline=unavailable\n";
  }else if(id=="P15"){

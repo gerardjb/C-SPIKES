@@ -1,0 +1,288 @@
+{
+  "denominator": {
+    "DFF": {
+      "error": "",
+      "logs": [
+        {
+          "complete": true,
+          "count": 2,
+          "counts": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "field": "fluorescence_denominator",
+          "index": -1,
+          "method": "GCaMP.getDFF",
+          "mode": 1,
+          "operation": "input-probe",
+          "value": "0000000000000000"
+        }
+      ],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "+inf"
+    },
+    "explicit": {
+      "error": "",
+      "logs": [],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "c2152b7f78ff233f"
+    },
+    "flux": {
+      "error": "",
+      "logs": [],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "2e5ae37bc016243f"
+    },
+    "input": [
+      "3a8c30e28e79453e",
+      "3a8c30e28e79553e",
+      "2c69a4292b1b603e",
+      "3a8c30e28e79653e",
+      "48afbc9af2d76a3e",
+      "2c69a4292b1b703e",
+      "b37aea055dca723e",
+      "3a8c30e28e79753e",
+      "c19d76bec028783e",
+      "48afbc9af2d77a3e",
+      "d0c0027724877d3e",
+      "2c69a4292b1b803e"
+    ]
+  },
+  "id": "N11",
+  "inf": {
+    "DFF": {
+      "error": "",
+      "logs": [
+        {
+          "complete": true,
+          "count": 1,
+          "counts": [
+            0,
+            0,
+            1,
+            0
+          ],
+          "field": "DFF",
+          "index": -1,
+          "method": "GCaMP.getDFF",
+          "mode": 1,
+          "operation": "input-probe",
+          "value": "+inf"
+        }
+      ],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "+inf"
+    },
+    "explicit": {
+      "error": "",
+      "logs": [
+        {
+          "complete": true,
+          "count": 1,
+          "counts": [
+            0,
+            1,
+            0,
+            0
+          ],
+          "field": "calcium_flux",
+          "index": -1,
+          "method": "GCaMP.flux_konN_konC",
+          "mode": 1,
+          "operation": "input-probe",
+          "value": "nan"
+        }
+      ],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "nan"
+    },
+    "flux": {
+      "error": "",
+      "logs": [
+        {
+          "complete": true,
+          "count": 1,
+          "counts": [
+            0,
+            1,
+            0,
+            0
+          ],
+          "field": "calcium_flux",
+          "index": -1,
+          "method": "GCaMP.flux",
+          "mode": 1,
+          "operation": "input-probe",
+          "value": "nan"
+        }
+      ],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "nan"
+    },
+    "input": [
+      "3a8c30e28e79453e",
+      "3a8c30e28e79553e",
+      "+inf",
+      "3a8c30e28e79653e",
+      "48afbc9af2d76a3e",
+      "2c69a4292b1b703e",
+      "b37aea055dca723e",
+      "3a8c30e28e79753e",
+      "c19d76bec028783e",
+      "48afbc9af2d77a3e",
+      "d0c0027724877d3e",
+      "2c69a4292b1b803e"
+    ]
+  },
+  "nan": {
+    "DFF": {
+      "error": "",
+      "logs": [
+        {
+          "complete": true,
+          "count": 1,
+          "counts": [
+            0,
+            0,
+            1,
+            0
+          ],
+          "field": "DFF",
+          "index": -1,
+          "method": "GCaMP.getDFF",
+          "mode": 1,
+          "operation": "input-probe",
+          "value": "nan"
+        }
+      ],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "nan"
+    },
+    "explicit": {
+      "error": "",
+      "logs": [
+        {
+          "complete": true,
+          "count": 1,
+          "counts": [
+            0,
+            1,
+            0,
+            0
+          ],
+          "field": "calcium_flux",
+          "index": -1,
+          "method": "GCaMP.flux_konN_konC",
+          "mode": 1,
+          "operation": "input-probe",
+          "value": "nan"
+        }
+      ],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "value": "nan"
+    },
+    "flux": {
+      "error": "",
+      "logs": [
+        {
+          "complete": true,
+          "count": 1,
+          "counts": [
+            0,
+            1,
+            0,
+            0
+          ],
+          "field": "calcium_flux",
+          "index": -1,
+          "method": "GCaMP.flux",
+          "mode": 1,
+          "operation": "input-probe",
+          "value": "nan"
+        }
+      ],
+      "rates_after": [
+        "3cbe0875dc9c0940",
+        "50fd53afb109fd3f"
+      ],
+      "rates_before": [
+        "ab585031cf61ee3f",
+        "cdfe867a3af0ed3f"
+      ],
+      "value": "nan"
+    },
+    "input": [
+      "3a8c30e28e79453e",
+      "3a8c30e28e79553e",
+      "nan",
+      "3a8c30e28e79653e",
+      "48afbc9af2d76a3e",
+      "2c69a4292b1b703e",
+      "b37aea055dca723e",
+      "3a8c30e28e79753e",
+      "c19d76bec028783e",
+      "48afbc9af2d77a3e",
+      "d0c0027724877d3e",
+      "2c69a4292b1b803e"
+    ]
+  },
+  "ok": true
+}

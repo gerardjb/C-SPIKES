@@ -1,3 +1,4 @@
+#include <array>
 #include "selected_trajectory.h"
 #include "GCaMP_model.h"
 #include <iostream>
@@ -31,10 +32,10 @@ void fixture(int n,int time,GCaMP& model) {
         for(int t=time-1;t>=0;--t) {
             require(selected(t).baseline==bh(index,t),"baseline");
             require(selected(t).burst==uh(index,t),"burst");require(selected(t).spikes==sh(index,t),"spikes");
-            arma::vec original(12),packet(12);
-            for(int k=0;k<12;++k) {original(k)=ch(index,t,k);packet(k)=selected(t).calcium[k];}
-            require(arma::all(original==packet),"all 12 components");
-            require(model.getDFF(original)==model.getDFF(packet),"CPU fluorescence arithmetic");
+            std::array<double,12> original{},packet{};
+            for(int k=0;k<12;++k) {original[k]=ch(index,t,k);packet[k]=selected(t).calcium[k];}
+            require(original==packet,"all 12 components");
+            require(model.getDFF({original.data(),original.size()})==model.getDFF({packet.data(),packet.size()}),"CPU fluorescence arithmetic");
             if(t>0) index=ah(index,t);
         }
     }

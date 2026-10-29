@@ -18,18 +18,18 @@ static void handler(const char*,const char*,int,int){}
 static void restored(){need(gsl_set_error_handler(&handler)==&handler,"handler restoration");}
 static void na(const Location& p){need(p.mode==-1&&std::strcmp(p.integrator,"not_applicable")==0&&!p.timing_known&&p.requested_dt==0&&p.h==0&&p.substep==-1,"matrix metadata not N/A");}
 static GCaMP_params params(GCaMP& m){GCaMP_params p{};m.read_params(p);return p;}
-static bool same(const arma::vec::fixed<12>& a,const arma::vec::fixed<12>& b){return !std::memcmp(a.memptr(),b.memptr(),12*sizeof(double));}
+static bool same(const csp_model::State12& a,const csp_model::State12& b){return !std::memcmp(a.data(),b.data(),12*sizeof(double));}
 int main(int argc,char**argv){try{
  need(argc==4,"args");std::string id=argv[1];arma::vec gp,cp;need(gp.load(argv[2],arma::raw_ascii)&&cp.load(argv[3],arma::raw_ascii)&&gp.n_elem==14&&cp.n_elem==6,"fixture");
  gsl_set_error_handler(&handler);auto ctx=checked::Context::owned_isolated_process();std::array<double,14> raw{};std::copy(gp.begin(),gp.end(),raw.begin());checked::CellParameters cell{cp[0],cp[1],cp[2],cp[3],cp[4],cp[5]};
  auto make=[&](){auto r=checked::try_create_gcamp(raw,cell,ctx);need(r.model&&r.report.committed&&r.report.status==checked::Status::success,"factory");return std::move(r.model);};
  const double bad=std::numeric_limits<double>::quiet_NaN();
  if(id=="D01"){
-  {Scope scope("finite-context",capture);auto m=make();for(auto mode:{FIXED,FIXEDLA}){m->setTimeStepMode(mode);auto state=m->state,initial=m->initial_state;arma::mat::fixed<9,9> q;m->setGmat(0);m->fillGmat(q,GCaMP_params{}.c0);m->setGmat_konN_konC(q,params(*m).konN,params(*m).konC);auto equilibrium=m->steady_state(GCaMP_params{}.c0);need(std::all_of(equilibrium.begin(),equilibrium.end(),[](double v){return std::isfinite(v);})&&same(state,m->state)&&same(initial,m->initial_state)&&m->TSMode==mode,"finite context changed model state/mode");}}
+  {Scope scope("finite-context",capture);auto m=make();for(auto mode:{FIXED,FIXEDLA}){m->setTimeStepMode(mode);auto state=m->state,initial=m->initial_state;csp_model::Generator9 q;m->setGmat(0);m->fillGmat(q,GCaMP_params{}.c0);m->setGmat_konN_konC(q,params(*m).konN,params(*m).konC);auto equilibrium=m->steady_state(GCaMP_params{}.c0);need(std::all_of(equilibrium.begin(),equilibrium.end(),[](double v){return std::isfinite(v);})&&same(state,m->state)&&same(initial,m->initial_state)&&m->TSMode==mode,"finite context changed model state/mode");}}
   need(records==0,"finite warning");
  }else if(id=="D02"){
   const char* names[]={"GCaMP.setGmat","GCaMP.fillGmat","GCaMP.setGmat_konN_konC"};
-  for(int i=0;i<3;++i){auto m=make();unsigned before=records;{Scope scope("invalid-generator",capture);scope.step(1,"FIXEDLA",.001,.0001,7,1e-6,2e-6,3e-6);arma::mat::fixed<9,9> q;if(i<2){m->Gparams(0)=bad;if(i==0)m->setGmat(GCaMP_params{}.c0);else m->fillGmat(q,GCaMP_params{}.c0);}else m->setGmat_konN_konC(q,bad,params(*m).konC);}
+  for(int i=0;i<3;++i){auto m=make();unsigned before=records;{Scope scope("invalid-generator",capture);scope.step(1,"FIXEDLA",.001,.0001,7,1e-6,2e-6,3e-6);csp_model::Generator9 q;if(i<2){m->Gparams(0)=bad;if(i==0)m->setGmat(GCaMP_params{}.c0);else m->fillGmat(q,GCaMP_params{}.c0);}else m->setGmat_konN_konC(q,bad,params(*m).konC);}
    need(records==before+1&&last.detections==1&&last.counts[rate_value]==1&&std::strcmp(last.first.method,names[i])==0&&std::strcmp(last.first.field,"generator")==0,"generator observation count/location");na(last.first);}
  }else if(id=="D03"){
   {Scope s("GCaMP.steady_state",capture);s.mode(1);s.equilibrium_context();s.scalar(bad,"steady_state",state_value,2);}

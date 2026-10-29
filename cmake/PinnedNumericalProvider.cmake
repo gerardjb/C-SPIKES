@@ -1,0 +1,40 @@
+# Explicit qualified provider profile. No fallback or provider installation.
+set(CSP_NUMERICAL_PROFILE "linux-x86_64-lp64-serial" CACHE STRING "Qualified numerical provider profile")
+set_property(CACHE CSP_NUMERICAL_PROFILE PROPERTY STRINGS linux-x86_64-lp64-serial)
+if(NOT CSP_NUMERICAL_PROFILE STREQUAL "linux-x86_64-lp64-serial" OR
+   NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
+   NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+ message(FATAL_ERROR "Unqualified numerical provider profile/platform; macOS and Windows require separate qualification")
+endif()
+set(CSP_NUMERICAL_PROVIDER_ROOT "" CACHE PATH "Qualified numerical provider installation")
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+ message(FATAL_ERROR "Qualified provider requires 64-bit LP64 platform")
+endif()
+function(csp_require_hash file expected)
+ if(NOT EXISTS "${file}")
+  message(FATAL_ERROR "Missing qualified provider: ${file}")
+ endif()
+ file(SHA256 "${file}" actual)
+ if(NOT actual STREQUAL expected)
+  message(FATAL_ERROR "Qualified provider hash mismatch: ${file}")
+ endif()
+endfunction()
+set(CSP_BLAS "${CSP_NUMERICAL_PROVIDER_ROOT}/lib/libopenblas.a")
+set(CSP_LAPACK "${CSP_NUMERICAL_PROVIDER_ROOT}/lib/liblapack.a")
+set(CSP_FORTRAN "/usr/lib64/libgfortran.so.3")
+csp_require_hash("${CSP_BLAS}" "609d9d208092fcf6af3c67c86ca561dcdce19ec16fae6afd2a0577b940c46413")
+csp_require_hash("${CSP_LAPACK}" "04d44165a3d07861a8919939865290d02fcdc9c56d98ed85b4d062e72202b0e7")
+csp_require_hash("${CSP_FORTRAN}" "e8210b070fde6b7e46a12abd1e1352aa95eb8b65ae0ff17e16abe0a03d7ac8d5")
+add_library(csp_numerical_provider INTERFACE)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(CSP_XERBLA_OBJECT "${CMAKE_CURRENT_BINARY_DIR}/csp-provider/openblas-xerbla.c.o")
+execute_process(COMMAND "${Python3_EXECUTABLE}"
+ "${CMAKE_CURRENT_LIST_DIR}/ExtractPinnedHandler.py" "${CSP_BLAS}" "${CSP_XERBLA_OBJECT}"
+ RESULT_VARIABLE extraction_status ERROR_VARIABLE extraction_error)
+if(NOT extraction_status EQUAL 0)
+ message(FATAL_ERROR "Qualified handler extraction failed: ${extraction_error}")
+endif()
+# An ordinary object is always linked, before archive scanning. Unlike a forced
+# undefined symbol, this explicitly identifies the original handler definition.
+target_link_libraries(csp_numerical_provider INTERFACE "${CSP_XERBLA_OBJECT}" "${CSP_BLAS}" "${CSP_LAPACK}" "${CSP_BLAS}" "${CSP_FORTRAN}" m)
+include("${CMAKE_CURRENT_LIST_DIR}/PythonModuleExports.cmake")

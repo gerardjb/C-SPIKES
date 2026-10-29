@@ -1,6 +1,6 @@
 #include<algorithm>
 #include<gsl/gsl_math.h>
-#include<armadillo>
+#include <cmath>
 #include"include/utils.h"
 #include<gsl/gsl_sf.h>
 #include <gsl/gsl_randist.h>

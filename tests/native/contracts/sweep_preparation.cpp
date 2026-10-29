@@ -14,12 +14,12 @@ void nested(){auto m=checked::TestAccess::snapshot(*nesting->model);auto c=check
 int main(int argc,char**argv){try{
  require(argc==4,"arguments");std::string id=argv[1];std::cout<<std::setprecision(17);gsl_set_error_handler(&handler);
  constpar c(argv[3]);c.t_min=c.t_max=0;c.output_folder="unused-sentinel-output";c.tag="g1g";
- arma::vec time={0,.001,.002},data={0,0,0};SMC smc(time,data,0,c,false,17,0,argv[2]);auto& m=*smc.model;
+ csp_application::ObservationVector time={0,.001,.002},data={0,0,0};SMC smc(time,data,0,c,false,17,0,argv[2]);auto& m=*smc.model;
  // Explicitly initialize only test snapshot fields that legacy construction leaves undefined.
- m.Cparams={11,12,13,14,15,16};checked::TestAccess::seed(m);
- for(auto row:smc.particleSystem)for(unsigned j=0;j<smc.nparticles;++j){row[j].C.fill(0.125);row[j].B=.25;row[j].burst=1;row[j].S=0;row[j].logWeight=-.5;row[j].ancestor=-1;}
+ m.Cparams.coefficients={11,12,13,14,15,16};checked::TestAccess::seed(m);
+ for(auto row:smc.particleSystem)for(unsigned j=0;j<smc.nparticles;++j){fill_values(row[j].C,0.125);row[j].B=.25;row[j].burst=1;row[j].S=0;row[j].logWeight=-.5;row[j].ancestor=-1;}
  param p;p.G_tot=c.G_tot_mean;p.gamma=c.gamma_mean;p.DCaT=c.DCaT_mean;p.Rf=c.Rf_mean;p.gam_in=c.gam_in_mean;p.gam_out=c.gam_out_mean;p.wbb[0]=.1;p.wbb[1]=.2;p.r0=.3;p.r1=.4;p.sigma2=.5;p.filename="unused-param-output";
- Trajectory traj(3,"unused-trajectory-output");traj.B.fill(.1);traj.burst.fill(1);traj.C.fill(.2);traj.S.fill(0);traj.Y.fill(.3);
+ Trajectory traj(3,"unused-trajectory-output");fill_values(traj.B,.1);fill_values(traj.burst,1);fill_values(traj.C,.2);fill_values(traj.S,0);fill_values(traj.Y,.3);
  if(id=="P02"||id=="P05"){p.G_tot=3e-5;p.gam_in=30;p.gam_out=10;}
  if(id=="P03")m.setState(0);if(id=="P04")m.setState(1e-6);if(id=="P05")m.setState(5e-8);
  m.setTimeStepMode(id=="P06"?FIXED:FIXEDLA);m.DFF=123;
@@ -65,7 +65,7 @@ int main(int argc,char**argv){try{
   throw std::runtime_error("baseline contracts not scheduled");
 #endif
  }
- require(public_before==public_caller(smc,c,p,traj),"caller/config/parameters/trajectory mutation");require(smc.model==model_addresses[0],"model address");require(history==checked::TestAccess::histories(m)&&arma::all(raw_cp==m.Cparams),"history/Cparams drift");
+ require(public_before==public_caller(smc,c,p,traj),"caller/config/parameters/trajectory mutation");require(smc.model==model_addresses[0],"model address");require(history==checked::TestAccess::histories(m)&&std::equal(raw_cp.begin(),raw_cp.end(),m.Cparams.begin()),"history/Cparams drift");
 #ifdef C_SPIKES_CHECKED_SWEEP_CPU
  require(private_before==checked::SweepAccess::private_state(smc)&&caller_addresses==checked::SweepAccess::addresses(smc),"RNG/counter/private caller/storage mutation");
 #endif
