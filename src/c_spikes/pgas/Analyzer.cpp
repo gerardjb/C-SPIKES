@@ -1,3 +1,4 @@
+#include "include/numerical_diagnostics.h"
 #include <iostream>
 #include <iomanip>
 #include "include/particle.h"
@@ -32,6 +33,7 @@ void Analyzer::add_parameter_sample(std::vector<double> parameter_sample) {
 
 
 void Analyzer::run() {
+    csp_diagnostics::Scope numerical_run("Analyzer.run");
     // Other init type stuff that was needed
     int existing_samples=0;
 

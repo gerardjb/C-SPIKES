@@ -59,35 +59,6 @@ Trajectory::Trajectory(unsigned int s, string fname){
 
 }
 
-void Trajectory::simulate(gsl_rng* rng, const param& par, const constpar *constants){
-
-    GCaMP model(par.G_tot, par.gamma, par.DCaT, par.Rf, par.gam_in, par.gam_out);
-
-    double dt=1.0/constants->sampling_frequency;
-    double rate[2] = {par.r0*dt,par.r1*dt};
-
-    B(0) = 0;//gsl_ran_gaussian(rng,constants->bm_sigma);
-    burst(0) = 0;
-    S(0) = gsl_ran_poisson(rng,par.r0*dt);
-    Y(0) = 0+B(0)+gsl_ran_gaussian(rng,sqrt(par.sigma2));
-    
-    double W[2][2] = {{1-par.wbb[0]*dt, par.wbb[0]*dt},
-        {par.wbb[1]*dt, 1-par.wbb[1]*dt}};
-
-    for(unsigned int t=1;t<size;t++){
-
-        burst(t) = (gsl_rng_uniform(rng) < W[burst(t-1)][0]) ? 0 : 1;
-
-        B(t)     = B(t-1)+gsl_ran_gaussian(rng,constants->bm_sigma*sqrt(dt)); 
-        S(t)     = gsl_ran_poisson(rng,rate[burst(t)]);
-        
-        model.evolve(dt,S(t));
-
-        C(t)     = model.DFF;
-        Y(t)     = model.DFF+B(t)+gsl_ran_gaussian(rng,sqrt(par.sigma2)); 
-    }
-}
-
 void Trajectory::write(ofstream &outfile, unsigned int index){
     
     if(!outfile.is_open()){
@@ -141,48 +112,6 @@ double Trajectory::logp(const param* p, const constpar* constants){
 // SMC class
 // -------------------------------------------------------------------
 //
-SMC::SMC(string filename, int index, constpar& cst, bool has_header, int seed, unsigned int maxlen, string Gparam_file){
-		
-    resampling = pgas::ResamplingOptions::from_environment((seed==0) ? cst.seed : seed);
-    rng = gsl_rng_alloc(gsl_rng_mt19937);
-    gsl_rng_set(rng, (seed==0) ? cst.seed : seed);
-		
-    model = new GCaMP(cst.G_tot_mean,cst.gamma_mean,cst.DCaT_mean,cst.Rf_mean,cst.gam_in_mean, cst.gam_out_mean, Gparam_file);
-    model->setTimeStepMode((TimeStepMode)cst.TSMode);
-
-    arma::field <string> header;
-
-    if(has_header){
-        tracemat.load(arma::csv_name(filename, header));
-    } else {
-        tracemat.load(filename);
-    }
-    if(maxlen>0 && maxlen<tracemat.n_rows) tracemat = tracemat.rows(0,maxlen);
-
-    data_time  = tracemat.col(0);
-    data_y    = tracemat.col(index);
-    constants = &cst;
-
-    // The time units here are assumed to be seconds
-    constants->sampling_frequency = 1.0 / (tracemat(1, 0)-tracemat(0,0));
-    cout << "setting sampling frequency to: "<<constants->sampling_frequency << endl;
-    constants->set_time_scales();
-
-    // set number of particles
-    nparticles=constants->nparticles;
-    TIME = tracemat.n_rows;
-    cout<<"nparticles: "<<nparticles<<endl;
-    cout<<"TIME      : "<<TIME<<endl;
-
-    // set particle system
-    particleSystem.resize(TIME);
-    for(unsigned int t=0;t<TIME;++t){
-        particleSystem[t] = new Particle[nparticles];
-        for(unsigned int j=0;j<nparticles;j++) particleSystem[t][j].index=j;
-    }
-
-}
-
 SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_header, int seed, unsigned int maxlen, string Gparam_file){
 		
     resampling = pgas::ResamplingOptions::from_environment((seed==0) ? cst.seed : seed);
@@ -235,34 +164,6 @@ SMC::SMC(arma::vec time, arma::vec data, int index, constpar& cst, bool has_head
 
 }
 
-SMC::SMC(arma::vec &Y, constpar& cst, bool v){
-
-    verbose=v;
-
-    constants = &cst;
-
-    resampling = pgas::ResamplingOptions::from_environment(constants->seed);
-    rng = gsl_rng_alloc(gsl_rng_mt19937);
-    gsl_rng_set(rng,constants->seed);
-
-    data_time  = arma::regspace(0,Y.n_elem,1.0/constants->sampling_frequency);
-    data_y    = Y;
-
-    // The time units here are assumed to be seconds
-    if(verbose) cout << "setting sampling frequency to: "<<constants->sampling_frequency << endl;
-    constants->set_time_scales();
-
-    // set number of particles
-    nparticles=constants->nparticles;
-    TIME = Y.n_rows;
-
-    // set particle system
-    particleSystem.resize(TIME);
-    for(unsigned int t=0;t<TIME;++t){
-        particleSystem[t] = new Particle[nparticles];
-        for(unsigned int j=0;j<nparticles;j++) particleSystem[t][j].index=j;
-    }
-}
 
 SMC::~SMC() {
     for (auto* row : particleSystem) {
@@ -552,89 +453,6 @@ void SMC::sampleParameters(const param &pin, param &pout, Trajectory &traj){
 
 }
 
-void SMC::PF(const param &par){
-
-    // define particle system
-    cout<<"TIME = "<<TIME<<endl;
-    cout<<"nparticles = "<<nparticles<<endl;
-
-    // define weights
-    double w[nparticles],logW[nparticles];
-
-    // initialize all particles at time 0
-    for(unsigned int i=0;i<nparticles;++i){
-        rmu(particleSystem[0][i],data_y(0),par);
-    }
-
-    vector<double> g_noise(nparticles);
-    vector<double> u_noise(nparticles);
-    vector<int> a_noise(nparticles);
-
-    for(unsigned int t=1;t<TIME;++t){
-        // Multinomial resampling
-        // // // collect weights
-        for(unsigned int i=0;i<nparticles;i++){
-            logW[i] = particleSystem[t-1][i].logWeight;
-        }
-
-        utils::w_from_logW(logW,w,nparticles);
-
-        gsl_ran_discrete_t *rdisc = gsl_ran_discrete_preproc(nparticles, w);
-        
-        // Pregenerate noise so we can have noise that is not dependent on the thread execution order
-        double dt = 1.0/constants->sampling_frequency;
-        double sigma_B_posterior = sqrt(dt*pow(constants->bm_sigma,2)*par.sigma2/(par.sigma2+dt*pow(constants->bm_sigma,2)));  
-        for(unsigned int i=0;i<nparticles;i++){
-            if(i != 0) {
-                a_noise[i] = gsl_ran_discrete(rng,rdisc);
-                u_noise[i] = gsl_rng_uniform(rng);
-                g_noise[i] = gsl_ran_gaussian(rng,sigma_B_posterior);
-            }
-        }
-
-        #pragma omp parallel for schedule(static)
-        for(unsigned int i=0;i<nparticles;i++){
-            
-            //set ancestor of particle i
-            
-            particleSystem[t][i].ancestor = a_noise[i]; 
-            particleSystem[t][i].logWeight = -log(nparticles);
-
-            //move particle
-            move_and_weight(particleSystem[t][i], particleSystem[t-1][a_noise[i]], data_y(t), par, g_noise[i], u_noise[i]);
-        }
-
-        gsl_ran_discrete_free(rdisc);
-
-    }
-
-    ofstream outfile_C("PF_output_C.dat");
-    ofstream outfile_B("PF_output_B.dat");
-    ofstream outfile_A("PF_output_ancestors.dat");
-    ofstream outfile_test("PF_all_part.dat");
-    ofstream outfile_S("PF_output_S.dat");
-
-
-    for(unsigned int i=0;i<nparticles;i++){
-        unsigned int a=i;
-        unsigned int t=TIME;
-
-        while(t>0){
-            t--;
-            outfile_A<<a<<' ';
-            outfile_C<<particleSystem[t][a].C(0)<<' ';
-            outfile_S<<particleSystem[t][a].S<<' ';
-            outfile_B<<particleSystem[t][a].B<<' ';
-            a=particleSystem[t][a].ancestor;
-        }
-        outfile_C<<endl;
-        outfile_B<<endl;
-        outfile_A<<endl;
-        outfile_S<<endl;
-    }
-
-  
-}
 
 // A global to keep track whether Kokkos has been setup.
 bool Kokkos_Initialized = false;
@@ -648,6 +466,10 @@ void init_kokkos()
 }
  
 void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out){
+    PGAS_impl(par, traj_in, traj_out, false);
+}
+
+void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &traj_out, bool prepared){
 
     if (ancestor_sweep == std::numeric_limits<uint64_t>::max())
         throw std::overflow_error("Ancestor sweep counter exhausted");
@@ -660,12 +482,14 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
     // fixes omp complaints
     //omp_set_num_threads(1);
     
+    if (!prepared) {
     // set model parameters
     model->setParams(par.G_tot,par.gamma,par.DCaT,par.Rf, par.gam_in, par.gam_out);
 
     // set particle 0 from input trajectory
     // Because trajectories do not store the full GCaMP state over time we have to re-evolve from the initial state.
     model->init();  // to initialize the GCaMP state to the steady state.
+    }
 		
     for(t=0;t<TIME;t++){
         particleSystem[t][0].B=traj_in.B(t);
@@ -886,3 +710,32 @@ void SMC::PGAS(const param &par, const Trajectory &traj_in, Trajectory &traj_out
  
 }
  
+
+#ifdef C_SPIKES_CHECKED_SWEEP_CPU
+checked::SweepPreparation SMC::try_prepare_sweep(const param& p, const checked::Context& context) {
+    checked::SweepPreparation result;
+    result.report = model->try_set_params_and_init(
+        {p.G_tot, p.gamma, p.DCaT, p.Rf, p.gam_in, p.gam_out}, context).report;
+    if (result.report.committed) {
+        // Fixed scalar/array storage: no allocation or caller-side mutation.
+        result.handoff.emplace();
+        model->read_params(*result.handoff);
+    }
+    return result;
+}
+#endif
+
+#ifdef C_SPIKES_CHECKED_SWEEP_RUN_CPU
+checked::SweepRun SMC::try_PGAS(const param& par, const Trajectory& input,
+                               Trajectory& output, const checked::Context& context) {
+    if (ancestor_sweep == std::numeric_limits<uint64_t>::max())
+        throw std::overflow_error("Ancestor sweep counter exhausted");
+    checked::SweepRun result;
+    const auto prepared = try_prepare_sweep(par, context);
+    result.preparation = prepared.report;
+    if (!prepared.report.committed) return result;
+    PGAS_impl(par, input, output, true);
+    result.sweep_returned = true;
+    return result;
+}
+#endif

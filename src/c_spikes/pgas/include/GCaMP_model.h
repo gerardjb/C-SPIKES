@@ -1,6 +1,10 @@
 #ifndef GCAMPMODEL_H
 #define GCAMPMODEL_H
 #include<armadillo>
+#include "numerical_diagnostics.h"
+#ifdef C_SPIKES_CHECKED_CPU
+#include "checked_equilibrium.h"
+#endif
 
 using namespace std;
 
@@ -48,7 +52,21 @@ struct GCaMP_params {
 };
 
 
+#ifdef CSP_G1C_TEST_ACCESS
+namespace g1c { struct Access; }
+#endif
 class GCaMP {
+#ifdef C_SPIKES_CHECKED_CPU
+    friend struct checked::Engine;
+#ifdef C_SPIKES_CHECKED_TESTING
+    friend struct checked::TestAccess;
+#endif
+    struct CheckedTag {};
+    explicit GCaMP(CheckedTag) {}
+#endif
+#ifdef CSP_G1C_TEST_ACCESS
+    friend struct g1c::Access;
+#endif
 public:
     GCaMP(double G_tot,double gamma, double DCaT, double Rf, double gam_in, double gam_out, string Gparam_file="");
 		GCaMP(string Gparam_file, string Cparam_file);
@@ -56,12 +74,18 @@ public:
 		
 		void initial_setup();
     void setParams(double G_tot,double gamma, double DCaT, double Rf, double gam_in, double gam_out);
+#ifdef C_SPIKES_CHECKED_CPU
+    checked::UpdateResult try_set_params(checked::CellParameters,const checked::Context&);
+    checked::UpdateResult try_set_state(double,const checked::Context&);
+    checked::UpdateResult try_init(const checked::Context&);
+    checked::UpdateResult try_set_params_and_init(checked::CellParameters,const checked::Context&);
+    checked::EquilibriumResult try_steady_state(double,const checked::Context&);
+#endif
     
     void evolve(double deltat, int ns);
     void fixedStep(double deltat, int ns);
     void fixedStep_LA(double deltat, int ns);
     double fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out);
-    void evolve_test(double deltat, int ns);
     void evolve(double deltat, int ns, const arma::vec& state);
     void evolve_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out, double & dff_out);
 
@@ -98,11 +122,11 @@ public:
 		
     // Method to retrieve the stored DFF and state values
     //const arma::vec& getDFFValues() const;
-    arma::vec getDFFValues() const { return DFF_values; }
-    arma::mat getGValues() const { return G_interp; }
-    arma::vec getBCaValues() const { return BCa_values; }
-    arma::vec getCaValues() const { return Ca_values; }
-    arma::vec getCaInValues() const { return Ca_in_values; }
+    arma::vec getDFFValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getDFFValues"); diagnostic.mode(TSMode); diagnostic.array(DFF_values, "DFF_values", csp_diagnostics::output_value); return DFF_values; }
+    arma::mat getGValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getGValues"); diagnostic.mode(TSMode); diagnostic.array(G_interp, "G_interp", csp_diagnostics::output_value); return G_interp; }
+    arma::vec getBCaValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getBCaValues"); diagnostic.mode(TSMode); diagnostic.array(BCa_values, "BCa_values", csp_diagnostics::output_value); return BCa_values; }
+    arma::vec getCaValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getCaValues"); diagnostic.mode(TSMode); diagnostic.array(Ca_values, "Ca_values", csp_diagnostics::output_value); return Ca_values; }
+    arma::vec getCaInValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getCaInValues"); diagnostic.mode(TSMode); diagnostic.array(Ca_in_values, "Ca_in_values", csp_diagnostics::output_value); return Ca_in_values; }
     
     // method required for kokkos
     void read_params(GCaMP_params & params);

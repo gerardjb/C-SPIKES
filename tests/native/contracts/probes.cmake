@@ -1,0 +1,15 @@
+# Optional CPU contract targets. Requires CMake >= 3.19 for deferred setup.
+# Set CMAKE_PROJECT_c_spikes_INCLUDE to this file when configuring a separate build.
+function(csp_foundation_contract_targets)
+ if(_pgas_build_gpu OR NOT C_SPIKES_TEST_CHECKED_CPU OR NOT C_SPIKES_TEST_SWEEP_CPU OR NOT C_SPIKES_TEST_SWEEP_RUN_CPU)
+  message(FATAL_ERROR "Use a CPU-only build with all three checked/sweep test options enabled")
+ endif()
+ foreach(name checked_transactions diagnostic_context collector factory sweep_preparation sweep_run)
+  add_executable(csp_contract_${name} "${CMAKE_SOURCE_DIR}/tests/native/contracts/${name}.cpp" $<TARGET_OBJECTS:pgas_obj_cpu>)
+  target_include_directories(csp_contract_${name} PRIVATE "${CMAKE_SOURCE_DIR}/src/c_spikes/pgas/include" "${CMAKE_SOURCE_DIR}/src/c_spikes/pgas" "${CMAKE_SOURCE_DIR}/tests/native/g1e" ${ARMADILLO_INCLUDE_DIRS})
+  target_compile_features(csp_contract_${name} PRIVATE cxx_std_17)
+  target_compile_definitions(csp_contract_${name} PRIVATE USE_GPU=0 C_SPIKES_CHECKED_CPU C_SPIKES_CHECKED_TESTING C_SPIKES_CHECKED_SWEEP_CPU C_SPIKES_CHECKED_SWEEP_RUN_CPU)
+  target_link_libraries(csp_contract_${name} PRIVATE ${PGAS_COMMON_LIBS})
+ endforeach()
+endfunction()
+cmake_language(DEFER CALL csp_foundation_contract_targets)

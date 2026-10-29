@@ -1,9 +1,16 @@
 #include"include/GCaMP_model.h"
+#include "include/numerical_diagnostics.h"
+using namespace csp_diagnostics;
+#ifdef CSP_G1C_USE_GSL
+#include "model_trial.h"
+#endif
 
 using namespace std;
 
 // Constructor used by the PGAS particles
 GCaMP::GCaMP(double p1, double p2, double p3, double p4, double p5, double p6, string Gparam_file) {
+    Scope diagnostic("GCaMP.__init__");
+    diagnostic.mode(TSMode);
   // Set passed-in parameters
   G_tot = p1;
   gamma = p2;
@@ -24,6 +31,8 @@ GCaMP::GCaMP(double p1, double p2, double p3, double p4, double p5, double p6, s
 
 // Constructor for passing files
 GCaMP::GCaMP(string Gparam_file, string Cparam_file) {
+    Scope diagnostic("GCaMP.__init__");
+    diagnostic.mode(TSMode);
 	
   // Load Gparams from file or default values
   if (Gparam_file.empty()) {
@@ -72,6 +81,8 @@ GCaMP::GCaMP(string Gparam_file, string Cparam_file) {
 
 // Passing in the parameters as numeric types
 GCaMP::GCaMP(const arma::vec Gparams_in, const arma::vec Cparams_in) {
+    Scope diagnostic("GCaMP.__init__");
+    diagnostic.mode(TSMode);
   // Set member variables from passed-in arguments
 	G_tot = Cparams_in(0);
   gamma = Cparams_in(1);
@@ -89,7 +100,10 @@ GCaMP::GCaMP(const arma::vec Gparams_in, const arma::vec Cparams_in) {
 
 
 void GCaMP::initial_setup() {
+    Scope diagnostic("GCaMP.initial_setup");
+    diagnostic.mode(TSMode);
   brightStates = {2, 3, 5, 6, 8};
+  diagnostic.array(Gparams, "Gparams", state_value);
 
   Gparams(0) = Gparams(1) / pow(Gparams(0), Gparams(2));
   Gparams(3) = Gparams(4) / pow(Gparams(3), Gparams(5));
@@ -121,10 +135,17 @@ void GCaMP::initial_setup() {
   Ginit = arma::accu(Ginit_v(brightStates));
 
   DFF = 0;
+  diagnostic.array(state, "state", state_value);
+  diagnostic.scalar(G0, "G0", state_value);
+  diagnostic.scalar(Gsat, "Gsat", state_value);
+  diagnostic.scalar(Ginit, "Ginit", state_value);
+  diagnostic.scalar(Rf, "Rf", state_value);
 }
 
 
 void GCaMP::setParams(double p1, double p2, double p3, double p4, double p5, double p6){
+    Scope diagnostic("GCaMP.setParams");
+    diagnostic.mode(TSMode);
     G_tot = p1;
     gamma = p2;
     DCaT  = p3;
@@ -139,11 +160,17 @@ void GCaMP::setParams(double p1, double p2, double p3, double p4, double p5, dou
     G0     =  arma::accu(G0_v(brightStates));
     Gsat   =  arma::accu(Gsat_v(brightStates));
     Ginit  =  arma::accu(Ginit_v(brightStates));
+    diagnostic.scalar(G0, "G0", state_value);
+    diagnostic.scalar(Gsat, "Gsat", state_value);
+    diagnostic.scalar(Ginit, "Ginit", state_value);
+    diagnostic.scalar(Rf, "Rf", state_value);
    
 }
 
 
 void GCaMP::setGmat_konN_konC(arma::mat::fixed<9,9> & Gmatrix, double konN, double konC){
+    Scope diagnostic("GCaMP.setGmat_konN_konC");
+    diagnostic.equilibrium_context();
 
   Gmatrix(0, 0) = -(konN+konC);
   Gmatrix(1, 0) = konN;
@@ -157,9 +184,12 @@ void GCaMP::setGmat_konN_konC(arma::mat::fixed<9,9> & Gmatrix, double konN, doub
   Gmatrix(7, 1) = konC;
   Gmatrix(7, 4) = konN;
 
+    diagnostic.array(Gmatrix, "generator", rate_value);
 }
 
 void GCaMP::setGmat(double ca){
+    Scope diagnostic("GCaMP.setGmat");
+    diagnostic.equilibrium_context();
 
 	konN   = Gparams(0)*pow(ca,Gparams(2));
   konC   = Gparams(3)*pow(ca,Gparams(5));
@@ -186,9 +216,12 @@ void GCaMP::setGmat(double ca){
 			{0,konC,0,0,konN,0,0,-(koffC+koffN+konPC2+konPN2),0},
 			{0,0,0,konPC2,0,0,konPN2,0,-(koffPN2+koffPC2)}};
 
+    diagnostic.array(Gmat, "generator", rate_value);
 }
 
 void GCaMP::fillGmat(arma::mat::fixed<9,9> & Gmatrix, double ca){
+    Scope diagnostic("GCaMP.fillGmat");
+    diagnostic.equilibrium_context();
 
 	konN   = Gparams(0)*pow(ca,Gparams(2));
   konC   = Gparams(3)*pow(ca,Gparams(5));
@@ -203,9 +236,12 @@ void GCaMP::fillGmat(arma::mat::fixed<9,9> & Gmatrix, double ca){
 			{0,konC,0,0,konN,0,0,-(koffC+koffN+konPC2+konPN2),0},
 			{0,0,0,konPC2,0,0,konPN2,0,-(koffPN2+koffPC2)}};
 
+    diagnostic.array(Gmatrix, "generator", rate_value);
 }
 
 double GCaMP::flux(double ca, const arma::vec& G){
+    Scope diagnostic("GCaMP.flux");
+    diagnostic.mode(TSMode);
 
 	konN   = Gparams(0)*pow(ca,Gparams(2));
   konC   = Gparams(3)*pow(ca,Gparams(5));
@@ -222,10 +258,14 @@ double GCaMP::flux(double ca, const arma::vec& G){
                 koffPC2*(G(6)+G(8));
 
   int Csites=2;
-  return 2*N + Csites*C;
+  const double result = 2*N + Csites*C;
+  diagnostic.scalar(result, "calcium_flux", rate_value);
+  return result;
 }
 
 double GCaMP::flux_konN_konC(double konN, double konC, const arma::vec& G){
+    Scope diagnostic("GCaMP.flux_konN_konC");
+    diagnostic.mode(TSMode);
 
   // Calculate fluxes per binding site
   double N = -(konN*(G(0) + G(4) + G(5))) +
@@ -239,42 +279,67 @@ double GCaMP::flux_konN_konC(double konN, double konC, const arma::vec& G){
                 koffPC2*(G(6)+G(8));
 
   int Csites=2;
-  return 2*N + Csites*C;
+  const double result = 2*N + Csites*C;
+  diagnostic.scalar(result, "calcium_flux", rate_value);
+  return result;
 }
 
 
 
 arma::vec GCaMP::steady_state(double c0){
+    Scope diagnostic("GCaMP.steady_state");
+    diagnostic.equilibrium_context();
 	setGmat(c0);
+#ifdef CSP_G1C_USE_GSL
+    // Explicit test-build opt-in only. The isolated owner handles failures
+    // transactionally; default production builds retain Armadillo unchanged.
+    const auto candidate = g1c::solve(Gmat, G_tot);
+    arma::vec ss(9);
+    for (size_t i = 0; i < 9; ++i) ss(i) = candidate.state[i];
+#else
 	arma::mat u = arma::null(Gmat);
 	arma::vec ss = u.col(0);
 	ss = ss/arma::accu(ss)*G_tot;
+#endif
     arma::vec b_c = {BCa0,c0,c0};
     ss = arma::join_vert(ss, b_c);
+    diagnostic.array(ss, "steady_state", state_value);
     return ss;
 }
 
 void GCaMP::init(){
+    Scope diagnostic("GCaMP.init");
+    diagnostic.mode(TSMode);
     setState(c0);
     DFF=0;
 }
 
 void GCaMP::setState(double ca){
+    Scope diagnostic("GCaMP.setState");
+    diagnostic.mode(TSMode);
     arma::vec is = steady_state(ca);
     state = is;
     initial_state=is;
+    diagnostic.array(state, "state", state_value);
 }
 
 void GCaMP::setTimeStepMode(TimeStepMode tsm){
+    Scope diagnostic("GCaMP.setTimeStepMode");
+    diagnostic.mode(TSMode);
     TSMode=tsm;
 }
 
 void GCaMP::evolve(double deltat, int ns, const arma::vec& s){
+    Scope diagnostic("GCaMP.evolve");
+    diagnostic.mode(TSMode);
+    diagnostic.array(s, "supplied_state", state_value);
     state = s;
     evolve(deltat,ns);
 }
 
 void GCaMP::evolve(double deltat, int ns){
+    Scope diagnostic("GCaMP.evolve");
+    diagnostic.mode(TSMode);
     switch(TSMode){
         case FIXED:
             fixedStep(deltat,ns);
@@ -286,6 +351,8 @@ void GCaMP::evolve(double deltat, int ns){
 }
 
 void GCaMP::evolve_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out, double & dff_out){
+    Scope diagnostic("GCaMP.evolve_threadsafe");
+    diagnostic.mode(TSMode);
     switch(TSMode){
         case FIXED:
             fixedStep(deltat,ns);
@@ -298,6 +365,10 @@ void GCaMP::evolve_threadsafe(double deltat, int ns, const arma::vec& state_in, 
 
 
 void GCaMP::fixedStep(double deltat, int ns){
+    Scope diagnostic("GCaMP.fixedStep");
+    diagnostic.mode(TSMode);
+    diagnostic.array(state, "initial_state", state_value);
+    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
 
     arma::vec G = state(arma::span(0,8));
 
@@ -317,6 +388,7 @@ void GCaMP::fixedStep(double deltat, int ns){
     arma::vec calcium_input = DCaT/sqrt(2*arma::datum::pi*sigma2_calcium_spike)*exp(-0.5/sigma2_calcium_spike*pow(deltat/2-timesteps,2));
     
     for(unsigned int i=1;i<timesteps.n_elem;++i){
+        diagnostic.step(TSMode, "FIXED", deltat, fine_timestep, i, Ca, BCa, Ca_in);
         setGmat(Ca);
         arma::vec dG_dt  = Gmat*G;
         Gflux = flux(Ca,G);
@@ -333,6 +405,10 @@ void GCaMP::fixedStep(double deltat, int ns){
         BCa = BCa +  dt*dBCa_dt;
         Ca  = Ca  +  dt*dCa_dt;
         Ca_in+= dt*dCa_in_dt;
+        diagnostic.array(G, "G", state_value);
+        diagnostic.scalar(BCa, "BCa", state_value, 9);
+        diagnostic.scalar(Ca, "Ca", state_value, 10);
+        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
 
 
         step_count+=1;
@@ -343,9 +419,14 @@ void GCaMP::fixedStep(double deltat, int ns){
     state(10) = Ca;
 
     DFF = (arma::accu(G(brightStates)) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));                                
+    diagnostic.scalar(DFF, "DFF", output_value);
 }
 
 void GCaMP::fixedStep_LA(double deltat, int ns){
+    Scope diagnostic("GCaMP.fixedStep_LA");
+    diagnostic.mode(TSMode);
+    diagnostic.array(state, "initial_state", state_value);
+    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
 
     arma::vec G = state(arma::span(0,8));
 
@@ -364,6 +445,7 @@ void GCaMP::fixedStep_LA(double deltat, int ns){
     double calcium_input;
     
     for(unsigned int i=1;i<timesteps.n_elem;++i){
+        diagnostic.step(TSMode, "FIXEDLA", deltat, finedt, i, Ca, BCa, Ca_in);
 
         calcium_input = (i==1) ? ns*DCaT/finedt : 0;
 
@@ -393,6 +475,10 @@ void GCaMP::fixedStep_LA(double deltat, int ns){
         BCa = BCa +  dt*(dBCa_dt+kapB/(kapB+1)*calcium_input);
         Ca  = Ca  +  dt*dCa_dt;
         Ca_in = Ca_in + dt*dCa_in_dt;
+        diagnostic.array(G, "G", state_value);
+        diagnostic.scalar(BCa, "BCa", state_value, 9);
+        diagnostic.scalar(Ca, "Ca", state_value, 10);
+        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
     }
 
     for(unsigned int i=0;i<9;i++) state(i) = G(i);
@@ -401,9 +487,14 @@ void GCaMP::fixedStep_LA(double deltat, int ns){
     state(11) = Ca_in;
 
     DFF = (arma::accu(G(brightStates)) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));                                
+    diagnostic.scalar(DFF, "DFF", output_value);
 }
 
 double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& state_in, arma::vec& state_out){
+    Scope diagnostic("GCaMP.fixedStep_LA_threadsafe");
+    diagnostic.mode(TSMode);
+    diagnostic.array(state_in, "initial_state", state_value);
+    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
 
     arma::vec G = state_in(arma::span(0,8));
     arma::mat::fixed<9,9> Gmatrix;
@@ -426,6 +517,7 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& st
     fillGmat(Gmatrix, Ca);
 
     for(unsigned int i=1;i<timesteps.n_elem;++i){
+        diagnostic.step(TSMode, "FIXEDLA", deltat, finedt, i, Ca, BCa, Ca_in);
 
         calcium_input = (i==1) ? ns*DCaT/finedt : 0;
 
@@ -455,6 +547,10 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& st
         BCa = BCa +  dt*(dBCa_dt+kapB/(kapB+1)*calcium_input);
         Ca  = Ca  +  dt*dCa_dt;
         Ca_in = Ca_in + dt*dCa_in_dt;
+        diagnostic.array(G, "G", state_value);
+        diagnostic.scalar(BCa, "BCa", state_value, 9);
+        diagnostic.scalar(Ca, "Ca", state_value, 10);
+        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
     }
 
     for(unsigned int i=0;i<9;i++) state_out(i) = G(i);
@@ -467,12 +563,17 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, const arma::vec& st
     for(unsigned int i=0;i<5;i++) brightStatesSum += G[brightStates[i]];
     double DFF_out = (brightStatesSum - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
 
+    diagnostic.scalar(DFF_out, "DFF", output_value);
     return DFF_out;
 }
 
 
 // This method allows direct outputs to python via bindings
 void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike_times) {
+    Scope diagnostic("GCaMP.integrateOverTime");
+    diagnostic.mode(TSMode);
+    diagnostic.array(state, "initial_state", state_value);
+    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
     // Clear previous state and DFF values
 		DFF_values.clear();
     G_values.reset();
@@ -525,6 +626,7 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
     Ca_in_values(0) = Ca_in;
 
     for (unsigned int i = 1; i < timesteps.n_elem; ++i) {
+        diagnostic.step(TSMode, "integrateOverTime", t_end-t_start, fine_dt, i, Ca, BCa, Ca_in);
 				
 				/*
 					Giovanni's implementation
@@ -544,6 +646,10 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
         BCa = BCa +  fine_dt*(dBCa_dt+kapB/(kapB+1)*calcium_input(i));
         Ca  = Ca  +  fine_dt*dCa_dt;
         Ca_in = Ca_in + fine_dt*dCa_in_dt;
+        diagnostic.array(G, "G", state_value);
+        diagnostic.scalar(BCa, "BCa", state_value, 9);
+        diagnostic.scalar(Ca, "Ca", state_value, 10);
+        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
 
         // Store DFF value at each timestep
         temp_DFF_values(i) = (arma::accu(G(brightStates)) - Ginit) /
@@ -575,10 +681,19 @@ void GCaMP::integrateOverTime(const arma::vec& time_vect, const arma::vec& spike
     // For direct comparison of c++ to python stored values
     //cout<<"G_interp.row(0)"<<G_interp.row(0)<<endl;
     //cout<<"G_interp.row(200)"<<G_interp.row(200)<<endl;
+    diagnostic.array(DFF_values, "DFF_history", output_value);
+    diagnostic.array(G_interp, "G_history", output_value);
+    diagnostic.array(BCa_values, "BCa_history", output_value);
+    diagnostic.array(Ca_values, "Ca_history", output_value);
+    diagnostic.array(Ca_in_values, "Ca_in_history", output_value);
 }
 
 //
 void GCaMP::integrateOverTime2(const arma::vec& time_vect, const arma::vec& spike_times) {
+    Scope diagnostic("GCaMP.integrateOverTime2");
+    diagnostic.mode(TSMode);
+    diagnostic.array(state, "initial_state", state_value);
+    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
     
 		DFF_values.clear();  // Clear previous DFF values
 		
@@ -604,6 +719,7 @@ void GCaMP::integrateOverTime2(const arma::vec& time_vect, const arma::vec& spik
     }
 
     for (unsigned int i = 1; i < timesteps.n_elem; ++i) {
+        diagnostic.step(TSMode, "integrateOverTime2", time_vect(time_vect.n_elem-1)-time_vect(0), fine_dt, i, Ca, BCa, Ca_in);
 				
 				/*
 					Updated version with proper internal cal handling
@@ -622,6 +738,10 @@ void GCaMP::integrateOverTime2(const arma::vec& time_vect, const arma::vec& spik
         BCa = BCa +  fine_dt*dBCa_dt;
         Ca  = Ca  +  fine_dt*dCa_dt;
         Ca_in = Ca_in + fine_dt*dCa_in_dt;
+        diagnostic.array(G, "G", state_value);
+        diagnostic.scalar(BCa, "BCa", state_value, 9);
+        diagnostic.scalar(Ca, "Ca", state_value, 10);
+        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
 
         // Store DFF value at each timestep
         temp_DFF_values(i) = (arma::accu(G(brightStates)) - Ginit) /
@@ -632,21 +752,34 @@ void GCaMP::integrateOverTime2(const arma::vec& time_vect, const arma::vec& spik
 		//cout<<"Size of timesteps = "<<timesteps.n_elem<<"; Size of temp_DFF_values = "<<temp_DFF_values.n_elem<<endl;
 		arma::interp1(timesteps, temp_DFF_values, time_vect, DFF_values, "linear");
 		//cout<<"Size of DFF_values after interp1 = "<<DFF_values.n_elem<<endl;
+    diagnostic.array(DFF_values, "DFF_history", output_value);
 }
 
 // Giovanni's methods for passing compressed states around the SMC sampler
 double GCaMP::getDFF(){
+    Scope diagnostic("GCaMP.getDFF");
+    diagnostic.mode(TSMode);
     arma::vec G = state(brightStates);
-    return (arma::accu(G) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
+    const double result = (arma::accu(G) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
+    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
+    diagnostic.scalar(result, "DFF", output_value);
+    return result;
 }
 
 double GCaMP::getDFF(const arma::vec& s){
+    Scope diagnostic("GCaMP.getDFF");
+    diagnostic.mode(TSMode);
     arma::vec G = s(brightStates);
-    return (arma::accu(G) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
+    const double result = (arma::accu(G) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
+    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
+    diagnostic.scalar(result, "DFF", output_value);
+    return result;
 }
 
 // This is more legacy from PGBAR I think, but could be useful at some later point.
 double GCaMP::getAmplitude(){
+    Scope diagnostic("GCaMP.getAmplitude");
+    diagnostic.mode(TSMode);
     init();
 
     arma::uvec indices = {20};
@@ -659,6 +792,7 @@ double GCaMP::getAmplitude(){
         resp(i)=DFF;
     }
 
+    diagnostic.array(resp, "amplitude_response", output_value);
     return(resp.max());
 }
 
