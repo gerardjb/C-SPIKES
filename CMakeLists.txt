@@ -5,6 +5,7 @@ project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION} LANGUAGES CXX
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(C_SPIKES_BUILD_OASIS "Build the OASIS native extension." ON)
+option(CSP_NATIVE_CORE_INSTALL "Enable the qualified opt-in native-core installation profile." OFF)
 
 if(C_SPIKES_BUILD_OASIS)
     find_package(Python COMPONENTS Interpreter Development.Module NumPy REQUIRED)
@@ -122,6 +123,10 @@ if(C_SPIKES_BUILD_OASIS)
         LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}/oasis
         RUNTIME DESTINATION ${SKBUILD_PROJECT_NAME}/oasis
     )
+endif()
+
+if(CSP_NATIVE_CORE_INSTALL)
+    include(cmake/NativeCoreInstall.cmake)
 endif()
 
 # Isolated-process checked API validation only; normal public builds stay unchanged.

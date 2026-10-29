@@ -1,0 +1,754 @@
+[
+  {
+    "id": "A_host_default_numpy_first_ordinary_H1",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H1",
+    "oracle": "host_default_numpy_first_ordinary_H1"
+  },
+  {
+    "id": "A_host_default_numpy_first_ordinary_H2",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H2",
+    "oracle": "host_default_numpy_first_ordinary_H2"
+  },
+  {
+    "id": "A_host_default_numpy_first_ordinary_H3",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H3",
+    "oracle": "host_default_numpy_first_ordinary_H3"
+  },
+  {
+    "id": "A_host_default_numpy_first_ordinary_H4",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H4",
+    "oracle": "host_default_numpy_first_ordinary_H4"
+  },
+  {
+    "id": "A_host_default_numpy_first_collision_H1",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H1",
+    "oracle": "host_default_numpy_first_collision_H1"
+  },
+  {
+    "id": "A_host_default_numpy_first_collision_H2",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H2",
+    "oracle": "host_default_numpy_first_collision_H2"
+  },
+  {
+    "id": "A_host_default_numpy_first_collision_H3",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H3",
+    "oracle": "host_default_numpy_first_collision_H3"
+  },
+  {
+    "id": "A_host_default_numpy_first_collision_H4",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H4",
+    "oracle": "host_default_numpy_first_collision_H4"
+  },
+  {
+    "id": "A_host_default_extension_first_ordinary_H1",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H1",
+    "oracle": "host_default_extension_first_ordinary_H1"
+  },
+  {
+    "id": "A_host_default_extension_first_ordinary_H2",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H2",
+    "oracle": "host_default_extension_first_ordinary_H2"
+  },
+  {
+    "id": "A_host_default_extension_first_ordinary_H3",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H3",
+    "oracle": "host_default_extension_first_ordinary_H3"
+  },
+  {
+    "id": "A_host_default_extension_first_ordinary_H4",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H4",
+    "oracle": "host_default_extension_first_ordinary_H4"
+  },
+  {
+    "id": "A_host_default_extension_first_collision_H1",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H1",
+    "oracle": "host_default_extension_first_collision_H1"
+  },
+  {
+    "id": "A_host_default_extension_first_collision_H2",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H2",
+    "oracle": "host_default_extension_first_collision_H2"
+  },
+  {
+    "id": "A_host_default_extension_first_collision_H3",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H3",
+    "oracle": "host_default_extension_first_collision_H3"
+  },
+  {
+    "id": "A_host_default_extension_first_collision_H4",
+    "kind": "host",
+    "place": "A",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H4",
+    "oracle": "host_default_extension_first_collision_H4"
+  },
+  {
+    "id": "A_oasis_default_ar1",
+    "kind": "oasis",
+    "place": "A",
+    "variant": "default",
+    "case": "ar1"
+  },
+  {
+    "id": "A_oasis_default_ar2",
+    "kind": "oasis",
+    "place": "A",
+    "variant": "default",
+    "case": "ar2"
+  },
+  {
+    "id": "A_package_default_P1",
+    "kind": "package",
+    "place": "A",
+    "variant": "default",
+    "case": "P1"
+  },
+  {
+    "id": "A_package_default_P2",
+    "kind": "package",
+    "place": "A",
+    "variant": "default",
+    "case": "P2"
+  },
+  {
+    "id": "A_host_checked_numpy_first_ordinary_H1",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H1",
+    "oracle": "host_checked_numpy_first_ordinary_H1"
+  },
+  {
+    "id": "A_host_checked_numpy_first_ordinary_H2",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H2",
+    "oracle": "host_checked_numpy_first_ordinary_H2"
+  },
+  {
+    "id": "A_host_checked_numpy_first_ordinary_H3",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H3",
+    "oracle": "host_checked_numpy_first_ordinary_H3"
+  },
+  {
+    "id": "A_host_checked_numpy_first_ordinary_H4",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H4",
+    "oracle": "host_checked_numpy_first_ordinary_H4"
+  },
+  {
+    "id": "A_host_checked_numpy_first_collision_H1",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H1",
+    "oracle": "host_checked_numpy_first_collision_H1"
+  },
+  {
+    "id": "A_host_checked_numpy_first_collision_H2",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H2",
+    "oracle": "host_checked_numpy_first_collision_H2"
+  },
+  {
+    "id": "A_host_checked_numpy_first_collision_H3",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H3",
+    "oracle": "host_checked_numpy_first_collision_H3"
+  },
+  {
+    "id": "A_host_checked_numpy_first_collision_H4",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H4",
+    "oracle": "host_checked_numpy_first_collision_H4"
+  },
+  {
+    "id": "A_host_checked_extension_first_ordinary_H1",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H1",
+    "oracle": "host_checked_extension_first_ordinary_H1"
+  },
+  {
+    "id": "A_host_checked_extension_first_ordinary_H2",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H2",
+    "oracle": "host_checked_extension_first_ordinary_H2"
+  },
+  {
+    "id": "A_host_checked_extension_first_ordinary_H3",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H3",
+    "oracle": "host_checked_extension_first_ordinary_H3"
+  },
+  {
+    "id": "A_host_checked_extension_first_ordinary_H4",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H4",
+    "oracle": "host_checked_extension_first_ordinary_H4"
+  },
+  {
+    "id": "A_host_checked_extension_first_collision_H1",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H1",
+    "oracle": "host_checked_extension_first_collision_H1"
+  },
+  {
+    "id": "A_host_checked_extension_first_collision_H2",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H2",
+    "oracle": "host_checked_extension_first_collision_H2"
+  },
+  {
+    "id": "A_host_checked_extension_first_collision_H3",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H3",
+    "oracle": "host_checked_extension_first_collision_H3"
+  },
+  {
+    "id": "A_host_checked_extension_first_collision_H4",
+    "kind": "host",
+    "place": "A",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H4",
+    "oracle": "host_checked_extension_first_collision_H4"
+  },
+  {
+    "id": "A_oasis_checked_ar1",
+    "kind": "oasis",
+    "place": "A",
+    "variant": "checked",
+    "case": "ar1"
+  },
+  {
+    "id": "A_oasis_checked_ar2",
+    "kind": "oasis",
+    "place": "A",
+    "variant": "checked",
+    "case": "ar2"
+  },
+  {
+    "id": "A_package_checked_P1",
+    "kind": "package",
+    "place": "A",
+    "variant": "checked",
+    "case": "P1"
+  },
+  {
+    "id": "A_package_checked_P2",
+    "kind": "package",
+    "place": "A",
+    "variant": "checked",
+    "case": "P2"
+  },
+  {
+    "id": "B_host_default_numpy_first_ordinary_H1",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H1",
+    "oracle": "host_default_numpy_first_ordinary_H1"
+  },
+  {
+    "id": "B_host_default_numpy_first_ordinary_H2",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H2",
+    "oracle": "host_default_numpy_first_ordinary_H2"
+  },
+  {
+    "id": "B_host_default_numpy_first_ordinary_H3",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H3",
+    "oracle": "host_default_numpy_first_ordinary_H3"
+  },
+  {
+    "id": "B_host_default_numpy_first_ordinary_H4",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H4",
+    "oracle": "host_default_numpy_first_ordinary_H4"
+  },
+  {
+    "id": "B_host_default_numpy_first_collision_H1",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H1",
+    "oracle": "host_default_numpy_first_collision_H1"
+  },
+  {
+    "id": "B_host_default_numpy_first_collision_H2",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H2",
+    "oracle": "host_default_numpy_first_collision_H2"
+  },
+  {
+    "id": "B_host_default_numpy_first_collision_H3",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H3",
+    "oracle": "host_default_numpy_first_collision_H3"
+  },
+  {
+    "id": "B_host_default_numpy_first_collision_H4",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H4",
+    "oracle": "host_default_numpy_first_collision_H4"
+  },
+  {
+    "id": "B_host_default_extension_first_ordinary_H1",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H1",
+    "oracle": "host_default_extension_first_ordinary_H1"
+  },
+  {
+    "id": "B_host_default_extension_first_ordinary_H2",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H2",
+    "oracle": "host_default_extension_first_ordinary_H2"
+  },
+  {
+    "id": "B_host_default_extension_first_ordinary_H3",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H3",
+    "oracle": "host_default_extension_first_ordinary_H3"
+  },
+  {
+    "id": "B_host_default_extension_first_ordinary_H4",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H4",
+    "oracle": "host_default_extension_first_ordinary_H4"
+  },
+  {
+    "id": "B_host_default_extension_first_collision_H1",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H1",
+    "oracle": "host_default_extension_first_collision_H1"
+  },
+  {
+    "id": "B_host_default_extension_first_collision_H2",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H2",
+    "oracle": "host_default_extension_first_collision_H2"
+  },
+  {
+    "id": "B_host_default_extension_first_collision_H3",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H3",
+    "oracle": "host_default_extension_first_collision_H3"
+  },
+  {
+    "id": "B_host_default_extension_first_collision_H4",
+    "kind": "host",
+    "place": "B",
+    "variant": "default",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H4",
+    "oracle": "host_default_extension_first_collision_H4"
+  },
+  {
+    "id": "B_oasis_default_ar1",
+    "kind": "oasis",
+    "place": "B",
+    "variant": "default",
+    "case": "ar1"
+  },
+  {
+    "id": "B_oasis_default_ar2",
+    "kind": "oasis",
+    "place": "B",
+    "variant": "default",
+    "case": "ar2"
+  },
+  {
+    "id": "B_package_default_P1",
+    "kind": "package",
+    "place": "B",
+    "variant": "default",
+    "case": "P1"
+  },
+  {
+    "id": "B_package_default_P2",
+    "kind": "package",
+    "place": "B",
+    "variant": "default",
+    "case": "P2"
+  },
+  {
+    "id": "B_host_checked_numpy_first_ordinary_H1",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H1",
+    "oracle": "host_checked_numpy_first_ordinary_H1"
+  },
+  {
+    "id": "B_host_checked_numpy_first_ordinary_H2",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H2",
+    "oracle": "host_checked_numpy_first_ordinary_H2"
+  },
+  {
+    "id": "B_host_checked_numpy_first_ordinary_H3",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H3",
+    "oracle": "host_checked_numpy_first_ordinary_H3"
+  },
+  {
+    "id": "B_host_checked_numpy_first_ordinary_H4",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "ordinary",
+    "case": "H4",
+    "oracle": "host_checked_numpy_first_ordinary_H4"
+  },
+  {
+    "id": "B_host_checked_numpy_first_collision_H1",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H1",
+    "oracle": "host_checked_numpy_first_collision_H1"
+  },
+  {
+    "id": "B_host_checked_numpy_first_collision_H2",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H2",
+    "oracle": "host_checked_numpy_first_collision_H2"
+  },
+  {
+    "id": "B_host_checked_numpy_first_collision_H3",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H3",
+    "oracle": "host_checked_numpy_first_collision_H3"
+  },
+  {
+    "id": "B_host_checked_numpy_first_collision_H4",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "numpy_first",
+    "profile": "collision",
+    "case": "H4",
+    "oracle": "host_checked_numpy_first_collision_H4"
+  },
+  {
+    "id": "B_host_checked_extension_first_ordinary_H1",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H1",
+    "oracle": "host_checked_extension_first_ordinary_H1"
+  },
+  {
+    "id": "B_host_checked_extension_first_ordinary_H2",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H2",
+    "oracle": "host_checked_extension_first_ordinary_H2"
+  },
+  {
+    "id": "B_host_checked_extension_first_ordinary_H3",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H3",
+    "oracle": "host_checked_extension_first_ordinary_H3"
+  },
+  {
+    "id": "B_host_checked_extension_first_ordinary_H4",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "ordinary",
+    "case": "H4",
+    "oracle": "host_checked_extension_first_ordinary_H4"
+  },
+  {
+    "id": "B_host_checked_extension_first_collision_H1",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H1",
+    "oracle": "host_checked_extension_first_collision_H1"
+  },
+  {
+    "id": "B_host_checked_extension_first_collision_H2",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H2",
+    "oracle": "host_checked_extension_first_collision_H2"
+  },
+  {
+    "id": "B_host_checked_extension_first_collision_H3",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H3",
+    "oracle": "host_checked_extension_first_collision_H3"
+  },
+  {
+    "id": "B_host_checked_extension_first_collision_H4",
+    "kind": "host",
+    "place": "B",
+    "variant": "checked",
+    "order": "extension_first",
+    "profile": "collision",
+    "case": "H4",
+    "oracle": "host_checked_extension_first_collision_H4"
+  },
+  {
+    "id": "B_oasis_checked_ar1",
+    "kind": "oasis",
+    "place": "B",
+    "variant": "checked",
+    "case": "ar1"
+  },
+  {
+    "id": "B_oasis_checked_ar2",
+    "kind": "oasis",
+    "place": "B",
+    "variant": "checked",
+    "case": "ar2"
+  },
+  {
+    "id": "B_package_checked_P1",
+    "kind": "package",
+    "place": "B",
+    "variant": "checked",
+    "case": "P1"
+  },
+  {
+    "id": "B_package_checked_P2",
+    "kind": "package",
+    "place": "B",
+    "variant": "checked",
+    "case": "P2"
+  }
+]

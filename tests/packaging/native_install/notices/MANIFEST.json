@@ -1,0 +1,26 @@
+{
+  "gsl": {
+    "file": "gsl.txt",
+    "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+  },
+  "jsoncpp": {
+    "file": "jsoncpp.txt",
+    "sha256": "cec0db5f6d7ed6b3a72647bd50aed02e13c3377fd44382b96dc2915534c042ad"
+  },
+  "kokkos": {
+    "file": "kokkos.txt",
+    "sha256": "c12f32e613739e0207af038b17b4caba7d6299263dadfe85272396c114ee35d4"
+  },
+  "lapack-reference": {
+    "file": "lapack-reference.txt",
+    "sha256": "978539245c405775bf347b1256c36df4daf8b69a64b099e94b1d53742201621e"
+  },
+  "openblas": {
+    "file": "openblas.txt",
+    "sha256": "190b5a9c8d9723fe958ad33916bd7346d96fab3c5ea90832bb02d854f620fcff"
+  },
+  "pybind11": {
+    "file": "pybind11.txt",
+    "sha256": "83965b843b98f670d3a85bd041ed4b372c8ec50d7b4a5995a83ac697ba675dcb"
+  }
+}

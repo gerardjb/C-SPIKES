@@ -420,7 +420,7 @@
     "tests/native/contracts/fixtures/examples/references/P03.json": "ee61b7da351b4431d854680033626a713a3de8304ac74f7cfc7d8904b0e98bc3",
     "tests/native/contracts/fixtures/examples/references/P04.json": "09bf4aae552b6660f3ca7956938d428e18757ccc7f1cc1a9fb78ac64843aeb23",
     "tests/native/g1e/test_access.h": "d51d81a53372058372a901dc9635a803b78ed8b3907874ab4a765c686eaf3ecf",
-    "CMakeLists.txt": "c2bc4722ca7a87ce57fccf4826e1d2d0a9509dd20b24d2f3ae581ef9aa0e0884",
+    "CMakeLists.txt": "12ea5436ba9484a262f2982f60c67d44dc39ec7c3f4358fd0896d7d0d4db8f80",
     "pyproject.toml": "3953691eb64925370b5250513c008962cb51ecfbb98789d0387bf71d25f2c3b9",
     "tests/native/contracts/README.md": "7e0a76185a40a1188c79af6fd2fd6ad7efbf750f7200d7d032a3a79b6a462559",
     "tests/native/contracts/TEST_SOURCES.json": "3f4d5613826632ccd325ac7b7044f1a8a426313d7e702e334ef5aedae9baf4f1",
