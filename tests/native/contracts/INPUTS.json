@@ -50,7 +50,7 @@
     "src/c_spikes/pgas/constants.cpp": "17fc79429a58880d3ddf5ec0edeb3c8393b971acf63678078228d21ffeeef398",
     "src/c_spikes/pgas/queue.py": "1440d18638400c02415b3d848b27aa83d85fa4598729352e5662cf587c002054",
     "src/c_spikes/pgas/pool.py": "9f91c3d49aa092f3a5a3877b16285d7d649dce2cec8a18ae33dc5f2013e209b2",
-    "src/c_spikes/pgas/particle.cpp": "911932009b2cc927f69c794e539dca6938f1d0a4014d3372dbc123a4449e7250",
+    "src/c_spikes/pgas/particle.cpp": "e840f9c93f3598f5d7239fbdbaf045da135364a14bca8848ce9b4c15936ba8e3",
     "src/c_spikes/pgas/20251210_Janelia_8f_params.dat": "7b6a089fcc68611798e4473731f7ecc25f206cceaeae24ebdbb30c9e4acc6e03",
     "src/c_spikes/pgas/pgas_bound.py": "63c8cec5261c83d07ef0eb3459d80e39691f658e30dce43542816b7e65a7fe86",
     "src/c_spikes/pgas/model_evolution_compat.cpp": "29630c3cd856a22c9727aa8b057200633ecfbf6e02f4088423f38ab2371bbb7c",
@@ -501,6 +501,7 @@
     "tests/fixtures/native_core/analyzer.json": "80ffb0946e0fa5fa694f524b0d2090beef1691d52d4f28648e4d4509583b610f",
     "tests/fixtures/native_core/gparams.dat": "1280692b5bc842d0d0f8effa17dcd6bdf5eb9cfa856d2c41aab85337a1cb3883",
     "tests/test_state_history.py": "be55747a6f3964cba2d2211dc4c893594a431fe084a6e6ce54d25bbcd1b83907",
-    "tests/test_pgas.py": "2c040ebcacda443dfc63f4f0f40b0e8b396ee32806b4abc08a08fb89d87a17f2"
+    "tests/test_pgas.py": "2c040ebcacda443dfc63f4f0f40b0e8b396ee32806b4abc08a08fb89d87a17f2",
+    "src/c_spikes/pgas/include/terminal_weight_copy.h": "1fff5245b6f49c55fdca34dd31f6d06ebd6acac8d30ec729a703fcd74272b805"
   }
 }

@@ -1,6 +1,7 @@
 #include "include/application_arithmetic_compat.h"
 #include "include/ancestor_sampler.h"
 #include "include/selected_trajectory.h"
+#include "include/terminal_weight_copy.h"
 #include <memory>
 #include <array>
 #include"include/particle.h"
@@ -670,7 +671,7 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
         const auto terminal = particleArray.logW;
         const unsigned int last = TIME - 1;
         Kokkos::parallel_for("terminal_weights", Kokkos::RangePolicy<ExecSpace>(0, nparticles),
-            KOKKOS_LAMBDA(int j) { terminal(j) = history(j, last); });
+            csp_pgas_detail::TerminalWeightCopy<MatrixType, VectorType>{history, terminal, last});
         Kokkos::deep_copy(particleArray.logW_h, terminal);
         for(i=0;i<nparticles;i++) logW[i] = particleArray.logW_h(i);
     } else {

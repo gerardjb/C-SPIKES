@@ -256,5 +256,11 @@
     "disposition": "retain",
     "profile": "native_core",
     "reason": "Owned history, validation-before-mutation, raw nonfinite preservation and independent pool fractions."
+  },
+  {
+    "path": "tests/native/terminal_weight_copy.cpp",
+    "disposition": "retain",
+    "profile": "opt-in-native-cpu-and-cuda",
+    "reason": "Direct selected-column assignment, signed-zero preservation, zero-work/tail behavior and input immutability at the production host-copy boundary; distinct from ancestor sampling and whole-trajectory selection."
   }
 ]
