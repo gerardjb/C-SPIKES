@@ -657,3 +657,7 @@ python run_pipeline.py \
 - `c_spikes/inference/oasis.py` for the OASIS framework contract and cache mapping.
 - `c_spikes/oasis/PROVENANCE.md` for the numerical source, local changes, and Cython regeneration.
 - `inference_cache_compare.ipynb` for quick cache comparisons/plots.
+
+## Publication reference
+
+See [publication provenance](docs/PUBLICATION_REFERENCE.md) for the runnable paper capsule, associated materials and the distinction between this main-line source and the publication snapshot.
