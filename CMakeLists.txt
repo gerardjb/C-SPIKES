@@ -166,3 +166,7 @@ if(C_SPIKES_TEST_SWEEP_RUN_CPU)
         target_compile_definitions(${_target} PRIVATE C_SPIKES_CHECKED_SWEEP_RUN_CPU)
     endforeach()
 endif()
+
+if(C_SPIKES_TEST_RESAMPLING)
+    include(tests/native/standalone.cmake)
+endif()

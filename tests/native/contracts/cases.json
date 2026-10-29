@@ -739,15 +739,5 @@
       "fresh_process": true
     }
   ],
-  "deferred_to_P3": [
-    "native-g2v",
-    "repaired endpoint/first sample/restart/occupancy/writer"
-  ],
-  "deferred_to_P4": [
-    "variant-homogeneous Python groups plus isolated diagnostic-ID cases",
-    "profile collection/per-file pytest checks",
-    "public examples",
-    "external factory/sweep and provider-host checks"
-  ],
   "scope": "Owned native CPU contracts; reference scoring is exact. Build/runner composition requires validation."
 }

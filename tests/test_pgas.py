@@ -4,7 +4,7 @@ This is a two-sweep smoke fixture, not an inference-accuracy benchmark.
 """
 from pathlib import Path
 import numpy as np
-from c_spikes.pgas import pgas_bound as pgas
+from c_spikes.pgas import pgas_bound_cpu as pgas
 
 
 def test_analyzer_owned_samples_and_saved_schema(tmp_path):

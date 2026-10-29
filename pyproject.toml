@@ -33,7 +33,7 @@ dependencies = [
 # invoked via, e.g., "pip install -e .[test]"
 [project.optional-dependencies]
  test = [
-   "pytest >=6",
+   "pytest >=7",
    "pytest-cov >=3",
  ]
  docs = [

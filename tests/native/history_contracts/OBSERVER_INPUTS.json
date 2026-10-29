@@ -1,7 +1,0 @@
-{
-  "source_sha256": "a410df6b7f7595e75f19567634f9ed576a903ff09d4dd2c61a620ac4b46e834a",
-  "observed_source_sha256": "a0e6f75fdb394c417f05c6d7e347cd75a69e8e9ab1dd5752c4232a279c651881",
-  "patch_sha256": "a3d388e5d5ab082bbfe63b8660776a52c22478c67ac77f12b98046585665a342",
-  "observer_sha256": "9015c59b14a7eb81c406171d2f6f1571696d89aed4768158eb55c151a68da77a",
-  "limitation": "Observer-only disposable copy; same two capture calls after evolution and before interpolation; current patch statically rebased, not executed."
-}

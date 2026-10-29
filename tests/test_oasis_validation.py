@@ -53,14 +53,20 @@ def test_deconvolve_accepts_float_inputs_and_returns_float64(y):
 
 
 @pytest.mark.parametrize(
-    "y",
+    "y,g,sn,error",
     [
-        pytest.param(np.arange(12, dtype=np.int64), id="integer-array"),
-        pytest.param(list(range(12)), id="integer-list"),
+        pytest.param(np.arange(12, dtype=np.int64), (0.9,), 0.05,
+                     (TypeError, ValueError), id="integer-array"),
+        pytest.param(list(range(12)), (0.9,), 0.05,
+                     (TypeError, ValueError), id="integer-list"),
+        pytest.param(np.arange(50, dtype=np.int64), (0.95,), 0.3,
+                     TypeError, id="integer-array-type-error"),
     ],
 )
-def test_deconvolve_rejects_integer_input(y):
-    _assert_clear_validation_error(y, g=(0.9,), sn=0.05)
+def test_deconvolve_rejects_integer_input(y, g, sn, error):
+    with pytest.raises(error) as exc_info:
+        deconvolve(y, g=g, sn=sn)
+    assert str(exc_info.value).strip()
 
 
 @pytest.mark.parametrize(

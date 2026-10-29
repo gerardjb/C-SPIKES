@@ -410,9 +410,22 @@ def _assert_full_output(actual, expected):
         )
 
 
+def _assert_signal_contract(actual, y, spikes, minimum_correlation):
+    c, s, b_hat, g_hat, lam = actual
+    assert c.shape == y.shape
+    assert s.shape == y.shape
+    assert np.isfinite(c).all()
+    assert np.isfinite(s).all()
+    assert np.isfinite(float(b_hat))
+    assert np.isfinite(float(lam))
+    assert np.isfinite(np.asarray(g_hat)).all()
+    assert np.corrcoef(s, spikes)[0, 1] > minimum_correlation
+
+
 def test_deconvolve_ar1_full_output_matches_minimal_port():
-    y, _ = _simulate_trace_ar1(seed=13)
+    y, spikes = _simulate_trace_ar1(seed=13)
     actual = deconvolve(y, g=(0.95,), sn=0.3, penalty=1)
+    _assert_signal_contract(actual, y, spikes, 0.2)
     expected = (
         _EXPECTED_AR1_C,
         _EXPECTED_AR1_S,
@@ -424,8 +437,9 @@ def test_deconvolve_ar1_full_output_matches_minimal_port():
 
 
 def test_deconvolve_ar2_full_output_matches_minimal_port():
-    y, _ = _simulate_trace_ar2(seed=23)
+    y, spikes = _simulate_trace_ar2(seed=23)
     actual = deconvolve(y, g=(1.7, -0.712), sn=0.3, penalty=1)
+    _assert_signal_contract(actual, y, spikes, 0.1)
     expected = (
         _EXPECTED_AR2_C,
         _EXPECTED_AR2_S,
