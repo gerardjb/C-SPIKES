@@ -1,6 +1,9 @@
 # Opt-in native contract build hook. No production source or default target change.
 # Pass -DCMAKE_PROJECT_c_spikes_INCLUDE=<source>/tests/native/contracts/probes.cmake.
 function(csp_contract_targets)
+ if(NOT C_SPIKES_OBSERVATIONAL_DIAGNOSTICS)
+  message(FATAL_ERROR "Observation/context contract targets require diagnostics ON; validate essential OFF behavior separately")
+ endif()
  if(NOT C_SPIKES_TEST_CHECKED_CPU OR NOT C_SPIKES_TEST_SWEEP_CPU OR NOT C_SPIKES_TEST_SWEEP_RUN_CPU)
   message(FATAL_ERROR "Contract profile needs all three checked/sweep options ON in a separate CPU build")
  endif()

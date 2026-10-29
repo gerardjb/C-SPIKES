@@ -62,6 +62,10 @@ dependencies = [
   # Or for Release
   '-DCMAKE_BUILD_TYPE=Release',
 
+  # Optional numerical observations; set ON for diagnostic builds.
+  # This does not disable required validation or select the checked solver.
+  '-DC_SPIKES_OBSERVATIONAL_DIAGNOSTICS=OFF',
+
   # Kokkos Debug
   #'-DKokkos_ENABLE_DEBUG=ON',
   #'-DKokkos_ENABLE_DEBUG_BOUNDS_CHECK=ON',

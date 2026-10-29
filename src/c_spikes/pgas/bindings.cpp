@@ -46,6 +46,7 @@ auto cleanup_callback = []() {
 };
 
 PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
+  m.attr("numerical_diagnostics_enabled") = py::bool_(csp_diagnostics::enabled);
   // Initialize kokkos on binding to prevent finalize() call prior to initialization
   if (!Kokkos::is_initialized() && !Kokkos::is_finalized())
         Kokkos::initialize();
@@ -104,7 +105,7 @@ PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
         .def("getDFFValues", [](const GCaMP& g){return csp_python::numpy_copy(g.getDFFValues());}, py::call_guard<csp_diagnostics::PythonScope>())
         .def("getGValues", [](const GCaMP& g){return csp_python::numpy_copy(g.getGValues());}, py::call_guard<csp_diagnostics::PythonScope>())
         .def("getStates", [](const GCaMP &g) {
-            csp_diagnostics::Scope numerical_states("GCaMP.getStates");
+            CSP_OBSERVE(csp_diagnostics::Scope numerical_states("GCaMP.getStates");)
             py::dict states;
             states["G"] = csp_python::numpy_copy(g.getGValues());
             states["BCa"] = csp_python::numpy_copy(g.getBCaValues());

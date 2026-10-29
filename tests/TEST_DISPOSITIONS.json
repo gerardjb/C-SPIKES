@@ -262,5 +262,11 @@
     "disposition": "retain",
     "profile": "opt-in-native-cpu-and-cuda",
     "reason": "Direct selected-column assignment, signed-zero preservation, zero-work/tail behavior and input immutability at the production host-copy boundary; distinct from ancestor sampling and whole-trajectory selection."
+  },
+  {
+    "path": "tests/native/test_observational_diagnostics.cpp",
+    "disposition": "retain",
+    "profile": "opt-in-native-diagnostics-on-and-off",
+    "reason": "Direct compile-mode and argument-elision contract, ON context/aggregation and unchanged exception behavior; required semantic protection tests remain separate in OFF."
   }
 ]

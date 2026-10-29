@@ -36,7 +36,7 @@ void Analyzer::add_parameter_sample(std::vector<double> parameter_sample) {
 
 
 void Analyzer::run() {
-    csp_diagnostics::Scope numerical_run("Analyzer.run");
+    CSP_OBSERVE(csp_diagnostics::Scope numerical_run("Analyzer.run");)
     // Other init type stuff that was needed
     run_status = "running";
     run_message.clear();

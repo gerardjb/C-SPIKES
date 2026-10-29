@@ -1,6 +1,8 @@
 # Numerical diagnostic logging
 
-GCaMP model calls can report nonfinite values or invalid fluorescence normalization. The diagnostic identifies the operation, first detected field/index, configured mode and actual integrator where known. It reports numerical observations; it does not establish their cause or prove a stability limit.
+In builds with `C_SPIKES_OBSERVATIONAL_DIAGNOSTICS=ON`, GCaMP model calls can report nonfinite values or invalid fluorescence normalization. The diagnostic identifies the operation, first detected field/index, configured mode and actual integrator where known. It reports numerical observations; it does not establish their cause or prove a stability limit.
+
+Observations default to OFF. See [build-mode selection](observational-diagnostics.md) for the CMake/TOML option and compiled-mode indicator. Runtime logging settings cannot enable observations compiled out of an OFF build.
 
 This feature logs only. FIXED, FIXEDLA, their defaults, outputs, existing exceptions and numerical calculations are unchanged. Existing invalid values can still be returned or saved. Absence of a warning does not establish accuracy or scientific validity.
 

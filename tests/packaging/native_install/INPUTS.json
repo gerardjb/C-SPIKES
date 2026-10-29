@@ -24,7 +24,7 @@
     },
     "package_case.py": {
       "source": "tests/packaging/native_install/package_case.py",
-      "sha256": "31db3dc7168bf6a23a1b9dec55b5c764b8b0f443ff4c0e3d2bdba870d5c07511"
+      "sha256": "de9cae55bb7c82cbe18d307e83f5b27865ae6ae2b7272d69e0dccd861bf11762"
     },
     "probes.cmake": {
       "source": "tests/packaging/native_install/probes.cmake",

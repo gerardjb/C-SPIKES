@@ -12,6 +12,8 @@ os.write(int(fd),b'READY\n');os.close(int(fd));assert sys.stdin.readline()=='GO\
 manifest=json.loads((root/'share/c_spikes/ARTIFACT_MANIFEST.json').read_text())
 for n,h in manifest['files'].items():assert hashlib.sha256((root/n).read_bytes()).hexdigest()==h,n
 assert manifest['variant']==variant
+assert type(manifest['observations']) is bool
+assert m.numerical_diagnostics_enabled is manifest['observations']
 if case=='P1':
  assert not any(p.name.startswith('libarmadillo')for p in root.rglob('*'))
  assert not hasattr(c_spikes,'syn_gen')
@@ -23,7 +25,7 @@ elif case=='P2':
  checked={'try_set_params','try_set_state','try_init','try_set_params_and_init','try_steady_state'}
  assert public(m.GCaMP)==base|(checked if variant=='checked'else set())
  assert public(m.Analyzer)=={'run','add_parameter_sample','get_parameter_samples','get_run_status','get_run_message'}
- assert public(m)=={'GCaMP','Analyzer','TimeStepMode'}|({'CheckedContext','CheckedStatus','CheckedReport','try_create_gcamp'}if variant=='checked'else set())
+ assert public(m)=={'GCaMP','Analyzer','TimeStepMode','numerical_diagnostics_enabled'}|({'CheckedContext','CheckedStatus','CheckedReport','try_create_gcamp'}if variant=='checked'else set())
  assert set(m.TimeStepMode.__members__)=={'FIXED','FIXEDLA'}
  assert int(m.TimeStepMode.FIXED)==0 and int(m.TimeStepMode.FIXEDLA)==1
  assert 'time:' in m.GCaMP.integrateOverTime.__doc__ and 'spike_times:' in m.GCaMP.integrateOverTime.__doc__

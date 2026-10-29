@@ -5,7 +5,8 @@ context=mod.CheckedContext.owned_isolated_process();gp=np.loadtxt(gpfile);cp=np.
 legacy={'setParams','setGmat','flux','steady_state','init','setState','setTimeStepMode','evolve','fixedStep','fixedStep_LA','getDFF','getAmplitude','integrateOverTime','getPoolTotals','getDFFValues','getGValues','getStates'}
 assert {x for x in dir(mod.GCaMP) if not x.startswith('_')}==legacy|{'try_set_params','try_set_state','try_init','try_set_params_and_init','try_steady_state'}
 assert {x for x in dir(mod.Analyzer) if not x.startswith('_')}=={'run','add_parameter_sample','get_parameter_samples','get_run_status','get_run_message'}
-assert {x for x in dir(mod) if not x.startswith('_')}=={'GCaMP','Analyzer','TimeStepMode','CheckedContext','CheckedStatus','CheckedReport','try_create_gcamp'}
+assert {x for x in dir(mod) if not x.startswith('_')}=={'GCaMP','Analyzer','TimeStepMode','CheckedContext','CheckedStatus','CheckedReport','try_create_gcamp','numerical_diagnostics_enabled'}
+assert type(mod.numerical_diagnostics_enabled) is bool
 if case=='T12':
  gs=np.ascontiguousarray(gp[::-1])[::-1];cs=np.ascontiguousarray(cp[::-1])[::-1]
  assert gs.strides[0]<0 and cs.strides[0]<0 and np.array_equal(gs,gp) and np.array_equal(cs,cp)

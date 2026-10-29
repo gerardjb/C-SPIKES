@@ -1,6 +1,20 @@
 #ifndef CSP_NUMERICAL_DIAGNOSTICS_H
 #define CSP_NUMERICAL_DIAGNOSTICS_H
 
+// One build-wide choice; standalone native clients default to the ordinary mode.
+#ifndef C_SPIKES_OBSERVATIONAL_DIAGNOSTICS
+#define C_SPIKES_OBSERVATIONAL_DIAGNOSTICS 0
+#endif
+#if C_SPIKES_OBSERVATIONAL_DIAGNOSTICS != 0 && C_SPIKES_OBSERVATIONAL_DIAGNOSTICS != 1
+#error "C_SPIKES_OBSERVATIONAL_DIAGNOSTICS must be 0 or 1"
+#endif
+// Elide observation arguments as well as scans. Never wrap required validation.
+#if C_SPIKES_OBSERVATIONAL_DIAGNOSTICS
+#define CSP_OBSERVE(...) __VA_ARGS__
+#else
+#define CSP_OBSERVE(...)
+#endif
+
 // Observation only. No model storage, numerical decisions, or device operations.
 #include <atomic>
 #include <cmath>
@@ -14,6 +28,7 @@
 #endif
 
 namespace csp_diagnostics {
+inline constexpr bool enabled = C_SPIKES_OBSERVATIONAL_DIAGNOSTICS != 0;
 enum Category { state_value, rate_value, output_value, normalization, categories };
 struct Location {
     const char* method = "unknown";
@@ -87,6 +102,7 @@ inline void stderr_sink(const Record& r) noexcept {
     if (flag && flag[0] == '1' && flag[1] == '\0') std::fprintf(stderr, "DEBUG %s\n", debug);
 }
 
+#if C_SPIKES_OBSERVATIONAL_DIAGNOSTICS
 class Scope {
     Active local_;
     Active* target_ = nullptr;
@@ -163,5 +179,20 @@ public:
             if (!std::isfinite(a[i])) { scalar(a[i], field, category, i); break; }
     }
 };
+#else
+// Empty call guard for clients sharing this header; production observations use
+// CSP_OBSERVE so even their arguments are absent in an OFF build.
+class Scope {
+public:
+    explicit Scope(const char*, Sink = nullptr) noexcept {}
+    Scope(const Scope&) = delete;
+    Scope& operator=(const Scope&) = delete;
+    void mode(int) noexcept {}
+    void equilibrium_context() noexcept {}
+    void step(int, const char*, double, double, std::int64_t, double, double, double) noexcept {}
+    void scalar(double, const char*, Category, std::int64_t = -1, bool = false) noexcept {}
+    template<class Array> void array(const Array&, const char*, Category) noexcept {}
+};
+#endif
 } // namespace csp_diagnostics
 #endif

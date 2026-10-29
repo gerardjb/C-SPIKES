@@ -37,8 +37,8 @@ arma::mat::fixed<9,9> owned_armadillo(const csp_model::Generator9& source) {
 
 // Constructor used by the PGAS particles
 GCaMP::GCaMP(double p1, double p2, double p3, double p4, double p5, double p6, string Gparam_file) {
-    Scope diagnostic("GCaMP.__init__");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.__init__");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
   // Set passed-in parameters
   G_tot = p1;
   gamma = p2;
@@ -59,8 +59,8 @@ GCaMP::GCaMP(double p1, double p2, double p3, double p4, double p5, double p6, s
 
 // Constructor for passing files
 GCaMP::GCaMP(string Gparam_file, string Cparam_file) {
-    Scope diagnostic("GCaMP.__init__");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.__init__");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
 	
   // Load Gparams from file or default values
   if (Gparam_file.empty()) {
@@ -112,8 +112,8 @@ GCaMP::GCaMP(csp_model::ScalarInputView indicator_input, csp_model::ScalarInputV
     // Own both inputs for the complete construction; no borrowed storage escapes.
     const csp_model::workspace::NumericInputSnapshot Gparams_in(indicator_input.data(), indicator_input.size());
     const csp_model::workspace::NumericInputSnapshot Cparams_in(cell_input.data(), cell_input.size());
-    Scope diagnostic("GCaMP.__init__");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.__init__");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
   // Set member variables from passed-in arguments
 	G_tot = Cparams_in(0);
   gamma = Cparams_in(1);
@@ -131,11 +131,11 @@ GCaMP::GCaMP(csp_model::ScalarInputView indicator_input, csp_model::ScalarInputV
 
 
 void GCaMP::initial_setup() {
-    Scope diagnostic("GCaMP.initial_setup");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.initial_setup");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
   brightStates = {2, 3, 5, 6, 8};
   const auto bright_indices = brightStates;
-  diagnostic.array(Gparams, "Gparams", state_value);
+  CSP_OBSERVE(diagnostic.array(Gparams, "Gparams", state_value);)
 
   Gparams(0) = Gparams(1) / pow(Gparams(0), Gparams(2));
   Gparams(3) = Gparams(4) / pow(Gparams(3), Gparams(5));
@@ -167,18 +167,18 @@ void GCaMP::initial_setup() {
   Ginit = csp_model::indexed_brightness_sum5(Ginit_v.data(), Ginit_v.n_elem, bright_indices);
 
   DFF = 0;
-  diagnostic.array(state, "state", state_value);
-  diagnostic.scalar(G0, "G0", state_value);
-  diagnostic.scalar(Gsat, "Gsat", state_value);
-  diagnostic.scalar(Ginit, "Ginit", state_value);
-  diagnostic.scalar(Rf, "Rf", state_value);
+  CSP_OBSERVE(diagnostic.array(state, "state", state_value);)
+  CSP_OBSERVE(diagnostic.scalar(G0, "G0", state_value);)
+  CSP_OBSERVE(diagnostic.scalar(Gsat, "Gsat", state_value);)
+  CSP_OBSERVE(diagnostic.scalar(Ginit, "Ginit", state_value);)
+  CSP_OBSERVE(diagnostic.scalar(Rf, "Rf", state_value);)
 }
 
 
 void GCaMP::setParams(double p1, double p2, double p3, double p4, double p5, double p6){
     const auto bright_indices = brightStates;
-    Scope diagnostic("GCaMP.setParams");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.setParams");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
     G_tot = p1;
     gamma = p2;
     DCaT  = p3;
@@ -193,17 +193,17 @@ void GCaMP::setParams(double p1, double p2, double p3, double p4, double p5, dou
     G0     =  csp_model::indexed_brightness_sum5(G0_v.data(), G0_v.n_elem, bright_indices);
     Gsat   =  csp_model::indexed_brightness_sum5(Gsat_v.data(), Gsat_v.n_elem, bright_indices);
     Ginit  =  csp_model::indexed_brightness_sum5(Ginit_v.data(), Ginit_v.n_elem, bright_indices);
-    diagnostic.scalar(G0, "G0", state_value);
-    diagnostic.scalar(Gsat, "Gsat", state_value);
-    diagnostic.scalar(Ginit, "Ginit", state_value);
-    diagnostic.scalar(Rf, "Rf", state_value);
+    CSP_OBSERVE(diagnostic.scalar(G0, "G0", state_value);)
+    CSP_OBSERVE(diagnostic.scalar(Gsat, "Gsat", state_value);)
+    CSP_OBSERVE(diagnostic.scalar(Ginit, "Ginit", state_value);)
+    CSP_OBSERVE(diagnostic.scalar(Rf, "Rf", state_value);)
    
 }
 
 
 void GCaMP::setGmat_konN_konC(csp_model::Generator9 & Gmatrix, double konN, double konC){
-    Scope diagnostic("GCaMP.setGmat_konN_konC");
-    diagnostic.equilibrium_context();
+    CSP_OBSERVE(Scope diagnostic("GCaMP.setGmat_konN_konC");)
+    CSP_OBSERVE(diagnostic.equilibrium_context();)
 
   Gmatrix(0, 0) = -(konN+konC);
   Gmatrix(1, 0) = konN;
@@ -217,12 +217,12 @@ void GCaMP::setGmat_konN_konC(csp_model::Generator9 & Gmatrix, double konN, doub
   Gmatrix(7, 1) = konC;
   Gmatrix(7, 4) = konN;
 
-    diagnostic.array(Gmatrix, "generator", rate_value);
+    CSP_OBSERVE(diagnostic.array(Gmatrix, "generator", rate_value);)
 }
 
 void GCaMP::setGmat(double ca){
-    Scope diagnostic("GCaMP.setGmat");
-    diagnostic.equilibrium_context();
+    CSP_OBSERVE(Scope diagnostic("GCaMP.setGmat");)
+    CSP_OBSERVE(diagnostic.equilibrium_context();)
 
 	konN   = Gparams(0)*pow(ca,Gparams(2));
   konC   = Gparams(3)*pow(ca,Gparams(5));
@@ -249,12 +249,12 @@ void GCaMP::setGmat(double ca){
 			{0,konC,0,0,konN,0,0,-(koffC+koffN+konPC2+konPN2),0},
 			{0,0,0,konPC2,0,0,konPN2,0,-(koffPN2+koffPC2)}}});
 
-    diagnostic.array(Gmat, "generator", rate_value);
+    CSP_OBSERVE(diagnostic.array(Gmat, "generator", rate_value);)
 }
 
 void GCaMP::fillGmat(csp_model::Generator9 & Gmatrix, double ca){
-    Scope diagnostic("GCaMP.fillGmat");
-    diagnostic.equilibrium_context();
+    CSP_OBSERVE(Scope diagnostic("GCaMP.fillGmat");)
+    CSP_OBSERVE(diagnostic.equilibrium_context();)
 
 	konN   = Gparams(0)*pow(ca,Gparams(2));
   konC   = Gparams(3)*pow(ca,Gparams(5));
@@ -269,12 +269,12 @@ void GCaMP::fillGmat(csp_model::Generator9 & Gmatrix, double ca){
 			{0,konC,0,0,konN,0,0,-(koffC+koffN+konPC2+konPN2),0},
 			{0,0,0,konPC2,0,0,konPN2,0,-(koffPN2+koffPC2)}}});
 
-    diagnostic.array(Gmatrix, "generator", rate_value);
+    CSP_OBSERVE(diagnostic.array(Gmatrix, "generator", rate_value);)
 }
 
 double GCaMP::flux(double ca, csp_model::ScalarInputView G){
-    Scope diagnostic("GCaMP.flux");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.flux");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
 
 	konN   = Gparams(0)*pow(ca,Gparams(2));
   konC   = Gparams(3)*pow(ca,Gparams(5));
@@ -292,13 +292,13 @@ double GCaMP::flux(double ca, csp_model::ScalarInputView G){
 
   int Csites=2;
   const double result = 2*N + Csites*C;
-  diagnostic.scalar(result, "calcium_flux", rate_value);
+  CSP_OBSERVE(diagnostic.scalar(result, "calcium_flux", rate_value);)
   return result;
 }
 
 double GCaMP::flux_konN_konC(double konN, double konC, csp_model::ScalarInputView G){
-    Scope diagnostic("GCaMP.flux_konN_konC");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.flux_konN_konC");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
 
   // Calculate fluxes per binding site
   double N = -(konN*(G(0) + G(4) + G(5))) +
@@ -313,15 +313,15 @@ double GCaMP::flux_konN_konC(double konN, double konC, csp_model::ScalarInputVie
 
   int Csites=2;
   const double result = 2*N + Csites*C;
-  diagnostic.scalar(result, "calcium_flux", rate_value);
+  CSP_OBSERVE(diagnostic.scalar(result, "calcium_flux", rate_value);)
   return result;
 }
 
 
 
 csp_model::State12 GCaMP::steady_state(double c0){
-    Scope diagnostic("GCaMP.steady_state");
-    diagnostic.equilibrium_context();
+    CSP_OBSERVE(Scope diagnostic("GCaMP.steady_state");)
+    CSP_OBSERVE(diagnostic.equilibrium_context();)
 	setGmat(c0);
 #ifdef CSP_G1C_USE_GSL
     // Explicit test-build opt-in only. The isolated owner handles failures
@@ -332,42 +332,42 @@ csp_model::State12 GCaMP::steady_state(double c0){
     for (size_t i = 0; i < 9; ++i) ss(i) = candidate.state[i];
     arma::vec b_c = {BCa0,c0,c0};
     ss = arma::join_vert(ss, b_c);
-    diagnostic.array(ss, "steady_state", state_value);
+    CSP_OBSERVE(diagnostic.array(ss, "steady_state", state_value);)
     csp_model::State12 result;
     for (std::size_t i = 0; i < 12; ++i) result[i] = ss(i);
 #else
     const auto result = csp_model::legacy_equilibrium12_compat(Gmat, G_tot, BCa0, c0);
-    diagnostic.array(result, "steady_state", state_value);
+    CSP_OBSERVE(diagnostic.array(result, "steady_state", state_value);)
 #endif
     return result;
 }
 
 void GCaMP::init(){
-    Scope diagnostic("GCaMP.init");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.init");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
     setState(c0);
     DFF=0;
 }
 
 void GCaMP::setState(double ca){
-    Scope diagnostic("GCaMP.setState");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.setState");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
     const auto is = steady_state(ca);
     std::copy(is.begin(), is.end(), state.begin());
     std::copy(is.begin(), is.end(), initial_state.begin());
-    diagnostic.array(state, "state", state_value);
+    CSP_OBSERVE(diagnostic.array(state, "state", state_value);)
 }
 
 void GCaMP::setTimeStepMode(TimeStepMode tsm){
-    Scope diagnostic("GCaMP.setTimeStepMode");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.setTimeStepMode");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
     TSMode=tsm;
 }
 
 void GCaMP::evolve(double deltat, int ns, csp_model::ScalarInputView s){
-    Scope diagnostic("GCaMP.evolve");
-    diagnostic.mode(TSMode);
-    diagnostic.array(csp_model::HistoryScan{s.data(),s.size()}, "supplied_state", state_value);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.evolve");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
+    CSP_OBSERVE(diagnostic.array(csp_model::HistoryScan{s.data(),s.size()}, "supplied_state", state_value);)
     if (s.size() != 12)
         throw std::logic_error("Mat::init(): size is fixed and hence cannot be changed");
     csp_model::State12 staged;
@@ -377,8 +377,8 @@ void GCaMP::evolve(double deltat, int ns, csp_model::ScalarInputView s){
 }
 
 void GCaMP::evolve(double deltat, int ns){
-    Scope diagnostic("GCaMP.evolve");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.evolve");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
     switch(TSMode){
         case FIXED:
             fixedStep(deltat,ns);
@@ -390,8 +390,8 @@ void GCaMP::evolve(double deltat, int ns){
 }
 
 void GCaMP::evolve_threadsafe(double deltat, int ns, csp_model::ScalarInputView state_in, csp_model::ScalarOutputView state_out, double & dff_out){
-    Scope diagnostic("GCaMP.evolve_threadsafe");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.evolve_threadsafe");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
     switch(TSMode){
         case FIXED:
             fixedStep(deltat,ns);
@@ -405,10 +405,10 @@ void GCaMP::evolve_threadsafe(double deltat, int ns, csp_model::ScalarInputView 
 
 void GCaMP::fixedStep(double deltat, int ns){
     const auto bright_indices = brightStates;
-    Scope diagnostic("GCaMP.fixedStep");
-    diagnostic.mode(TSMode);
-    diagnostic.array(state, "initial_state", state_value);
-    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.fixedStep");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
+    CSP_OBSERVE(diagnostic.array(state, "initial_state", state_value);)
+    CSP_OBSERVE(diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);)
 
     auto G = csp_model::workspace::indicator_copy(state);
 
@@ -430,7 +430,7 @@ void GCaMP::fixedStep(double deltat, int ns){
         {timesteps.data(),timesteps.size()}, deltat, DCaT, sigma2_calcium_spike);
     
     for(unsigned int i=1;i<timesteps.size();++i){
-        diagnostic.step(TSMode, "FIXED", deltat, fine_timestep, i, Ca, BCa, Ca_in);
+        CSP_OBSERVE(diagnostic.step(TSMode, "FIXED", deltat, fine_timestep, i, Ca, BCa, Ca_in);)
         setGmat(Ca);
         csp_model::workspace::Indicator9 dG_dt;
         csp_model::workspace::product9_compat(Gmat, G, dG_dt);
@@ -448,10 +448,10 @@ void GCaMP::fixedStep(double deltat, int ns){
         BCa = BCa +  dt*dBCa_dt;
         Ca  = Ca  +  dt*dCa_dt;
         Ca_in+= dt*dCa_in_dt;
-        diagnostic.array(G, "G", state_value);
-        diagnostic.scalar(BCa, "BCa", state_value, 9);
-        diagnostic.scalar(Ca, "Ca", state_value, 10);
-        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
+        CSP_OBSERVE(diagnostic.array(G, "G", state_value);)
+        CSP_OBSERVE(diagnostic.scalar(BCa, "BCa", state_value, 9);)
+        CSP_OBSERVE(diagnostic.scalar(Ca, "Ca", state_value, 10);)
+        CSP_OBSERVE(diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);)
 
 
         step_count+=1;
@@ -462,15 +462,15 @@ void GCaMP::fixedStep(double deltat, int ns){
     state(10) = Ca;
 
     DFF = (csp_model::indexed_brightness_sum5(G.memptr(), G.n_elem, bright_indices) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));                                
-    diagnostic.scalar(DFF, "DFF", output_value);
+    CSP_OBSERVE(diagnostic.scalar(DFF, "DFF", output_value);)
 }
 
 void GCaMP::fixedStep_LA(double deltat, int ns){
     const auto bright_indices = brightStates;
-    Scope diagnostic("GCaMP.fixedStep_LA");
-    diagnostic.mode(TSMode);
-    diagnostic.array(state, "initial_state", state_value);
-    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.fixedStep_LA");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
+    CSP_OBSERVE(diagnostic.array(state, "initial_state", state_value);)
+    CSP_OBSERVE(diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);)
 
     auto G = csp_model::workspace::indicator_copy(state);
 
@@ -490,7 +490,7 @@ void GCaMP::fixedStep_LA(double deltat, int ns){
     double calcium_input;
     
     for(unsigned int i=1;i<timesteps.size();++i){
-        diagnostic.step(TSMode, "FIXEDLA", deltat, finedt, i, Ca, BCa, Ca_in);
+        CSP_OBSERVE(diagnostic.step(TSMode, "FIXEDLA", deltat, finedt, i, Ca, BCa, Ca_in);)
 
         calcium_input = (i==1) ? ns*DCaT/finedt : 0;
 
@@ -521,10 +521,10 @@ void GCaMP::fixedStep_LA(double deltat, int ns){
         BCa = BCa +  dt*(dBCa_dt+kapB/(kapB+1)*calcium_input);
         Ca  = Ca  +  dt*dCa_dt;
         Ca_in = Ca_in + dt*dCa_in_dt;
-        diagnostic.array(G, "G", state_value);
-        diagnostic.scalar(BCa, "BCa", state_value, 9);
-        diagnostic.scalar(Ca, "Ca", state_value, 10);
-        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
+        CSP_OBSERVE(diagnostic.array(G, "G", state_value);)
+        CSP_OBSERVE(diagnostic.scalar(BCa, "BCa", state_value, 9);)
+        CSP_OBSERVE(diagnostic.scalar(Ca, "Ca", state_value, 10);)
+        CSP_OBSERVE(diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);)
     }
 
     for(unsigned int i=0;i<9;i++) state(i) = G(i);
@@ -533,14 +533,14 @@ void GCaMP::fixedStep_LA(double deltat, int ns){
     state(11) = Ca_in;
 
     DFF = (csp_model::indexed_brightness_sum5(G.memptr(), G.n_elem, bright_indices) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));                                
-    diagnostic.scalar(DFF, "DFF", output_value);
+    CSP_OBSERVE(diagnostic.scalar(DFF, "DFF", output_value);)
 }
 
 double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, csp_model::ScalarInputView state_in, csp_model::ScalarOutputView state_out){
-    Scope diagnostic("GCaMP.fixedStep_LA_threadsafe");
-    diagnostic.mode(TSMode);
-    diagnostic.array(csp_model::HistoryScan{state_in.data(),state_in.size()}, "initial_state", state_value);
-    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.fixedStep_LA_threadsafe");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
+    CSP_OBSERVE(diagnostic.array(csp_model::HistoryScan{state_in.data(),state_in.size()}, "initial_state", state_value);)
+    CSP_OBSERVE(diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);)
 
     if (state_in.size() < 9)
         throw std::out_of_range("Col::subvec(): indices out of bounds or incorrectly used");
@@ -567,7 +567,7 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, csp_model::ScalarIn
     fillGmat(Gmatrix, Ca);
 
     for(unsigned int i=1;i<timesteps.size();++i){
-        diagnostic.step(TSMode, "FIXEDLA", deltat, finedt, i, Ca, BCa, Ca_in);
+        CSP_OBSERVE(diagnostic.step(TSMode, "FIXEDLA", deltat, finedt, i, Ca, BCa, Ca_in);)
 
         calcium_input = (i==1) ? ns*DCaT/finedt : 0;
 
@@ -598,10 +598,10 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, csp_model::ScalarIn
         BCa = BCa +  dt*(dBCa_dt+kapB/(kapB+1)*calcium_input);
         Ca  = Ca  +  dt*dCa_dt;
         Ca_in = Ca_in + dt*dCa_in_dt;
-        diagnostic.array(G, "G", state_value);
-        diagnostic.scalar(BCa, "BCa", state_value, 9);
-        diagnostic.scalar(Ca, "Ca", state_value, 10);
-        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
+        CSP_OBSERVE(diagnostic.array(G, "G", state_value);)
+        CSP_OBSERVE(diagnostic.scalar(BCa, "BCa", state_value, 9);)
+        CSP_OBSERVE(diagnostic.scalar(Ca, "Ca", state_value, 10);)
+        CSP_OBSERVE(diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);)
     }
 
     for(unsigned int i=0;i<9;i++) state_out(i) = G(i);
@@ -614,7 +614,7 @@ double GCaMP::fixedStep_LA_threadsafe(double deltat, int ns, csp_model::ScalarIn
     for(unsigned int i=0;i<5;i++) brightStatesSum += G[brightStates[i]];
     double DFF_out = (brightStatesSum - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
 
-    diagnostic.scalar(DFF_out, "DFF", output_value);
+    CSP_OBSERVE(diagnostic.scalar(DFF_out, "DFF", output_value);)
     return DFF_out;
 }
 
@@ -626,10 +626,10 @@ void GCaMP::integrateOverTime(csp_model::ScalarInputView time_input, csp_model::
     const auto time_vect = time_input;
     const auto spike_times = spike_input;
     const auto bright_indices = brightStates;
-    Scope diagnostic("GCaMP.integrateOverTime");
-    diagnostic.mode(TSMode);
-    diagnostic.array(state, "initial_state", state_value);
-    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.integrateOverTime");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
+    CSP_OBSERVE(diagnostic.array(state, "initial_state", state_value);)
+    CSP_OBSERVE(diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);)
     // Clear previous state and DFF values
 		DFF_values.reset();
     G_values.reset();
@@ -696,7 +696,7 @@ void GCaMP::integrateOverTime(csp_model::ScalarInputView time_input, csp_model::
                          (Ginit - G0 + (Gsat - G0) / (Rf - 1));
 
     for (unsigned int i = 1; i < timesteps.size(); ++i) {
-        diagnostic.step(TSMode, "integrateOverTime", t_end-t_start, fine_dt, i, Ca, BCa, Ca_in);
+        CSP_OBSERVE(diagnostic.step(TSMode, "integrateOverTime", t_end-t_start, fine_dt, i, Ca, BCa, Ca_in);)
 				
 				/*
 					Giovanni's implementation
@@ -717,10 +717,10 @@ void GCaMP::integrateOverTime(csp_model::ScalarInputView time_input, csp_model::
         BCa = BCa +  fine_dt*(dBCa_dt+kapB/(kapB+1)*calcium_input(i));
         Ca  = Ca  +  fine_dt*dCa_dt;
         Ca_in = Ca_in + fine_dt*dCa_in_dt;
-        diagnostic.array(G, "G", state_value);
-        diagnostic.scalar(BCa, "BCa", state_value, 9);
-        diagnostic.scalar(Ca, "Ca", state_value, 10);
-        diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);
+        CSP_OBSERVE(diagnostic.array(G, "G", state_value);)
+        CSP_OBSERVE(diagnostic.scalar(BCa, "BCa", state_value, 9);)
+        CSP_OBSERVE(diagnostic.scalar(Ca, "Ca", state_value, 10);)
+        CSP_OBSERVE(diagnostic.scalar(Ca_in, "Ca_in", state_value, 11);)
 
         // Store DFF value at each timestep
         temp_DFF_values(i) = (csp_model::indexed_brightness_sum5(G.memptr(), G.n_elem, bright_indices) - Ginit) /
@@ -782,11 +782,11 @@ void GCaMP::integrateOverTime(csp_model::ScalarInputView time_input, csp_model::
     // For direct comparison of c++ to python stored values
     //cout<<"G_interp.row(0)"<<G_interp.row(0)<<endl;
     //cout<<"G_interp.row(200)"<<G_interp.row(200)<<endl;
-    diagnostic.array(csp_model::scan_view(DFF_values), "DFF_history", output_value);
-    diagnostic.array(csp_model::scan_view(G_interp), "G_history", output_value);
-    diagnostic.array(csp_model::scan_view(BCa_values), "BCa_history", output_value);
-    diagnostic.array(csp_model::scan_view(Ca_values), "Ca_history", output_value);
-    diagnostic.array(csp_model::scan_view(Ca_in_values), "Ca_in_history", output_value);
+    CSP_OBSERVE(diagnostic.array(csp_model::scan_view(DFF_values), "DFF_history", output_value);)
+    CSP_OBSERVE(diagnostic.array(csp_model::scan_view(G_interp), "G_history", output_value);)
+    CSP_OBSERVE(diagnostic.array(csp_model::scan_view(BCa_values), "BCa_history", output_value);)
+    CSP_OBSERVE(diagnostic.array(csp_model::scan_view(Ca_values), "Ca_history", output_value);)
+    CSP_OBSERVE(diagnostic.array(csp_model::scan_view(Ca_in_values), "Ca_in_history", output_value);)
 }
 
 //
@@ -795,31 +795,31 @@ void GCaMP::integrateOverTime(csp_model::ScalarInputView time_input, csp_model::
 // Giovanni's methods for passing compressed states around the SMC sampler
 double GCaMP::getDFF(){
     const auto bright_indices = brightStates;
-    Scope diagnostic("GCaMP.getDFF");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.getDFF");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
     const auto G = csp_model::gather_brightness5(state.data(), state.n_elem, bright_indices);
     const double result = (csp_model::sum_brightness5(G) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
-    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
-    diagnostic.scalar(result, "DFF", output_value);
+    CSP_OBSERVE(diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);)
+    CSP_OBSERVE(diagnostic.scalar(result, "DFF", output_value);)
     return result;
 }
 
 double GCaMP::getDFF(csp_model::ScalarInputView s){
     const auto bright_indices = brightStates;
-    Scope diagnostic("GCaMP.getDFF");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.getDFF");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
     // The input remains borrowed; the five-value gather is an owned snapshot.
     const auto G = csp_model::gather_brightness5(s.data(), s.size(), bright_indices);
     const double result = (csp_model::sum_brightness5(G) - Ginit)/(Ginit-G0+(Gsat-G0)/(Rf-1));
-    diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);
-    diagnostic.scalar(result, "DFF", output_value);
+    CSP_OBSERVE(diagnostic.scalar(Ginit-G0+(Gsat-G0)/(Rf-1), "fluorescence_denominator", normalization, -1, true);)
+    CSP_OBSERVE(diagnostic.scalar(result, "DFF", output_value);)
     return result;
 }
 
 // This is more legacy from PGBAR I think, but could be useful at some later point.
 double GCaMP::getAmplitude(){
-    Scope diagnostic("GCaMP.getAmplitude");
-    diagnostic.mode(TSMode);
+    CSP_OBSERVE(Scope diagnostic("GCaMP.getAmplitude");)
+    CSP_OBSERVE(diagnostic.mode(TSMode);)
     init();
 
     std::array<int,100> spikes{};
@@ -831,7 +831,7 @@ double GCaMP::getAmplitude(){
         resp[i]=DFF;
     }
 
-    diagnostic.array(csp_model::HistoryScan{resp.data(),resp.size()}, "amplitude_response", output_value);
+    CSP_OBSERVE(diagnostic.array(csp_model::HistoryScan{resp.data(),resp.size()}, "amplitude_response", output_value);)
     return(csp_model::max100_compat(resp));
 }
 

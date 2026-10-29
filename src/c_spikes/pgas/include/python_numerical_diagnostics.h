@@ -4,6 +4,7 @@
 #include "numerical_diagnostics.h"
 
 namespace csp_diagnostics {
+#if C_SPIKES_OBSERVATIONAL_DIAGNOSTICS
 // Installed only for the duration of a bound call, never as a process-global sink.
 // All logging/formatting occurs at the outer host boundary, with the GIL held.
 inline void python_sink(const Record& record) noexcept {
@@ -34,5 +35,8 @@ class PythonScope {
 public:
     PythonScope() noexcept : scope_(Scope::python_operation(), python_sink) {}
 };
+#else
+class PythonScope {};
+#endif
 } // namespace csp_diagnostics
 #endif

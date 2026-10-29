@@ -89,11 +89,11 @@ public:
 		
     // Method to retrieve the stored DFF and state values
     //const arma::vec& getDFFValues() const;
-    csp_model::HistoryVector getDFFValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getDFFValues"); diagnostic.mode(TSMode); diagnostic.array(csp_model::scan_view(DFF_values), "DFF_values", csp_diagnostics::output_value); return DFF_values; }
-    csp_model::HistoryMatrix getGValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getGValues"); diagnostic.mode(TSMode); diagnostic.array(csp_model::scan_view(G_interp), "G_interp", csp_diagnostics::output_value); return G_interp; }
-    csp_model::HistoryVector getBCaValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getBCaValues"); diagnostic.mode(TSMode); diagnostic.array(csp_model::scan_view(BCa_values), "BCa_values", csp_diagnostics::output_value); return BCa_values; }
-    csp_model::HistoryVector getCaValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getCaValues"); diagnostic.mode(TSMode); diagnostic.array(csp_model::scan_view(Ca_values), "Ca_values", csp_diagnostics::output_value); return Ca_values; }
-    csp_model::HistoryVector getCaInValues() const { csp_diagnostics::Scope diagnostic("GCaMP.getCaInValues"); diagnostic.mode(TSMode); diagnostic.array(csp_model::scan_view(Ca_in_values), "Ca_in_values", csp_diagnostics::output_value); return Ca_in_values; }
+    csp_model::HistoryVector getDFFValues() const { CSP_OBSERVE(csp_diagnostics::Scope diagnostic("GCaMP.getDFFValues");) CSP_OBSERVE(diagnostic.mode(TSMode);) CSP_OBSERVE(diagnostic.array(csp_model::scan_view(DFF_values), "DFF_values", csp_diagnostics::output_value);) return DFF_values; }
+    csp_model::HistoryMatrix getGValues() const { CSP_OBSERVE(csp_diagnostics::Scope diagnostic("GCaMP.getGValues");) CSP_OBSERVE(diagnostic.mode(TSMode);) CSP_OBSERVE(diagnostic.array(csp_model::scan_view(G_interp), "G_interp", csp_diagnostics::output_value);) return G_interp; }
+    csp_model::HistoryVector getBCaValues() const { CSP_OBSERVE(csp_diagnostics::Scope diagnostic("GCaMP.getBCaValues");) CSP_OBSERVE(diagnostic.mode(TSMode);) CSP_OBSERVE(diagnostic.array(csp_model::scan_view(BCa_values), "BCa_values", csp_diagnostics::output_value);) return BCa_values; }
+    csp_model::HistoryVector getCaValues() const { CSP_OBSERVE(csp_diagnostics::Scope diagnostic("GCaMP.getCaValues");) CSP_OBSERVE(diagnostic.mode(TSMode);) CSP_OBSERVE(diagnostic.array(csp_model::scan_view(Ca_values), "Ca_values", csp_diagnostics::output_value);) return Ca_values; }
+    csp_model::HistoryVector getCaInValues() const { CSP_OBSERVE(csp_diagnostics::Scope diagnostic("GCaMP.getCaInValues");) CSP_OBSERVE(diagnostic.mode(TSMode);) CSP_OBSERVE(diagnostic.array(csp_model::scan_view(Ca_in_values), "Ca_in_values", csp_diagnostics::output_value);) return Ca_in_values; }
     
     // method required for kokkos
     void read_params(GCaMP_params & params);

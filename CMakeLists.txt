@@ -5,6 +5,11 @@ project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION} LANGUAGES CXX
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(C_SPIKES_BUILD_OASIS "Build the OASIS native extension." ON)
+option(C_SPIKES_OBSERVATIONAL_DIAGNOSTICS "Enable optional numerical observations and context reporting." OFF)
+add_library(csp_diagnostics_config INTERFACE)
+target_compile_definitions(csp_diagnostics_config INTERFACE
+    C_SPIKES_OBSERVATIONAL_DIAGNOSTICS=$<BOOL:${C_SPIKES_OBSERVATIONAL_DIAGNOSTICS}>)
+
 option(CSP_NATIVE_CORE_INSTALL "Enable the qualified opt-in native-core installation profile." OFF)
 
 if(C_SPIKES_BUILD_OASIS)
@@ -56,7 +61,7 @@ else()
     endif()
 endif()
 
-set(PGAS_COMMON_LIBS JsonCpp::JsonCpp GSL::gsl GSL::gslcblas csp_numerical_provider OpenMP::OpenMP_CXX Kokkos::kokkos)
+set(PGAS_COMMON_LIBS csp_diagnostics_config JsonCpp::JsonCpp GSL::gsl GSL::gslcblas csp_numerical_provider OpenMP::OpenMP_CXX Kokkos::kokkos)
 
 option(C_SPIKES_TEST_RESAMPLING "Build focused native ancestor sampling checks." OFF)
 if(C_SPIKES_TEST_RESAMPLING)

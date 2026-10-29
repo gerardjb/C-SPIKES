@@ -24,7 +24,7 @@ pinned numerical-provider profile, GSL/CBLAS, JsonCpp, CPU Kokkos and compatible
 compiler/Python/NumPy dependencies. Dependency installation and backend substitution
 are not performed by the test runner.
 
-Observational fixtures require diagnostics enabled if the build offers a switch.
+This observation/context build hook requires `C_SPIKES_OBSERVATIONAL_DIAGNOSTICS=ON`.
 Essential protections also require their own diagnostics-disabled checks; success
 of the observational fixtures does not establish that behavior.
 

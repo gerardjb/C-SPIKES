@@ -37,7 +37,7 @@ silently weaken or retain a stale count. It requires readelf and ldd plus proofs
 Do not run ldd on untrusted binaries.
 
 After build proofs, write share/c_spikes/ARTIFACT_MANIFEST.json in each prefix
-with its variant and a files mapping of every installed relative path (except
+with its variant, an observations Boolean matching the compiled mode, and a files mapping of every installed relative path (except
 that manifest itself) to SHA-256. Admit those manifests, the scripts, fixtures,
 collision.so and external-runtime hashes before starting the controller.
 The qualify.py kernel then runs fresh children and moves A to B. It requires
