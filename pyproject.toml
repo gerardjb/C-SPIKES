@@ -2,9 +2,8 @@
 [build-system]
 requires = [
     "scikit-build-core>=0.10",
-    "pybind11>=2.12",
-    "numpy>=2,<3; python_version >= '3.9'",
-    "numpy==1.24.4; python_version < '3.9'",
+    "pybind11>=3.0.2",
+    "numpy>=2,<3",
 ]
 build-backend = "scikit_build_core.build"
 
@@ -71,7 +70,7 @@ dependencies = [
  
  # Prep across platforms/hardware/OS with unit tests
  [tool.cibuildwheel]
- build = ["cp{311,312}-manylinux_x86_64", "cp{311,312}-win_amd64"]
+ build = ["cp{311,312,313,314}-manylinux_x86_64", "cp{311,312,313,314}-win_amd64"]
  build-frontend = "build[uv]"
  before-all = "python {project}/scripts/prepare_wheel_build.py"
  test-command = [

@@ -52,10 +52,15 @@ def _validate_stable_g(g):
             raise ValueError("AR(1) g must satisfy 0 < g < 1")
         return
 
-    roots = np.roots((1.0, -g[0], -g[1]))
-    if (np.max(np.abs(roots.imag)) > 1e-12 or
-            np.any(roots.real <= 0) or np.any(roots.real >= 1)):
-        raise ValueError("AR(2) g must have two real roots strictly between 0 and 1")
+    # Match the quadratic formula used by the ONNLS kernels. The eigenvalue
+    # calculation in np.roots can give a repeated real root a spurious imaginary
+    # component, even when this discriminant is exactly zero.
+    discriminant = g[0] * g[0] + 4 * g[1]
+    if discriminant >= 0:
+        gap = sqrt(discriminant)
+        if 0 < (g[0] - gap) / 2 <= (g[0] + gap) / 2 < 1:
+            return
+    raise ValueError("AR(2) g must have two real roots strictly between 0 and 1")
 
 
 def _has_material_negative(values, reference):

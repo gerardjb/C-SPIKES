@@ -102,6 +102,9 @@ def test_deconvolve_rejects_nonfinite_trace_values(bad_value):
         pytest.param((0.0,), id="zero-ar1"),
         pytest.param((1.0,), id="unit-ar1"),
         pytest.param((0.5, 0.2), id="negative-ar2-root"),
+        pytest.param((1.0, -0.2500000001), id="complex-near-repeated-ar2-root"),
+        pytest.param((2.0, -1.0), id="unit-repeated-ar2-root"),
+        pytest.param((-1.0, -0.25), id="negative-repeated-ar2-root"),
     ],
 )
 def test_deconvolve_rejects_unsupported_or_partially_missing_g(g):
@@ -302,6 +305,22 @@ def test_minimum_length_automatic_estimation_is_warning_free_and_deterministic(g
 
     for first_value, second_value in zip(first, second):
         np.testing.assert_allclose(first_value, second_value, rtol=0, atol=0)
+        assert np.isfinite(np.asarray(first_value, dtype=np.float64)).all()
+
+
+def test_ar2_repeated_root_from_manylinux_estimation_is_accepted_unchanged():
+    # Exact coefficients from the failing manylinux CPython 3.12 wheel test.
+    # np.roots can report imaginary parts of about 5e-10 for this double root.
+    g = (0.07197807694554897, -0.0012952108901948423)
+    y = np.random.default_rng(1).normal(0.3, 0.1, 13)
+    kwargs = {"g": g, "sn": 0.07282546150368131, "penalty": 1, "decimate": 1}
+
+    first = deconvolve(y, **kwargs)
+    second = deconvolve(y, **kwargs)
+
+    assert first[3] == g
+    for first_value, second_value in zip(first, second):
+        np.testing.assert_array_equal(first_value, second_value)
         assert np.isfinite(np.asarray(first_value, dtype=np.float64)).all()
 
 

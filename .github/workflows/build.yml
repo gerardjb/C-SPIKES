@@ -19,7 +19,7 @@ env:
 
 jobs:
   native:
-    name: Native CPU / ${{ matrix.os }}
+    name: Native CPU / ${{ matrix.os }} / Python 3.14
     strategy:
       fail-fast: false
       matrix:
@@ -34,7 +34,7 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: 0.12.1
-          python-version: "3.12"
+          python-version: "3.14"
           enable-cache: true
       - name: Linux prerequisites
         if: runner.os == 'Linux'
@@ -80,7 +80,7 @@ jobs:
         with:
           path: build/vcpkg-installed
           key: native-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'cmake/triplets/*', 'cmake/ports/**', 'scripts/build_native.py') }}
-      - name: Build repaired CPython 3.11 and 3.12 wheels
+      - name: Build repaired CPython 3.11–3.14 wheels
         run: uv run --no-sync python scripts/build_wheels.py --backend ${{ matrix.backend }} --cuda-arch TURING75 --output-dir dist/wheels-${{ matrix.backend }}
       # Hosted runners cannot execute CUDA kernels. The separate hardware
       # workflow and build_native.py --test qualify CUDA runtime behavior.

@@ -8,7 +8,7 @@ Python API, command-line tools and a desktop GUI.
 ## System requirements and installation
 
 The portable build targets **Linux and Windows x86-64**, with separate CPU and
-CUDA wheels for CPython 3.11/3.12. It uses scikit-build-core, CMake, pinned vcpkg
+CUDA wheels for CPython 3.11–3.14. It uses scikit-build-core, CMake, pinned vcpkg
 native dependencies, uv and cibuildwheel. macOS and other architectures are deferred.
 See the [build and release guide](docs/build-and-release.md) for prerequisites,
 artifact selection, the CI matrix and validation limits.
@@ -32,6 +32,8 @@ Install the repaired wheel produced under `dist/`. GUI, ENS2 and CASCADE framewo
 requirements are optional extras: `[gui]`, `[ens2]`, `[cascade]`, or `[all]` for the
 previous full application stack. Core wheel tests do not establish full GUI or
 training compatibility. OASIS builds from checked-in generated C++ without Cython.
+TensorFlow/CASCADE currently requires Python 3.11–3.13; core PGAS/OASIS builds do
+not install TensorFlow or PyTorch and also support Python 3.14.
 
 GPU PGAS is the intended inference/performance path. CPU PGAS is available for
 small smoke checks; do not assume it is a practical substitute for long GPU runs.

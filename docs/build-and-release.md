@@ -1,6 +1,6 @@
 # Linux and Windows builds
 
-The first wheel matrix targets x86-64 Linux and Windows, CPython 3.11/3.12, and
+The wheel matrix targets x86-64 Linux and Windows, CPython 3.11–3.14, and
 separate CPU and CUDA artifacts. macOS, ARM, musllinux, free-threaded Python and
 additional Python versions are deferred. A CUDA build contains both PGAS backends
 and CPU OASIS; the CPU build needs no CUDA toolkit or NVIDIA driver.
@@ -93,9 +93,18 @@ GUI, ENS2 and CASCADE frameworks are optional extras: `c_spikes[gui]`,
 `c_spikes[ens2]`, `c_spikes[cascade]`, or `c_spikes[all]` for the previous full stack.
 The native-wheel checks do not validate those optional applications.
 
+Core installation and CI do not request any GUI or ML extras. As of 2026-10-30,
+[TensorFlow](https://pypi.org/project/tensorflow/) provides Python 3.11–3.13 wheels
+for the supported platforms, so use one of those versions for `[cascade]` or
+`[all]`. Requesting an unavailable extra should fail dependency resolution; its
+dependencies are not silently omitted on newer Python versions. Core Python 3.14
+builds remain independent of TensorFlow. Python 3.15 is deferred because the core
+[h5py dependency](https://pypi.org/project/h5py/) does not yet provide matching
+wheels. Free-threaded interpreters are not included in this matrix.
+
 ## Local validation
 
-The 2026-10-30 local run used Kokkos 5.2.2 and Python 3.12 on Ubuntu 24.04 under
+The initial 2026-10-30 local run used Kokkos 5.2.2 and Python 3.12 on Ubuntu 24.04 under
 WSL and native Windows, with an RTX 2080 Ti (sm75) and the pinned CUDA 12.6
 components:
 
@@ -124,7 +133,8 @@ installed-wheel validator and has a timeout.
 
 `.github/workflows/build.yml` runs on pull requests, main/master pushes, version
 tags and manual dispatch. It builds and tests native CPU wheels on Ubuntu and
-Windows, creates an sdist, and runs cibuildwheel for both CPU and CUDA variants.
+Windows with Python 3.14, creates an sdist, and runs cibuildwheel for Python
+3.11, 3.12, 3.13 and 3.14 for both CPU and CUDA variants.
 The cibuildwheel matrix repairs wheels with auditwheel/delvewheel and runs the
 installed-wheel checks on CPU artifacts. CUDA jobs compile and repair; standard
 hosted runners have no GPU, so CUDA runtime tests are explicitly skipped there.
