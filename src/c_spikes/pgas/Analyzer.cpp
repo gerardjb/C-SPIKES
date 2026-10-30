@@ -7,8 +7,10 @@
 #include "include/constants.h"
 #include <fstream>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 #include "include/utils.h"
-#include <getopt.h>
 #include "include/Analyzer.h"
 #include "include/analyzer_restart.h"
 
@@ -74,7 +76,11 @@ void Analyzer::run() {
     // Concurrent writers to this output/tag are not supported.
     struct stat sb;
     if (stat(output_folder.c_str(), &sb) != 0) {
+#ifdef _WIN32
+        const int dir_err = _mkdir(output_folder.c_str());
+#else
         const int dir_err = mkdir(output_folder.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+#endif
         if (-1 == dir_err) {
             run_status="io_error"; run_message="cannot create output directory";
             cerr << "[Analyzer.run] " << run_message << endl; return;

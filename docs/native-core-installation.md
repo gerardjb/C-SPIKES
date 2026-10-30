@@ -3,12 +3,14 @@
 `CSP_NATIVE_CORE_INSTALL=ON` enables the opt-in `CSPNativeCore` install component.
 It installs the PGAS CPU and OASIS native extensions, their minimal Python packages,
 and license/provenance notices. It does not install synthetic generation, GUI,
-training or the full package. Normal installation defaults remain unchanged.
+training or the full package. This is the historical installation profile; use
+[build and release](build-and-release.md) for portable CPU/CUDA wheels.
 
 Add these options to an explicitly configured CPU/provider build:
 
 ```text
 -DCSP_NATIVE_CORE_INSTALL=ON
+-DCSP_NUMERICAL_PROFILE=linux-x86_64-lp64-serial
 -DCSP_NATIVE_CORE_NOTICES_DIR=<reviewed-notice-directory>
 ```
 

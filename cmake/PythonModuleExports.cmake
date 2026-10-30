@@ -1,9 +1,17 @@
-# This profile is deliberately ELF-only. Mach-O/PE export controls and their
-# numerical providers need independent qualification, not GNU-option fallback.
+# Keep private numerical symbols out of the Python modules' public exports.
+# Linux uses an ELF version script; Windows uses explicit PyInit exports.
 function(csp_isolate_python_module target)
  get_target_property(kind "${target}" TYPE)
- if(NOT kind STREQUAL "MODULE_LIBRARY" OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+ if(NOT kind STREQUAL "MODULE_LIBRARY")
   message(FATAL_ERROR "Unsupported Python-module isolation target/platform")
+ endif()
+ if(WIN32)
+  # PE imports bind to specific DLLs. Only pybind11's explicit PyInit export is
+  # public; do not enable CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS.
+  set_target_properties(${target} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS OFF)
+  return()
+ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  message(FATAL_ERROR "Python-module isolation is implemented for Linux and Windows")
  endif()
  if(NOT target MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
   message(FATAL_ERROR "Invalid Python extension entry-point name")

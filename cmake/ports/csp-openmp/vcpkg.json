@@ -1,0 +1,8 @@
+{
+  "name": "csp-openmp",
+  "version": "19.1.7",
+  "description": "LLVM OpenMP runtime for C-SPIKES MSVC builds",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "supports": "windows & x64",
+  "dependencies": [{ "name": "vcpkg-cmake", "host": true }]
+}

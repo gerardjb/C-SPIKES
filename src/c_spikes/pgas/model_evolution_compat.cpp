@@ -1,6 +1,7 @@
 #include "include/model_evolution_compat.h"
 #include <cmath>
 #include <algorithm>
+#include <cstddef>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -30,7 +31,8 @@ HistoryVector gaussian_input_compat(ScalarInputView grid,double deltat,double DC
 #ifdef _OPENMP
         #pragma omp parallel for schedule(static) num_threads(threads)
 #endif
-        for(std::size_t i=0;i<n;++i){
+        // MSVC's OpenMP implementation requires a signed canonical loop index.
+        for(std::ptrdiff_t i=0;i<static_cast<std::ptrdiff_t>(n);++i){
 #ifdef CSP_G2AJ_TEST_OBSERVER
 #ifdef _OPENMP
             if(i==0)actual_team=omp_get_num_threads();

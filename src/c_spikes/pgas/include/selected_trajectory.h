@@ -24,7 +24,7 @@ public:
     }
 
     template<class Ancestors,class Baseline,class Burst,class Calcium,class Spikes>
-    typename Packets::HostMirror gather(int terminal,const Ancestors& ancestors,
+    typename Packets::host_mirror_type gather(int terminal,const Ancestors& ancestors,
         const Baseline& baseline,const Burst& burst,const Calcium& calcium,const Spikes& spikes) {
         const int n=ancestors.extent(0), time=time_;
         if(terminal<0 || terminal>=n || int(ancestors.extent(1))!=time)

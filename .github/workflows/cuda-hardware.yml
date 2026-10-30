@@ -1,0 +1,46 @@
+name: CUDA hardware validation
+
+# Opt-in only: never execute pull-request code on a private GPU runner.
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: Registered GPU runner operating system
+        type: choice
+        options: [Linux, Windows]
+        required: true
+      architecture:
+        description: GPU architecture of the selected runner
+        type: choice
+        options: [TURING75, AMPERE80, AMPERE86, ADA89, HOPPER90]
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  hardware:
+    runs-on: [self-hosted, "${{ inputs.os }}", x64, c-spikes-cuda]
+    timeout-minutes: 90
+    env:
+      UV_LINK_MODE: copy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: 0.12.1
+          python-version: "3.12"
+      - run: uv sync --locked --no-install-project
+      - run: uv run --no-sync python scripts/prepare_cuda.py
+      - run: uv run --no-sync python scripts/build_native.py --backend cuda --cuda-root build/tools/cuda --cuda-arch ${{ inputs.architecture }} --test --output-dir dist/cuda-hardware
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: cuda-hardware-${{ runner.os }}-${{ inputs.architecture }}
+          path: |
+            dist/cuda-hardware
+            build/*/Testing/Temporary/LastTest.log
+          if-no-files-found: warn

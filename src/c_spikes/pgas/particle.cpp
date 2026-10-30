@@ -283,8 +283,12 @@ void SMC::move_and_weight(Particle &part, const Particle& parent, double y, cons
 
     //const int maxspikes = 2;  // The number of spikes goes from 0 to maxspikes-1
     const auto maxspikes = constants->maxspikes;
-    double probs[2*maxspikes];
-    double log_probs[2*maxspikes];
+    // Runtime-sized arrays are a GNU extension; keep contiguous scratch buffers
+    // with explicit ownership so the same code compiles with MSVC.
+    std::unique_ptr<double[]> probs_storage(new double[2*maxspikes]);
+    std::unique_ptr<double[]> log_probs_storage(new double[2*maxspikes]);
+    double* const probs = probs_storage.get();
+    double* const log_probs = log_probs_storage.get();
     double Z;
     double ct;
     unsigned int burst, ns;
@@ -532,8 +536,14 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
 
     
     // define weights
-    double w[nparticles],logW[nparticles];
-    double ar_w[nparticles], ar_logW[nparticles];
+    std::unique_ptr<double[]> w_storage(new double[nparticles]);
+    std::unique_ptr<double[]> logW_storage(new double[nparticles]);
+    std::unique_ptr<double[]> ar_w_storage(new double[nparticles]);
+    std::unique_ptr<double[]> ar_logW_storage(new double[nparticles]);
+    double* const w = w_storage.get();
+    double* const logW = logW_storage.get();
+    double* const ar_w = ar_w_storage.get();
+    double* const ar_logW = ar_logW_storage.get();
 	
     // initialize all particles at time 0 (excluded particle 0) and set all weights
     for(i=0;i<nparticles;++i){
@@ -557,7 +567,7 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
 
     // Create a GPU view of the data_y vector
     VectorType data_y_view = VectorType("data_y_view", data_y.size());
-    VectorType::HostMirror data_y_h = Kokkos::create_mirror_view(data_y_view);
+    VectorType::host_mirror_type data_y_h = Kokkos::create_mirror_view(data_y_view);
     for (unsigned int i = 0; i < data_y.size(); i++)
         data_y_h(i) = csp_application::observation_at(data_y,i);
     Kokkos::deep_copy(data_y_view, data_y_h);
@@ -565,8 +575,8 @@ void SMC::PGAS_impl(const param &par, const Trajectory &traj_in, Trajectory &tra
     // Create the noise views
     VectorType g_noise_view = VectorType("g_noise_view", nparticles);
     VectorType u_noise_view = VectorType("u_noise_view", nparticles);
-    VectorType::HostMirror g_noise_h = Kokkos::create_mirror_view(g_noise_view);
-    VectorType::HostMirror u_noise_h = Kokkos::create_mirror_view(u_noise_view);
+    VectorType::host_mirror_type g_noise_h = Kokkos::create_mirror_view(g_noise_view);
+    VectorType::host_mirror_type u_noise_h = Kokkos::create_mirror_view(u_noise_view);
 
     GCaMP_params params;
     model->read_params(params);

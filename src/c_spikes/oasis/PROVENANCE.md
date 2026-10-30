@@ -49,9 +49,9 @@ declarations. From the repository root, the equivalent maintainer command is:
 python -c 'from setuptools import Extension; from Cython.Build import cythonize; cythonize([Extension("c_spikes.oasis.oasis_methods", ["src/c_spikes/oasis/oasis_methods.pyx"], language="c++")], force=True)'
 ```
 
-Normal builds compile the checked-in C++ and do not install or invoke Cython. Isolated builds use
-NumPy 2.x headers on Python 3.9 and newer so their extension can run with both NumPy 1.x and 2.x.
-Python 3.8, which cannot install NumPy 2, uses NumPy 1.24.4 at build time.
+Normal builds compile the checked-in C++ and do not install or invoke Cython. Current packaging
+requires Python 3.11 or newer and uses NumPy 2.x build headers. The historical integration also
+supported a Python 3.8 / NumPy 1.24.4 source-build fallback.
 
 The integrated C++ was compiled and imported successfully with NumPy 1.26.4, 2.1.3, and 2.4.2
 headers. A NumPy-2-header build was also imported under a NumPy 1.26.4 runtime. The Python 3.8 /
@@ -98,10 +98,22 @@ slice:
 
 The checked-in C++ was regenerated again with Cython 3.2.4 and NumPy 2.1.3 declarations using the
 command above. Cython's two whitespace-only generated lines were normalized afterward so repository
-whitespace checks remain clean. Current hashes are:
+whitespace checks remain clean. Hashes after that audit were:
 
 | File | SHA-256 |
 |---|---|
 | `functions.py` | `4fe3a6967e020b04c6e0de5e31caf43a26852c3f6dc01ae9b3afcbfc0e4af656` |
 | `oasis_methods.pyx` | `287c258c79eec687c07b92ebd5690af09e17ea05c81ac8f6ac56fd0c7e6b6254` |
 | `oasis_methods.cpp` | `794dd7cbbf8cf7faacec2db74f9405d85c75bbe0eb8496ae9fd5a47258945b75` |
+
+## Portable AR(2) root validation
+
+The manylinux Python 3.12 wheel test exposed a repeated-root validation failure:
+`np.roots` returned a tiny imaginary component for estimated coefficients whose
+quadratic discriminant was exactly zero. AR(2) validation now uses the same
+quadratic formula as the ONNLS kernels. It retains the supplied coefficients and
+rejects negative discriminants and roots outside the open interval (0, 1).
+A regression case uses the exact failing coefficients; additional cases check
+complex and boundary roots. The solvers and generated C++ are unchanged.
+
+The updated `functions.py` SHA-256 is `891d01be3feffcae525f446d3108a9b0e0c9edc497fffc653c8bfc0501a093de`.

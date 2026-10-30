@@ -5,71 +5,47 @@ sampling (**BiophysSMC / PGAS**), synthetic-data generation and supervised-model
 training (**BiophysML**), and adapters for ENS2, CASCADE and OASIS. It includes a
 Python API, command-line tools and a desktop GUI.
 
-## System requirements and tested configurations
+## System requirements and installation
 
-The current native PGAS/OASIS numerical-provider configuration accepts **Linux
-x86-64**. It pins LP64 serial BLAS/LAPACK archives and a Fortran runtime by hash;
-Windows/macOS builds are rejected by this profile. See
-[numerical-provider requirements](docs/numerical-provider-linux.md).
+The portable build targets **Linux and Windows x86-64**, with separate CPU and
+CUDA wheels for CPython 3.11–3.14. It uses scikit-build-core, CMake, pinned vcpkg
+native dependencies, uv and cibuildwheel. macOS and other architectures are deferred.
+See the [build and release guide](docs/build-and-release.md) for prerequisites,
+artifact selection, the CI matrix and validation limits.
 
-| Component | Requirements and evidence |
-|---|---|
-| Python package | Metadata permits Python >=3.8. Dependencies include NumPy, SciPy, Matplotlib, PySide6, h5py, ruamel.yaml, PyTorch >=2, TensorFlow and tqdm==4.64.0. Metadata ranges are not a tested-version matrix. |
-| Native build | CMake >=3.18, a compatible C++/Fortran toolchain, scikit-build-core >=0.10, pybind11 >=2.12, NumPy headers, GSL/CBLAS, JsonCpp, OpenMP and the pinned provider. Kokkos is pinned to 4.3.01. Test build hooks need CMake >=3.19. |
-| Recorded CPU native installation | CPython 3.10.16, NumPy 2.1.3 and SciPy 1.15.3; PGAS/OASIS installed-prefix imports and relocation. This is narrower than full-package or wheel validation. |
-| Recorded GPU PGAS configuration | NVIDIA Ampere/sm80, GNU 11.5, CUDA 12.9.1, Kokkos 4.3.01 and Release C++17. The recipe needs explicit nvcc `--expt-relaxed-constexpr`; see [CUDA build notes](docs/cuda-build-notes.md). |
-| Optional GUI and training | GUI/display dependencies, compatible TensorFlow/PyTorch installations and appropriate model/data files. Native-core validation does not establish full training or GUI compatibility. |
+From a complete source checkout with the native compiler prerequisites installed:
+
+```text
+uv sync --locked --python 3.12 --no-install-project
+uv run --no-sync python scripts/build_native.py --backend cpu --test
+```
+
+For a CUDA build, provision the pinned toolkit and select the GPU architecture
+explicitly (this example targets an RTX 2080 Ti):
+
+```text
+uv run --no-sync python scripts/prepare_cuda.py
+uv run --no-sync python scripts/build_native.py --backend cuda --cuda-root build/tools/cuda --cuda-arch TURING75 --test
+```
+
+Install the repaired wheel produced under `dist/`. GUI, ENS2 and CASCADE framework
+requirements are optional extras: `[gui]`, `[ens2]`, `[cascade]`, or `[all]` for the
+previous full application stack. Core wheel tests do not establish full GUI or
+training compatibility. OASIS builds from checked-in generated C++ without Cython.
+TensorFlow/CASCADE currently requires Python 3.11–3.13; core PGAS/OASIS builds do
+not install TensorFlow or PyTorch and also support Python 3.14.
 
 GPU PGAS is the intended inference/performance path. CPU PGAS is available for
 small smoke checks; do not assume it is a practical substitute for long GPU runs.
-OASIS has a separate CPU implementation. Other GPU architectures, Python versions,
-Linux distributions and redistributable wheels need their own validation. Minimum
-RAM/VRAM requirements for every workflow have not been established.
-
-## Installation
-
-Use a complete source checkout and run commands from its root. First prepare the
-compatible dependencies described in [native build prerequisites](kokkos_install.md)
-and the [provider profile](docs/numerical-provider-linux.md). In particular:
-
-- `CSP_NUMERICAL_PROVIDER_ROOT` must identify the matching hashed archives. The
-  current profile also requires its pinned `/usr/lib64/libgfortran.so.3` runtime.
-- The TOML build configuration includes a repository-relative vcpkg toolchain and
-  CUDA/AMPERE80 choices. Review them for your environment; they do not provision
-  the dependencies. Kokkos configuration may fetch source from GitHub.
-- Preserve the tested CUDA compiler flags when building GPU PGAS. Production no
-  longer links Armadillo; some optional compatibility tests use its headers.
-
-After those prerequisites are prepared, an editable full-package build is:
-
-```bash
-python -m pip install -ve . \
-  --config-settings=cmake.define.CSP_NUMERICAL_PROVIDER_ROOT=/path/to/verified/provider
-```
-
-Replace the provider placeholder with the prepared installation. This is a build
-invocation, **not a complete fresh-machine dependency bootstrap**. For test
-requirements, use `'.[test]'` instead of `.`. The full package resolves optional
-application stacks too; the separate [CPU native-core install component](docs/native-core-installation.md)
-installs only PGAS/OASIS and their minimal Python packages/notices.
-
-OASIS builds from checked-in generated C++; ordinary installation does not require
-Cython. `PGAS_BUILD_GPU=ON|OFF|AUTO` controls the GPU extension; `AUTO` uses the
-configured Kokkos CUDA availability. Selecting `OFF` alone does not remove all CUDA
-choices from the TOML toolchain. Details are in the build guides above.
-
-Check the explicitly selected installed modules:
-
-```bash
-python -c "from c_spikes.pgas import pgas_bound_cpu; from c_spikes.oasis import oasis_methods"
-# For an explicitly prepared GPU build:
-python -c "from c_spikes.pgas import pgas_bound_gpu"
-```
-
 The automatic `pgas_bound` shim prefers GPU when importable. Set
-`C_SPIKES_PGAS_BACKEND=gpu` to require that backend rather than silently changing
-which backend an inference command uses. Clean installation time and a general
-portable wheel-install recipe are not yet established for this configuration.
+`C_SPIKES_PGAS_BACKEND=gpu` to require that backend for an inference command.
+
+The [historical Linux provider](docs/numerical-provider-linux.md) and
+[native-core installation](docs/native-core-installation.md) still require the
+original hash-qualified dependency bundle. Selecting them does not restore the
+handoff's older Kokkos version. The new provider and Kokkos upgrade need separate
+scientific acceptance; passing build and regression checks does not establish
+reproduction of the handoff's exact numerical references.
 
 ## Demo with supplied data
 

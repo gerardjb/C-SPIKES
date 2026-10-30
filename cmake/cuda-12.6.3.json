@@ -1,0 +1,49 @@
+{
+  "release": "12.6.3",
+  "source": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.3.json",
+  "source_sha256": "9c598598457a6463eb92889080c16b2b9dc04150e501b8bfc1536d403ba70aaf",
+  "components": {
+    "cuda_nvcc": {
+      "linux-x86_64": {
+        "relative_path": "cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-12.6.85-archive.tar.xz",
+        "sha256": "840deff234d9bef20d6856439c49881cb4f29423b214f9ecd2fa59b7ac323817",
+        "md5": "727970ed15c7e1b102b7d5e5cc6ded54",
+        "size": "49996208"
+      },
+      "windows-x86_64": {
+        "relative_path": "cuda_nvcc/windows-x86_64/cuda_nvcc-windows-x86_64-12.6.85-archive.zip",
+        "sha256": "3fb9f76b87c37d02f947354be89b718ad5f2c76b6ab47995265bfa3a068a5e14",
+        "md5": "6ca4c0f2ef35c4d74e0ffa5a9d16fe24",
+        "size": "79950764"
+      }
+    },
+    "cuda_cudart": {
+      "linux-x86_64": {
+        "relative_path": "cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-12.6.77-archive.tar.xz",
+        "sha256": "f74689258a60fd9c5bdfa7679458527a55e22442691ba678dcfaeffbf4391ef9",
+        "md5": "868af7d55bed8ce473f6a9c1416f846e",
+        "size": "1126072"
+      },
+      "windows-x86_64": {
+        "relative_path": "cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-12.6.77-archive.zip",
+        "sha256": "7a313bc0c93b1a50bb03aa9783a199ae70c3b66e2d8084da65e8254a8577b925",
+        "md5": "27da2c088df06222d204c88f3d7e6831",
+        "size": "2512007"
+      }
+    },
+    "cuda_cccl": {
+      "linux-x86_64": {
+        "relative_path": "cuda_cccl/linux-x86_64/cuda_cccl-linux-x86_64-12.6.77-archive.tar.xz",
+        "sha256": "9c3145ef01f73e50c0f5fcf923f0899c847f487c529817daa8f8b1a3ecf20925",
+        "md5": "93c6af9115fe841e0b70c61313fd3784",
+        "size": "934952"
+      },
+      "windows-x86_64": {
+        "relative_path": "cuda_cccl/windows-x86_64/cuda_cccl-windows-x86_64-12.6.77-archive.zip",
+        "sha256": "469b783b6731964170b3d27ae214e97e2a63ec93c57ace3ed4052e6d01261f2e",
+        "md5": "6e472a3821a5eb3e6a4d52aaf87f7757",
+        "size": "2929962"
+      }
+    }
+  }
+}

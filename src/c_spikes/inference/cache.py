@@ -89,7 +89,7 @@ def save_method_cache(
         "sampling_rate": float(result.sampling_rate),
         "metadata": ensure_serializable(result.metadata),
         "cache_key": config_hash,
-        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     with meta_path.open("w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)

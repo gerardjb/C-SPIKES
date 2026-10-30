@@ -61,13 +61,13 @@ class ParticleArray
         IntMatrixType index;
 
         // Host mirrors
-        MatrixType::HostMirror B_h;
-        IntMatrixType::HostMirror burst_h;
-        StateMatrixType::HostMirror C_h;
-        IntMatrixType::HostMirror S_h;
-        MatrixType::HostMirror logWeight_h;
-        IntMatrixType::HostMirror ancestor_h;
-        IntMatrixType::HostMirror index_h;
+        MatrixType::host_mirror_type B_h;
+        IntMatrixType::host_mirror_type burst_h;
+        StateMatrixType::host_mirror_type C_h;
+        IntMatrixType::host_mirror_type S_h;
+        MatrixType::host_mirror_type logWeight_h;
+        IntMatrixType::host_mirror_type ancestor_h;
+        IntMatrixType::host_mirror_type index_h;
 
         ParticleArray(int N, int T, int maxspikes);
 
@@ -101,23 +101,23 @@ class ParticleArray
     // private:
 
         MatrixType log_probs;
-        MatrixType::HostMirror log_probs_h;
+        MatrixType::host_mirror_type log_probs_h;
 
         MatrixType probs;
-        MatrixType::HostMirror probs_h;
+        MatrixType::host_mirror_type probs_h;
 
         IntVectorType discrete;
-        IntVectorType::HostMirror discrete_h;
+        IntVectorType::host_mirror_type discrete_h;
 
         VectorType logW;
-        VectorType::HostMirror logW_h;
+        VectorType::host_mirror_type logW_h;
 
         VectorType ar_logW;
-        VectorType::HostMirror ar_logW_h;
+        VectorType::host_mirror_type ar_logW_h;
 
         // Random noise for each particle
         IntVectorType new_ancestors;
-        IntVectorType::HostMirror new_ancestors_h;
+        IntVectorType::host_mirror_type new_ancestors_h;
 
 };
 

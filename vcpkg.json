@@ -1,0 +1,18 @@
+{
+  "name": "c-spikes-native",
+  "version-string": "0.1.1",
+  "builtin-baseline": "4905a1a60af0b78c816572cb38e7de898aaeb4c2",
+  "dependencies": [
+    "gsl",
+    "jsoncpp",
+    { "name": "csp-openmp", "platform": "windows" },
+    { "name": "openblas", "default-features": false },
+    { "name": "lapack-reference", "default-features": false, "features": ["noblas"] }
+  ],
+  "overrides": [
+    { "name": "gsl", "version": "2.8" },
+    { "name": "jsoncpp", "version": "1.9.6" },
+    { "name": "openblas", "version": "0.3.29" },
+    { "name": "lapack-reference", "version": "3.11.0", "port-version": 6 }
+  ]
+}
