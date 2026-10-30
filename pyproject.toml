@@ -53,6 +53,7 @@ dependencies = [
 
  [tool.scikit-build]
  minimum-version = "0.10"
+ cmake.version = ">=3.24,<4"
  cmake.build-type = "Release"
  install.components = ["CSPPython"]
  sdist.exclude = ["sample_data/**", "notebooks/**"]
@@ -63,6 +64,10 @@ dependencies = [
   "src/c_spikes/oasis/oasis_methods.cpp",
   "src/c_spikes/oasis/oasis_methods.pyx",
  ]
+
+ [[tool.scikit-build.overrides]]
+ if.state = "editable"
+ build-dir = "build/editable/{wheel_tag}"
  
  # Ensure proper version capture regardless of git file access
  [tool.setuptools_scm]

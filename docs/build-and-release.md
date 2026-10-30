@@ -53,7 +53,36 @@ compiler toolchains.
 From the checkout root, on either OS:
 
 ```text
-uv sync --locked --python 3.12 --no-install-project
+uv sync
+```
+
+The checkout pins Python 3.14 for development. `uv sync` creates `.venv`, invokes
+scikit-build-core/CMake, prepares the pinned native dependencies, and installs
+the CPU package in editable mode. The first run needs network access and can
+take several minutes to compile native dependencies. Later runs reuse the
+dependency cache under `build/` and the editable build under
+`build/editable/`. On Windows, the editable install includes its native runtime
+DLLs beside the extension; no developer DLL search path is required.
+
+Python source edits take effect immediately. After native C++ or CMake edits:
+
+```text
+uv sync --reinstall-package c-spikes
+```
+
+Use `uv run python ...` or `uv run pytest ...` to run in this environment.
+Optional frameworks remain opt-in, for example `uv sync --extra gui`. For
+TensorFlow/CASCADE, use `uv python pin 3.13` to select Python 3.13 for the checkout,
+then `uv sync --extra cascade`. This also keeps subsequent `uv run` commands on
+Python 3.13. `--python 3.13` is available as a one-command override instead.
+
+An explicit `CMAKE_TOOLCHAIN_FILE` bypasses automatic dependency setup, as does
+`CSP_AUTO_DEPENDENCIES=OFF`; these are for prepared build environments. The
+historical numerical-provider profile also keeps its existing explicit setup.
+
+To build and validate a separate wheel artifact for distribution:
+
+```text
 uv run --no-sync python scripts/build_native.py --backend cpu --test
 ```
 
@@ -65,7 +94,8 @@ both NumPy/native import orders, a tiny real Analyzer run, OASIS, and the
 overrides so a developer's library path cannot conceal an incomplete wheel.
 JUnit files, build settings and a successful validation receipt with wheel SHA-256
 are written under `dist/`. Use `--help` for custom paths and parallelism.
-Both operating systems use the Ninja generator.
+The wheel scripts use Ninja on both operating systems. Plain `uv sync` uses
+scikit-build-core's default generator (Visual Studio on Windows).
 
 For CUDA, install a compatible NVIDIA display driver on the host, then:
 

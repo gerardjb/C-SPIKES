@@ -16,21 +16,27 @@ artifact selection, the CI matrix and validation limits.
 From a complete source checkout with the native compiler prerequisites installed:
 
 ```text
-uv sync --locked --python 3.12 --no-install-project
-uv run --no-sync python scripts/build_native.py --backend cpu --test
+uv sync
 ```
 
-For a CUDA build, provision the pinned toolkit and select the GPU architecture
-explicitly (this example targets an RTX 2080 Ti):
+This creates `.venv`, prepares the pinned native dependencies, and builds an
+editable CPU installation. The checkout defaults to Python 3.14. Python edits
+are available immediately; after changing C++ or CMake files, run
+`uv sync --reinstall-package c-spikes` to rebuild. Run commands with `uv run`.
+
+For CUDA release wheels, provision the pinned toolkit and select the GPU
+architecture explicitly (this example targets an RTX 2080 Ti):
 
 ```text
 uv run --no-sync python scripts/prepare_cuda.py
 uv run --no-sync python scripts/build_native.py --backend cuda --cuda-root build/tools/cuda --cuda-arch TURING75 --test
 ```
 
-Install the repaired wheel produced under `dist/`. GUI, ENS2 and CASCADE framework
-requirements are optional extras: `[gui]`, `[ens2]`, `[cascade]`, or `[all]` for the
-previous full application stack. Core wheel tests do not establish full GUI or
+Install the repaired wheel produced under `dist/` when distributing a build.
+GUI, ENS2 and CASCADE framework requirements are optional extras: use
+`uv sync --extra gui`, `--extra ens2`, `--extra cascade`, or `--extra all`.
+For TensorFlow/CASCADE, select Python 3.13 with `uv python pin 3.13`, then run
+`uv sync --extra cascade` (or `uv sync --extra all`). Core wheel tests do not establish full GUI or
 training compatibility. OASIS builds from checked-in generated C++ without Cython.
 TensorFlow/CASCADE currently requires Python 3.11–3.13; core PGAS/OASIS builds do
 not install TensorFlow or PyTorch and also support Python 3.14.

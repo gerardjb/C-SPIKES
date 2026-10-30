@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.24...3.28)
 
+set(CSP_NUMERICAL_PROFILE "portable-lp64" CACHE STRING "Numerical provider profile")
+option(CSP_AUTO_DEPENDENCIES "Prepare the pinned native dependencies during configuration" ON)
+if(CSP_AUTO_DEPENDENCIES AND CSP_NUMERICAL_PROFILE STREQUAL "portable-lp64")
+    include(cmake/PrepareNativeDependencies.cmake)
+endif()
+
 if(NOT SKBUILD_PROJECT_NAME)
     set(SKBUILD_PROJECT_NAME c_spikes)
     set(SKBUILD_PROJECT_VERSION 0.0.0)
@@ -63,7 +69,6 @@ endif()
 add_subdirectory(dependencies)
 
 find_package(pybind11 CONFIG REQUIRED)
-set(CSP_NUMERICAL_PROFILE "portable-lp64" CACHE STRING "Numerical provider profile")
 if(CSP_NUMERICAL_PROFILE STREQUAL "linux-x86_64-lp64-serial")
     include(cmake/PinnedNumericalProvider.cmake)
 elseif(CSP_NUMERICAL_PROFILE STREQUAL "portable-lp64")
@@ -172,6 +177,19 @@ if(C_SPIKES_BUILD_OASIS)
         LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}/oasis COMPONENT CSPPython
         RUNTIME DESTINATION ${SKBUILD_PROJECT_NAME}/oasis COMPONENT CSPPython
     )
+endif()
+
+if(WIN32 AND SKBUILD_STATE STREQUAL "editable" AND CSP_NUMERICAL_PROFILE STREQUAL "portable-lp64")
+    # Editable installs do not go through delvewheel. Keep the pinned runtime
+    # DLLs beside the extensions so imports work in an ordinary Python process.
+    # Distributable wheels still use delvewheel's dependency repair/isolation.
+    install(DIRECTORY "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/"
+        DESTINATION c_spikes/pgas COMPONENT CSPPython FILES_MATCHING PATTERN "*.dll")
+    if(_pgas_build_gpu)
+        find_package(CUDAToolkit REQUIRED)
+        install(DIRECTORY "${CUDAToolkit_BIN_DIR}/"
+            DESTINATION c_spikes/pgas COMPONENT CSPPython FILES_MATCHING PATTERN "cudart64*.dll")
+    endif()
 endif()
 
 if(CSP_NUMERICAL_PROFILE STREQUAL "portable-lp64")
