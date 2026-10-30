@@ -1,5 +1,10 @@
 # Linux numerical-provider boundary
 
+This page describes the historical, hash-qualified profile. Select it explicitly
+with `-DCSP_NUMERICAL_PROFILE=linux-x86_64-lp64-serial`. New wheel builds default to
+the separate `portable-lp64` profile described in [build and release](build-and-release.md).
+Portable build/test results do not transfer the historical numerical acceptance.
+
 The `linux-x86_64-lp64-serial` CMake profile pins serial LP64 OpenBLAS, reference
 LAPACK and the existing Fortran runtime by SHA-256. Set
 `CSP_NUMERICAL_PROVIDER_ROOT` to the matching installation. Unsupported profiles

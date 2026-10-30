@@ -1,29 +1,16 @@
 # Native build prerequisites
 
-Start with the [Linux numerical-provider requirements](docs/numerical-provider-linux.md).
-The current provider profile requires the matching hashed OpenBLAS/LAPACK archives
-and compatible GSL/CBLAS and runtime dependencies. Installing arbitrary versions
-with a package manager does not satisfy that contract. The production module no
-longer requires Armadillo; some opt-in reference tests still require its headers.
+Use the [build and release guide](docs/build-and-release.md) for the reproducible
+Linux/Windows CPU and CUDA wheel builds. It covers uv, the pinned vcpkg dependency
+manifest, CUDA provisioning, installed-wheel tests and CI artifacts. CMake fetches
+Kokkos 5.2.2 at a fixed commit and builds with C++20; a separate global Kokkos
+installation is unnecessary.
 
-The repository's `pyproject.toml` contains a vcpkg toolchain path and CUDA/AMPERE80
-build choices. These are explicit build inputs to review for your environment,
-not a self-contained dependency installer or a universal GPU recipe. For the
-recorded CUDA toolchain, compiler flags and architecture limits, see
-[CUDA build notes](docs/cuda-build-notes.md). Verify the emitted compiler commands,
-including the CUDA constexpr flag described there.
+The [historical Linux numerical-provider profile](docs/numerical-provider-linux.md)
+still requires the original archive/runtime bundle. Selecting it does not restore
+the handoff's older Kokkos version or reproduce its qualified environment.
+The production module no longer requires Armadillo; some optional reference tests
+still require its headers.
 
-After preparing the compatible dependencies and CMake configuration, an editable
-full-package build can be requested with:
-
-```bash
-python -m pip install -ve .
-# Include the test dependencies when needed:
-python -m pip install -ve '.[test]'
-```
-
-These commands also resolve the full Python package's dependencies; they are not
-a minimal native-core installer. For the separate CPU PGAS/OASIS install component,
-use [native-core installation](docs/native-core-installation.md). See
-[test profiles](tests/README.md) before choosing which tests to run. A working
-native build does not establish training, optional-backend or wheel portability.
+See [test profiles](tests/README.md) before choosing additional qualification
+tests. Optional training frameworks and GUI operation need their own validation.

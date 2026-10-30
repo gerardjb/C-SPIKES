@@ -343,7 +343,7 @@ Scalar ParticleArray::logf(
     int pout_S = S(part_idx_out, t_out);
 
     lf += log(W[pin_burst][pout_burst]) +
-        pout_S*log(rate[pout_burst])-rate[pout_burst] - log(tgamma(pout_S+1)) +
+        pout_S*log(rate[pout_burst])-rate[pout_burst] - log(tgamma(static_cast<Scalar>(pout_S+1))) +
         -0.5*pow((pout_B-pin_B)/(constants->bm_sigma*sqrt(dt)),2);
 
     return(lf);
@@ -392,7 +392,7 @@ void ParticleArray::calc_ancestor_resampling(
                 }
 
                 lf += log(W[pin_burst][pout_burst]) +
-                    pout_S*log(rate[pout_burst])-rate[pout_burst] - log(tgamma(pout_S+1)) +
+                    pout_S*log(rate[pout_burst])-rate[pout_burst] - log(tgamma(static_cast<Scalar>(pout_S+1))) +
                     -0.5*pow((pout_B-pin_B)/(bm_sigma*sqrt(dt)),2);
 
                 logW(part_idx) = logWeight(part_idx, t-1);
@@ -445,7 +445,7 @@ void ParticleArray::move_and_weight(
 	            KOKKOS_CLASS_LAMBDA(const int idx) {
 	                int particle_idx = idx / (maxspikes*2);
 	                int spike_idx = idx % (maxspikes*2);
-	                int b = floor(spike_idx/maxspikes);
+	                int b = floor(static_cast<Scalar>(spike_idx/maxspikes));
 	                int ns    = spike_idx % maxspikes;
 
 	                // Update the ancestors that we generated on the CPU
@@ -469,7 +469,8 @@ void ParticleArray::move_and_weight(
 	                Scalar ct = fixedStep_LA_kernel(dt, ns, state_in, state_out, params, false);
 
                 Scalar log_prob_tmp = log(W[parent_b][b]);
-                log_prob_tmp += ns*log(rate[b]) - log(tgamma(ns+1)) - rate[b];
+                // Select CUDA's double overload, not MSVC's host-only integer template.
+                log_prob_tmp += ns*log(rate[b]) - log(tgamma(static_cast<Scalar>(ns+1))) - rate[b];
                 log_prob_tmp += -0.5/(par.sigma2+pow(bm_sigma,2))*pow(y(t)-ct-parent_B,2);
                 log_probs(particle_idx, spike_idx) = log_prob_tmp;
 
@@ -508,9 +509,9 @@ void ParticleArray::move_and_weight(
     // // Copy probabilities to host so we can generate the discrete random variables
     // // Will do this on GPU in the future after testing
     // IntVectorType discrete = IntVectorType("discrete", N);
-    // IntVectorType::HostMirror discrete_h = Kokkos::create_mirror_view(discrete);
+    // IntVectorType::host_mirror_type discrete_h = Kokkos::create_mirror_view(discrete);
 
-    // MatrixType::HostMirror probs_h = Kokkos::create_mirror_view(probs);
+    // MatrixType::host_mirror_type probs_h = Kokkos::create_mirror_view(probs);
     // Kokkos::deep_copy(probs_h, probs);
     // for(int i=0;i<N;i++) {
     //     Scalar probs_tmp[2*maxspikes];
@@ -538,7 +539,7 @@ void ParticleArray::move_and_weight(
 	                    int idx = discrete_from_uniform(2*maxspikes, u, Kokkos::subview(probs, part_idx, Kokkos::ALL));
 	                    // int idx = discrete(part_idx);
 
-	                    burst(part_idx, t) = floor(idx/maxspikes);
+	                    burst(part_idx, t) = floor(static_cast<Scalar>(idx/maxspikes));
 	                    S(part_idx, t) = idx%maxspikes;
 
                         Scalar ct = fixedStep_LA_kernel(dt, S(part_idx, t), state_in, state_out, params, true);

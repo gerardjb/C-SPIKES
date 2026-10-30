@@ -1,5 +1,10 @@
 # CUDA build notes
 
+This page records the historical Kokkos 4.3.01 validation. Current portable
+builds use Kokkos 5.2.2 and C++20; see the [build and release guide](build-and-release.md).
+Their CMake configuration enables `--expt-relaxed-constexpr` for CUDA and connects
+the native fixtures to CTest with `C_SPIKES_TEST_RESAMPLING=ON`.
+
 The native PGAS CUDA extension uses Kokkos execution and memory spaces. Its
 terminal-weight copy uses a named internal device-callable functor so it can be
 launched from a private method without CUDA extended-lambda access restrictions.

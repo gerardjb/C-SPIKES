@@ -1,8 +1,47 @@
-cmake_minimum_required(VERSION 3.18...3.26)
+cmake_minimum_required(VERSION 3.24...3.28)
 
-project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION} LANGUAGES CXX Fortran)
+if(NOT SKBUILD_PROJECT_NAME)
+    set(SKBUILD_PROJECT_NAME c_spikes)
+    set(SKBUILD_PROJECT_VERSION 0.0.0)
+endif()
+project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION} LANGUAGES C CXX)
+if(MSVC)
+    include(cmake/WindowsOpenMP.cmake)
+endif()
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+# Kokkos 5 requires C++20 in both host and CUDA translation units.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+set(PGAS_BUILD_GPU "OFF" CACHE STRING "Build PGAS GPU backend (AUTO, ON, OFF).")
+set_property(CACHE PGAS_BUILD_GPU PROPERTY STRINGS AUTO ON OFF)
+if(NOT PGAS_BUILD_GPU MATCHES "^(AUTO|ON|OFF)$")
+    message(FATAL_ERROR "PGAS_BUILD_GPU must be AUTO, ON or OFF")
+endif()
+option(Kokkos_ENABLE_SERIAL "Enable Kokkos Serial" ON)
+option(Kokkos_ENABLE_OPENMP "Enable Kokkos OpenMP (required by CPU PGAS)" ON)
+option(Kokkos_ENABLE_CUDA "Enable Kokkos CUDA" OFF)
+if(PGAS_BUILD_GPU STREQUAL "ON")
+    set(Kokkos_ENABLE_CUDA ON CACHE BOOL "Enable Kokkos CUDA" FORCE)
+endif()
+if(Kokkos_ENABLE_CUDA)
+    # Native CMake CUDA compilation also works with MSVC; nvcc_wrapper does not.
+    set(Kokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE ON CACHE BOOL "Use CMake CUDA language" FORCE)
+    enable_language(CUDA)
+    add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+    find_package(OpenMP REQUIRED COMPONENTS CXX)
+    separate_arguments(_csp_openmp_flags NATIVE_COMMAND "${OpenMP_CXX_FLAGS}")
+    foreach(flag IN LISTS _csp_openmp_flags)
+        add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=${flag}>")
+    endforeach()
+endif()
+if(MSVC)
+    add_compile_definitions(NOMINMAX _USE_MATH_DEFINES)
+endif()
 
 option(C_SPIKES_BUILD_OASIS "Build the OASIS native extension." ON)
 option(C_SPIKES_OBSERVATIONAL_DIAGNOSTICS "Enable optional numerical observations and context reporting." OFF)
@@ -24,7 +63,14 @@ endif()
 add_subdirectory(dependencies)
 
 find_package(pybind11 CONFIG REQUIRED)
-include(cmake/PinnedNumericalProvider.cmake)
+set(CSP_NUMERICAL_PROFILE "portable-lp64" CACHE STRING "Numerical provider profile")
+if(CSP_NUMERICAL_PROFILE STREQUAL "linux-x86_64-lp64-serial")
+    include(cmake/PinnedNumericalProvider.cmake)
+elseif(CSP_NUMERICAL_PROFILE STREQUAL "portable-lp64")
+    include(cmake/PortableNumericalProvider.cmake)
+else()
+    message(FATAL_ERROR "Unknown CSP_NUMERICAL_PROFILE: ${CSP_NUMERICAL_PROFILE}")
+endif()
 find_package(jsoncpp CONFIG REQUIRED)
 find_package(GSL REQUIRED)
 find_package(OpenMP REQUIRED)
@@ -35,17 +81,9 @@ list(REMOVE_ITEM PGAS_SRCS "${CMAKE_SOURCE_DIR}/src/c_spikes/pgas/bindings.cpp")
 
 #set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -G -lineinfo") # for debugging CUDA code
 
-# Tell CMake where vcpkg lives
-set(CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/vcpkg" CACHE STRING "")
-
-# Force both build- and install-RPATH to point at your vcpkg libs dir
-set(_vpkglib "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-linux/lib")
-set(CMAKE_BUILD_RPATH "${_vpkglib}")
-set(CMAKE_INSTALL_RPATH "${_vpkglib}")
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-
-set(PGAS_BUILD_GPU "AUTO" CACHE STRING "Build PGAS GPU backend (AUTO, ON, OFF).")
-set_property(CACHE PGAS_BUILD_GPU PROPERTY STRINGS AUTO ON OFF)
+# Build-tree library paths must not leak into distributed wheels.
+set(CMAKE_INSTALL_RPATH "")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
 
 set(_pgas_build_gpu OFF)
 if(PGAS_BUILD_GPU STREQUAL "ON")
@@ -62,6 +100,12 @@ else()
 endif()
 
 set(PGAS_COMMON_LIBS csp_diagnostics_config JsonCpp::JsonCpp GSL::gsl GSL::gslcblas csp_numerical_provider OpenMP::OpenMP_CXX Kokkos::kokkos)
+
+if(Kokkos_ENABLE_CUDA)
+    set_source_files_properties(${PGAS_SRCS} src/c_spikes/pgas/bindings.cpp
+        tests/native/test_ancestor_sampler.cpp tests/native/test_selected_trajectory.cpp
+        tests/native/terminal_weight_copy.cpp PROPERTIES LANGUAGE CUDA)
+endif()
 
 option(C_SPIKES_TEST_RESAMPLING "Build focused native ancestor sampling checks." OFF)
 if(C_SPIKES_TEST_RESAMPLING)
@@ -92,42 +136,74 @@ endif()
 
 add_library(pgas_obj_cpu OBJECT ${PGAS_SRCS})
 target_compile_definitions(pgas_obj_cpu PRIVATE USE_GPU=0)
-target_compile_options(pgas_obj_cpu PRIVATE -Wno-error=cpp)
-target_include_directories(pgas_obj_cpu PRIVATE src/spike_find/pgas)
+target_compile_options(pgas_obj_cpu PRIVATE $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang>:-Wno-error=cpp>)
+target_include_directories(pgas_obj_cpu PRIVATE src/c_spikes/pgas/include)
 target_link_libraries(pgas_obj_cpu PRIVATE ${PGAS_COMMON_LIBS})
 
 pybind11_add_module(pgas_bound_cpu MODULE src/c_spikes/pgas/bindings.cpp $<TARGET_OBJECTS:pgas_obj_cpu> NO_EXTRAS)
-target_compile_options(pgas_bound_cpu PRIVATE -Wno-error=cpp)
-target_compile_definitions(pgas_bound_cpu PRIVATE PGAS_PYBIND_MODULE=pgas_bound_cpu)
-target_include_directories(pgas_bound_cpu PRIVATE src/spike_find/pgas)
+target_compile_options(pgas_bound_cpu PRIVATE $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang>:-Wno-error=cpp>)
+target_compile_definitions(pgas_bound_cpu PRIVATE USE_GPU=0 PGAS_PYBIND_MODULE=pgas_bound_cpu)
+target_include_directories(pgas_bound_cpu PRIVATE src/c_spikes/pgas/include)
 target_link_libraries(pgas_bound_cpu PRIVATE ${PGAS_COMMON_LIBS})
 csp_isolate_python_module(pgas_bound_cpu)
 
 if(_pgas_build_gpu)
     add_library(pgas_obj_gpu OBJECT ${PGAS_SRCS})
     target_compile_definitions(pgas_obj_gpu PRIVATE USE_GPU=1)
-    target_compile_options(pgas_obj_gpu PRIVATE -Wno-error=cpp)
-    target_include_directories(pgas_obj_gpu PRIVATE src/spike_find/pgas)
+    target_compile_options(pgas_obj_gpu PRIVATE $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang>:-Wno-error=cpp>)
+    target_include_directories(pgas_obj_gpu PRIVATE src/c_spikes/pgas/include)
     target_link_libraries(pgas_obj_gpu PRIVATE ${PGAS_COMMON_LIBS})
 
     pybind11_add_module(pgas_bound_gpu MODULE src/c_spikes/pgas/bindings.cpp $<TARGET_OBJECTS:pgas_obj_gpu> NO_EXTRAS)
-    target_compile_options(pgas_bound_gpu PRIVATE -Wno-error=cpp)
-    target_compile_definitions(pgas_bound_gpu PRIVATE PGAS_PYBIND_MODULE=pgas_bound_gpu)
-    target_include_directories(pgas_bound_gpu PRIVATE src/spike_find/pgas)
+    target_compile_options(pgas_bound_gpu PRIVATE $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang>:-Wno-error=cpp>)
+    target_compile_definitions(pgas_bound_gpu PRIVATE USE_GPU=1 PGAS_PYBIND_MODULE=pgas_bound_gpu)
+    target_include_directories(pgas_bound_gpu PRIVATE src/c_spikes/pgas/include)
     target_link_libraries(pgas_bound_gpu PRIVATE ${PGAS_COMMON_LIBS})
     csp_isolate_python_module(pgas_bound_gpu)
 endif()
 
-install(TARGETS pgas_bound_cpu DESTINATION ${SKBUILD_PROJECT_NAME}/pgas)
+install(TARGETS pgas_bound_cpu DESTINATION ${SKBUILD_PROJECT_NAME}/pgas COMPONENT CSPPython)
 if(_pgas_build_gpu)
-    install(TARGETS pgas_bound_gpu DESTINATION ${SKBUILD_PROJECT_NAME}/pgas)
+    install(TARGETS pgas_bound_gpu DESTINATION ${SKBUILD_PROJECT_NAME}/pgas COMPONENT CSPPython)
 endif()
 if(C_SPIKES_BUILD_OASIS)
     install(
         TARGETS oasis_methods
-        LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}/oasis
-        RUNTIME DESTINATION ${SKBUILD_PROJECT_NAME}/oasis
+        LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}/oasis COMPONENT CSPPython
+        RUNTIME DESTINATION ${SKBUILD_PROJECT_NAME}/oasis COMPONENT CSPPython
     )
+endif()
+
+if(CSP_NUMERICAL_PROFILE STREQUAL "portable-lp64")
+    set(_csp_notice_dependencies gsl jsoncpp openblas lapack-reference)
+    if(WIN32)
+        list(APPEND _csp_notice_dependencies vcpkg-gfortran csp-openmp)
+    endif()
+    foreach(dependency IN LISTS _csp_notice_dependencies)
+        set(notice "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/${dependency}/copyright")
+        if(NOT EXISTS "${notice}")
+            message(FATAL_ERROR "Missing native dependency notice: ${notice}")
+        endif()
+        install(FILES "${notice}" DESTINATION c_spikes/licenses/${dependency} COMPONENT CSPPython)
+    endforeach()
+    if(WIN32)
+        install(DIRECTORY "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/vcpkg-gfortran/licenses/"
+            DESTINATION c_spikes/licenses/vcpkg-gfortran COMPONENT CSPPython)
+    endif()
+endif()
+install(DIRECTORY licenses/gcc-runtime/ DESTINATION c_spikes/licenses/gcc-runtime COMPONENT CSPPython)
+install(FILES "${kokkos_SOURCE_DIR}/LICENSE" DESTINATION c_spikes/licenses/kokkos COMPONENT CSPPython)
+install(FILES src/c_spikes/oasis/PROVENANCE.md DESTINATION c_spikes/licenses/oasis COMPONENT CSPPython)
+if(_pgas_build_gpu)
+    find_package(CUDAToolkit REQUIRED)
+    if(EXISTS "${CUDAToolkit_LIBRARY_ROOT}/licenses/cuda_cudart/LICENSE")
+        install(DIRECTORY "${CUDAToolkit_LIBRARY_ROOT}/licenses/"
+            DESTINATION c_spikes/licenses/cuda COMPONENT CSPPython)
+    else()
+        find_file(_csp_cuda_license NAMES EULA.txt
+            HINTS "${CUDAToolkit_LIBRARY_ROOT}" NO_DEFAULT_PATH REQUIRED)
+        install(FILES "${_csp_cuda_license}" DESTINATION c_spikes/licenses/cuda COMPONENT CSPPython)
+    endif()
 endif()
 
 if(CSP_NATIVE_CORE_INSTALL)

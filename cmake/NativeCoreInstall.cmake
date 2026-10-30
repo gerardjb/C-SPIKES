@@ -1,7 +1,8 @@
 # Opt-in Linux native-core profile; the ordinary installation rules stay intact.
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
-   NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$" OR _pgas_build_gpu)
-    message(FATAL_ERROR "Native-core installation is qualified only for Linux x86_64 CPU")
+   NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$" OR _pgas_build_gpu OR
+   NOT CSP_NUMERICAL_PROFILE STREQUAL "linux-x86_64-lp64-serial")
+    message(FATAL_ERROR "Native-core installation requires Linux x86_64 CPU and the historical linux-x86_64-lp64-serial profile")
 endif()
 set(CSP_NATIVE_CORE_NOTICES_DIR "" CACHE PATH "Admitted third-party notices and hash manifest")
 if(NOT EXISTS "${CSP_NATIVE_CORE_NOTICES_DIR}/MANIFEST.json")

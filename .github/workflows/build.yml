@@ -1,0 +1,111 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_LINK_MODE: copy
+
+jobs:
+  native:
+    name: Native CPU / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: 0.12.1
+          python-version: "3.12"
+          enable-cache: true
+      - name: Linux prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y gfortran pkg-config zip unzip
+      - run: uv sync --locked --no-install-project
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/vcpkg-installed
+          key: native-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'cmake/triplets/*', 'cmake/ports/**', 'scripts/build_native.py') }}
+      - name: Build, repair, and test installed wheel
+        run: uv run --no-sync python scripts/build_native.py --backend cpu --test --output-dir dist/native-cpu
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: native-cpu-${{ runner.os }}
+          path: |
+            dist/native-cpu
+            build/*/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+
+  wheels:
+    name: Wheels / ${{ matrix.os }} / ${{ matrix.backend }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+        backend: [cpu, cuda]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: 0.12.1
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --no-install-project --group ci
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        if: runner.os == 'Windows'
+        with:
+          path: build/vcpkg-installed
+          key: native-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'cmake/triplets/*', 'cmake/ports/**', 'scripts/build_native.py') }}
+      - name: Build repaired CPython 3.11 and 3.12 wheels
+        run: uv run --no-sync python scripts/build_wheels.py --backend ${{ matrix.backend }} --cuda-arch TURING75 --output-dir dist/wheels-${{ matrix.backend }}
+      # Hosted runners cannot execute CUDA kernels. The separate hardware
+      # workflow and build_native.py --test qualify CUDA runtime behavior.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: wheels-${{ runner.os }}-${{ matrix.backend }}
+          path: dist/wheels-${{ matrix.backend }}/*.whl
+          if-no-files-found: error
+
+  sdist:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: 0.12.1
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --no-install-project
+      - run: uv run --no-sync python -m build --sdist --outdir dist/sdist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sdist
+          path: dist/sdist/*.tar.gz
+          if-no-files-found: error

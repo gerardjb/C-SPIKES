@@ -12,7 +12,7 @@ build-backend = "scikit_build_core.build"
 name = "c_spikes"
 #version = "0.1.0"
 license.file = "LICENSE"
-requires-python = ">=3.8" # Current happy place looks to be 3.10 across all the CUDAs and the torches and that
+requires-python = ">=3.11"
 description = "End-to-end fluorescence to spike inference procedure"
 authors = [
     { name = "Gerard Joey Broussard", email = "gerardjb@princeton.edu" },
@@ -22,16 +22,17 @@ dependencies = [
     "numpy",
     "scipy",
     "matplotlib",
-    "PySide6",
-    "tensorflow",  # pip install CPU and GPU tensorflow
     "h5py",
     "ruamel.yaml",
-    "torch >= 2",  # the version suggested by the ENS2 authors not comaptible - use >2 instead
     "tqdm == 4.64.0"    # Also ENS2-specific. Works, but may want to relax pin at some point
 ]
 
 # invoked via, e.g., "pip install -e .[test]"
 [project.optional-dependencies]
+ gui = ["PySide6"]
+ ens2 = ["torch>=2"]
+ cascade = ["tensorflow"]
+ all = ["c_spikes[gui,ens2,cascade]"]
  test = [
    "pytest >=7",
    "pytest-cov >=3",
@@ -53,33 +54,9 @@ dependencies = [
 
  [tool.scikit-build]
  minimum-version = "0.10"
- cmake.args = [
-  '-DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake', 
-  '-DCMAKE_CXX_FLAGS=-DARMA_ALLOW_FAKE_GCC',
-  # Build with debug symbols
-  # '-DCMAKE_BUILD_TYPE=Debug',
-  # '-DCMAKE_CXX_FLAGS=-g -O0',
-  # Or for Release
-  '-DCMAKE_BUILD_TYPE=Release',
-
-  # Optional numerical observations; set ON for diagnostic builds.
-  # This does not disable required validation or select the checked solver.
-  '-DC_SPIKES_OBSERVATIONAL_DIAGNOSTICS=OFF',
-
-  # Kokkos Debug
-  #'-DKokkos_ENABLE_DEBUG=ON',
-  #'-DKokkos_ENABLE_DEBUG_BOUNDS_CHECK=ON',
-  #'-DKokkos_ENABLE_DEBUG_DUALVIEW_MODIFY_CHECK=ON',
-
-  # Kokkos stuff,
-  # '-DKOKKOS_DEBUG=ON',
-  '-DKokkos_ENABLE_SERIAL=ON',
-  '-DKokkos_ENABLE_OPENMP=ON',
-  '-DKokkos_ENABLE_CUDA=ON',
-  '-DKokkos_ARCH_AMPERE80=ON', # A100 with this option
-  '-DKokkos_ENABLE_CUDA_CONSTEXPR=ON',
-  ]
- build-dir = "build/{wheel_tag}"
+ cmake.build-type = "Release"
+ install.components = ["CSPPython"]
+ sdist.exclude = ["sample_data/**", "notebooks/**"]
  metadata.version.provider = "scikit_build_core.metadata.setuptools_scm" # gets versions dynamically from git tags
  sdist.include = [
   "src/c_spikes/_version.py", # persistent storage of version without git history (as below)
@@ -94,6 +71,36 @@ dependencies = [
  
  # Prep across platforms/hardware/OS with unit tests
  [tool.cibuildwheel]
- test-command = "pytest {project}/tests"
+ build = ["cp{311,312}-manylinux_x86_64", "cp{311,312}-win_amd64"]
+ build-frontend = "build[uv]"
+ before-all = "python {project}/scripts/prepare_wheel_build.py"
+ test-command = [
+   "python {project}/tests/packaging/wheel_smoke.py --backend cpu --import-order numpy-first",
+   "python {project}/tests/packaging/wheel_smoke.py --backend cpu --import-order native-first",
+   "python -m pytest {project}/tests --csp-profile=native_core",
+   "python -m pytest {project}/tests --csp-profile=python_contracts",
+ ]
  test-extras = ["test"]
- test-skip = ["*universal2:arm64"]
+
+ [tool.cibuildwheel.linux]
+ manylinux-x86_64-image = "manylinux_2_28"
+ before-all = "/opt/python/cp312-cp312/bin/python {project}/scripts/prepare_wheel_build.py"
+
+ [tool.cibuildwheel.windows]
+ repair-wheel-command = 'delvewheel repair --add-path "{project}/build/vcpkg-installed/x64-windows-csp/bin" -w {dest_dir} {wheel}'
+
+[dependency-groups]
+test = ["pytest>=8", "pytest-cov>=5"]
+build = [
+  "build>=1.2",
+  "scikit-build-core>=0.10",
+  "setuptools-scm>=8",
+  "pybind11>=3.0.2",
+  "cmake>=3.24,<4",
+  "ninja>=1.11",
+  "auditwheel>=6; sys_platform == 'linux'",
+  "patchelf; sys_platform == 'linux'",
+  "delvewheel>=1.9; sys_platform == 'win32'",
+]
+dev = [{include-group = "test"}, {include-group = "build"}]
+ci = ["cibuildwheel==4.3.0"]

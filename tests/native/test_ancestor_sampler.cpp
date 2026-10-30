@@ -101,9 +101,9 @@ void distribution() {
            u==pgas::ancestor_uniform(102,j,1,1) ||
            u==pgas::ancestor_uniform(101,j,2,1) ||
            u==pgas::ancestor_uniform(101,uint64_t(j)+(UINT64_C(1)<<32),1,1))
-            Kokkos::atomic_increment(&errors());
+            Kokkos::atomic_add(&errors(), 1);
         const int a=pgas::invert_cdf(cdf,0,n,u), b=pgas::invert_cdf(cdf,1,n,v);
-        Kokkos::atomic_increment(&counts(a,b));
+        Kokkos::atomic_add(&counts(a,b), 1);
     });
     sampler.check(); int bad=0; Kokkos::deep_copy(bad,errors); require(bad==0,"RNG ownership");
     auto c=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),counts);
