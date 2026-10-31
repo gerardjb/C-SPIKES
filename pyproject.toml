@@ -8,7 +8,7 @@ requires = [
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "c_spikes"
+name = "c-spikes"
 #version = "0.1.0"
 license.file = "LICENSE"
 requires-python = ">=3.11"
@@ -31,7 +31,7 @@ dependencies = [
  gui = ["PySide6"]
  ens2 = ["torch>=2"]
  cascade = ["tensorflow"]
- all = ["c_spikes[gui,ens2,cascade]"]
+ all = ["c-spikes[gui,ens2,cascade]"]
  test = [
    "pytest >=7",
    "pytest-cov >=3",
