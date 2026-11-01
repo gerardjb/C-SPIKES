@@ -5,6 +5,9 @@ sampling (**BiophysSMC / PGAS**), synthetic-data generation and supervised-model
 training (**BiophysML**), and adapters for ENS2, CASCADE and OASIS. It includes a
 Python API, command-line tools and a desktop GUI.
 
+The Python distribution is named `c-spikes`; its import package is `c_spikes`
+(`import c_spikes`), located in `src/c_spikes/`. C-SPIKES remains the project name.
+
 ## System requirements and installation
 
 The portable build targets **Linux and Windows x86-64**, with separate CPU and
