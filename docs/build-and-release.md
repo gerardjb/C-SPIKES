@@ -119,8 +119,8 @@ dependencies; use the separate CPU artifact on machines without NVIDIA support.
 Install the single repaired wheel from the chosen build's `repaired/` directory
 using `uv pip install /path/to/the-wheel.whl`. CPU and CUDA variants currently have
 the same distribution name/version, so install only one variant in an environment.
-GUI, ENS2 and CASCADE frameworks are optional extras: `c_spikes[gui]`,
-`c_spikes[ens2]`, `c_spikes[cascade]`, or `c_spikes[all]` for the previous full stack.
+GUI, ENS2 and CASCADE frameworks are optional extras: `c-spikes[gui]`,
+`c-spikes[ens2]`, `c-spikes[cascade]`, or `c-spikes[all]` for the previous full stack.
 The native-wheel checks do not validate those optional applications.
 
 Core installation and CI do not request any GUI or ML extras. As of 2026-10-30,
