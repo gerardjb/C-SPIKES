@@ -71,7 +71,10 @@ def test_bad_artifact_sets(tmp_path, mutation):
     elif mutation == "local-cuda-version":
         wheel.rename(wheel.with_name(wheel.name.replace("0.2.0-", "0.2.0+cu129-")))
     elif mutation == "wrong-abi":
-        wheel.rename(wheel.with_name(wheel.name.replace("-cp311-cp311-", "-cp311-abi3-")))
+        # glob order is unspecified; the selected wheel can use any Python ABI.
+        parts = wheel.name.split("-")
+        parts[3] = "abi3"
+        wheel.rename(wheel.with_name("-".join(parts)))
     else:
         replacement = "linux_x86_64" if mutation == "local-linux" else "manylinux_2_39_x86_64"
         wheel.rename(wheel.with_name(wheel.name.replace("manylinux_2_27_x86_64.manylinux_2_28_x86_64", replacement)))
