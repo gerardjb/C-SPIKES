@@ -1,0 +1,137 @@
+name: Validate or publish PyPI release
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/validate_release.py
+      - tests/packaging/test_release_validation.py
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful build.yml tag-push run ID (same repository)
+        required: true
+        type: string
+      tag:
+        description: Existing release tag, e.g. v0.1.2
+        required: true
+        type: string
+      backend:
+        description: Publish ONE variant; CPU and CUDA filenames overlap
+        required: true
+        type: choice
+        options: [cpu, cuda]
+      publish:
+        description: Upload to PyPI after environment approval (false = validate only)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-release
+  cancel-in-progress: false
+
+jobs:
+  controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests/packaging -p test_release_validation.py -v
+
+  prepare:
+    needs: controls
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'gerardjb/C-SPIKES' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Admit tagged build and select exact artifacts
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          BACKEND: ${{ inputs.backend }}
+        run: python3 scripts/validate_release.py source --run-id "$BUILD_RUN_ID" --tag "$RELEASE_TAG" --backend "$BACKEND"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          github-token: ${{ github.token }}
+          repository: gerardjb/C-SPIKES
+          run-id: ${{ inputs.build_run_id }}
+          artifact-ids: ${{ steps.source.outputs.artifact_ids }}
+          merge-multiple: true
+          path: dist
+      - name: Validate metadata, backend and full CPython/platform matrix
+        run: python3 scripts/validate_release.py bundle
+      - name: Record the reviewed distribution hashes
+        run: |
+          echo '### Release provenance and SHA256 manifest' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat source.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: validated-pypi-distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            source.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Require separately approved publishing enablement
+        if: inputs.publish
+        env:
+          ENABLED: ${{ vars.PYPI_PUBLISHING_ENABLED }}
+        run: |
+          if [ "$ENABLED" != true ]; then
+            echo 'Publishing is disabled. Configure and approve the pypi environment before enabling PYPI_PUBLISHING_ENABLED.' >&2
+            exit 1
+          fi
+
+  publish:
+    needs: prepare
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'gerardjb/C-SPIKES' && github.ref == 'refs/heads/main' && inputs.publish && vars.PYPI_PUBLISHING_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/c-spikes
+    permissions:
+      id-token: write
+    steps:
+      # Do not check out or execute package/build scripts in the OIDC job.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: validated-pypi-distributions
+          path: release
+      - name: Verify the prepared bytes before upload
+        run: |
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path('release')
+          receipt = json.loads((root / 'source.json').read_text())
+          files = list((root / 'dist').iterdir())
+          assert {p.name for p in files} == set(receipt['files']), 'Distribution set changed'
+          for path in files:
+              with path.open('rb') as stream:
+                  assert hashlib.file_digest(stream, 'sha256').hexdigest() == receipt['files'][path.name], path.name
+          PY
+      - name: Publish c-spikes using GitHub OIDC
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        with:
+          packages-dir: release/dist/
+          attestations: true
+          skip-existing: false
+          print-hash: true

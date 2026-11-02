@@ -196,13 +196,86 @@ registered self-hosted runner labeled `c-spikes-cuda`, plus the matching OS/x64
 labels. It runs the same CTest and installed-wheel CUDA execution checks as the
 local script. No runner registration is performed by this change.
 
-The workflows upload artifacts; they do not publish to PyPI or create GitHub
-releases. CPU/CUDA wheel names overlap, so selecting a distribution scheme and
-qualifying the numerical provider must precede publishing. A subsequent release
-step can use PyPI trusted publishing once that policy is settled.
+The build workflows upload artifacts; they do not publish them or create GitHub
+releases. `.github/workflows/release.yml` provides a separate, manual-only PyPI
+publication path, described below. CPU/CUDA wheel names overlap: publish exactly
+one backend for a given version. Choosing CUDA does not turn hosted build checks
+into GPU runtime qualification, and pip cannot select a backend based on hardware.
 
 The structure follows [Scientific Python cookie](https://github.com/scientific-python/cookie):
 declarative packaging, an explicit supported matrix, isolated wheel tests, uv for
 development/CI, and cibuildwheel for compiled extensions. See the upstream
 [cibuildwheel options](https://cibuildwheel.pypa.io/en/stable/options/) and
 [manylinux requirements](https://github.com/pypa/manylinux) for the platform boundary.
+
+## PyPI Trusted Publishing
+
+The distribution name is **c-spikes**, while Python imports use `c_spikes`.
+The PyPI pending/normal Trusted Publisher must identify repository owner
+`gerardjb`, repository `C-SPIKES`, workflow filename `release.yml`, and GitHub
+environment `pypi`. No API token, password or recovery code belongs in GitHub.
+
+**Merging this workflow does not publish.** Neither creating a tag nor publishing
+a GitHub Release runs the publishing job. An owner must separately dispatch
+`Validate or publish PyPI release` from **main**, explicitly enable its `publish`
+input, and pass the environment approval. The default is validation only.
+
+Before enabling uploads, a repository administrator must separately configure:
+
+1. An environment named `pypi`, with a required owner/maintainer reviewer. Decide
+   explicitly who may approve: if the owner also dispatches, preventing self-review
+   requires a second reviewer. Prefer disabling administrator bypass.
+2. A selected deployment **branch** rule allowing only `main` (the release
+   workflow runs from main, with the source tag supplied as an input).
+3. After reviewing those protections and the matching PyPI publisher, a repository
+   Actions variable `PYPI_PUBLISHING_ENABLED` with the exact value `true`.
+   Leave it absent/false until approved. It is not a secret or credential.
+
+The enablement variable prevents the publishing job from starting before setup;
+GitHub can otherwise create an unprotected environment merely by referencing a
+missing name. These administrative steps are not performed by the workflow or
+by opening its PR.
+
+Release procedure:
+
+1. Choose a version and **one** backend, CPU or CUDA. CPU is the default input;
+   the release owner must confirm the choice. The other backend remains available
+   as a CI artifact. Do not try to upload both variants under the same version.
+2. Create an approved tag such as `v0.1.2` on a commit in main history. Existing
+   `build.yml` runs on `v*` tag pushes. Wait for that entire run to succeed. This
+   executes the existing wheel/native/sdist matrix and is separate build work;
+   untagged development wheels cannot simply be renamed into release wheels.
+3. Dispatch `release.yml` on main with the tag, the successful tag-build run ID,
+   chosen backend, and `publish=false`. It retrieves only that run's
+   `wheels-Linux-<backend>`, `wheels-Windows-<backend>` and `sdist` artifacts.
+   It rejects PR/main-branch runs, unrelated workflows, moved tags, failed runs,
+   expired/duplicate artifacts, mismatched names/versions/backends, and incomplete
+   matrices. Required payload: eight repaired x86-64 CPython 3.11–3.14 wheels
+   (Linux/Windows) and one source distribution. This checks metadata and contents,
+   not runtime scientific behavior.
+4. Review the run summary and `validated-pypi-distributions` artifact. Its
+   `source.json` records the source commit/tag, source run/attempt, artifact IDs
+   and GitHub digests where available, selected backend, and each file's SHA256.
+5. With separate publication approval, dispatch the same inputs with
+   `publish=true`. Review the new prepared manifest, then approve the `pypi`
+   environment deployment. Only this final job has `id-token: write`; it has no
+   checkout or build commands, rechecks the prepared bytes, and uses PyPA's
+   publisher with attestations enabled. It does not create tags/releases.
+
+Uploads can partially succeed if a network/service failure occurs. Stop and
+inspect PyPI before retrying; the workflow deliberately does not use
+`skip-existing` or conceal differing files. PyPI files cannot be overwritten.
+The sdist is the same source for either selected wheel backend; its native build
+defaults remain those documented above. No separate CUDA project or local-version
+scheme is introduced here.
+
+Offline admission tests (no native build, network or publishing):
+
+```text
+python3 -m unittest discover -s tests/packaging -p test_release_validation.py -v
+```
+
+PR checks run these controls. Opening this PR also invokes the repository's
+existing `build.yml` pull-request matrix; no extra manual build dispatch is
+needed. Successful offline checks are not proof that GitHub OIDC/environment
+configuration or the eventual PyPI upload has been exercised.
