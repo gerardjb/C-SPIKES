@@ -97,6 +97,7 @@ dependencies = [
 test = ["pytest>=8", "pytest-cov>=5"]
 build = [
   "build>=1.2",
+  "packaging>=24",
   "scikit-build-core>=0.10",
   "setuptools-scm>=8",
   "pybind11>=3.0.2",

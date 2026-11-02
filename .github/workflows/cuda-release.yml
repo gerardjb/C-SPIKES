@@ -1,0 +1,83 @@
+name: Publish CUDA wheels
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing published release tag (for example v0.2.0)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cuda-release-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: 0.12.1
+          python-version: "3.12"
+      - run: uv sync --locked --no-install-project
+      - name: Validate release version
+        id: version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          version=$(uv run --no-sync python scripts/wheel_index.py version --tag "$RELEASE_TAG")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  wheels:
+    needs: version
+    uses: ./.github/workflows/wheels.yml
+    with:
+      backend: cuda
+      ref: ${{ inputs.tag || github.event.release.tag_name }}
+      version: ${{ needs.version.outputs.version }}
+
+  publish:
+    needs: wheels
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: 0.12.1
+          python-version: "3.12"
+      - run: uv sync --locked --no-install-project
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: wheels-*-cuda
+          path: dist/cuda-release
+          merge-multiple: true
+      - name: Upload wheels and completion manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: uv run --no-sync python scripts/wheel_index.py publish --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --wheel-dir dist/cuda-release
+
+  index:
+    needs: publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/wheel-index.yml

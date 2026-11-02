@@ -38,6 +38,7 @@ if(Kokkos_ENABLE_CUDA)
     # Native CMake CUDA compilation also works with MSVC; nvcc_wrapper does not.
     set(Kokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE ON CACHE BOOL "Use CMake CUDA language" FORCE)
     enable_language(CUDA)
+    include(cmake/CudaArchitectures.cmake)
     add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
     find_package(OpenMP REQUIRED COMPONENTS CXX)
     separate_arguments(_csp_openmp_flags NATIVE_COMMAND "${OpenMP_CXX_FLAGS}")

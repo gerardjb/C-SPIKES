@@ -1,0 +1,2910 @@
+{
+  "date": "2026-11-01",
+  "host": "della-rse.princeton.edu",
+  "gpu": "NVIDIA H100 NVL",
+  "driver": "610.57.04",
+  "gpu_index": 0,
+  "cpu": "Intel Xeon Gold 6548Y+",
+  "cpu_affinity": [
+    2
+  ],
+  "cpu_numa_node": 0,
+  "cuda_toolkit": "12.9.1",
+  "nvcc": "12.9.86",
+  "kokkos": "5.2.2",
+  "kokkos_commit": "8e15454876298832f013ebcaf08d53825b5bda40",
+  "gcc": "11.5.0",
+  "python": "3.14.7",
+  "numpy": "2.5.4",
+  "source": {
+    "source_archive": "c_spikes-0.1.2.dev7+g9297870f9.d20261101.tar.gz",
+    "sha256": "a18ece5ae20d7e8fd80068767682a08487a1ef839e83d03e85664eaf68fe516d",
+    "head": "9297870f99a7589ba7d74e7017afc846a5e98866",
+    "branch": "build/cuda-wheel-index",
+    "dirty": true
+  },
+  "input": {
+    "source": "sample_data/janelia_8f/excitatory/jGCaMP8f_ANM478349_cell01.mat",
+    "source_sha256": "bdd92bde50d05831deed706e11d86e48558e7dc5332b313889c8e3f91e645803",
+    "trial": 0,
+    "frames": 241,
+    "duration_s": 1.9978199999968638,
+    "sampling_frequency": 120.19230768043448,
+    "processing": "first two seconds; finite observations; float64; no resampling or normalization"
+  },
+  "harness_sha256": "e449cbf67e801a3b58478fe269a1743837420576e11fd77535eeb4b5b64c3de7",
+  "evidence_archive_sha256": "630f3b52777e7fcd35b9e4bdaa358f9f07355ea68abca0078fbf0473f2777bf5",
+  "builds": {
+    "portable": {
+      "settings": {
+        "build-dir": "/tmp/c-spikes-h100-dmturner.x9cUnR/build-portable",
+        "cmake.define.CMAKE_TOOLCHAIN_FILE": "/tmp/c-spikes-h100-dmturner.x9cUnR/repo/build/tools/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "cmake.define.VCPKG_INSTALLED_DIR": "/tmp/c-spikes-h100-dmturner.x9cUnR/repo/build/vcpkg-installed",
+        "cmake.define.VCPKG_TARGET_TRIPLET": "x64-linux-csp",
+        "cmake.define.VCPKG_MANIFEST_MODE": "OFF",
+        "cmake.define.PGAS_BUILD_GPU": "ON",
+        "cmake.define.Kokkos_ENABLE_CUDA": "ON",
+        "cmake.define.CSP_NUMERICAL_PROFILE": "portable-lp64",
+        "cmake.define.C_SPIKES_TEST_RESAMPLING": "ON",
+        "cmake.define.C_SPIKES_OBSERVATIONAL_DIAGNOSTICS": "OFF",
+        "cmake.define.Kokkos_ARCH_TURING75": "ON",
+        "cmake.define.CMAKE_CUDA_ARCHITECTURES": "75",
+        "cmake.define.CSP_CUDA_PORTABLE_WHEEL": "ON",
+        "cmake.define.CMAKE_CUDA_COMPILER": "/usr/local/cuda-12.9/bin/nvcc"
+      },
+      "validation": {
+        "wheel": "c_spikes-0.1.2.dev7+cu129-cp314-cp314-manylinux_2_34_x86_64.whl",
+        "sha256": "aebaaf91eb59444385e2f736365ae83579556a16510595d7dc4cf89c6951f291",
+        "backend": "cuda",
+        "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+        "platform": "Linux-5.14.0-687.58.1.el9_8.x86_64-x86_64-with-glibc2.34",
+        "checks": [
+          "installed-origin",
+          "numpy-import-order",
+          "tiny-analyzer",
+          "oasis",
+          "native_core",
+          "python_contracts",
+          "cuda-forced-ptx-jit",
+          "cuda-code-images"
+        ]
+      },
+      "ctest_passed": 8,
+      "native_core_passed": 91,
+      "python_contracts_passed": 93
+    },
+    "hopper": {
+      "settings": {
+        "build-dir": "/tmp/c-spikes-h100-dmturner.x9cUnR/build-hopper",
+        "cmake.define.CMAKE_TOOLCHAIN_FILE": "/tmp/c-spikes-h100-dmturner.x9cUnR/repo/build/tools/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "cmake.define.VCPKG_INSTALLED_DIR": "/tmp/c-spikes-h100-dmturner.x9cUnR/repo/build/vcpkg-installed",
+        "cmake.define.VCPKG_TARGET_TRIPLET": "x64-linux-csp",
+        "cmake.define.VCPKG_MANIFEST_MODE": "OFF",
+        "cmake.define.PGAS_BUILD_GPU": "ON",
+        "cmake.define.Kokkos_ENABLE_CUDA": "ON",
+        "cmake.define.CSP_NUMERICAL_PROFILE": "portable-lp64",
+        "cmake.define.C_SPIKES_TEST_RESAMPLING": "ON",
+        "cmake.define.C_SPIKES_OBSERVATIONAL_DIAGNOSTICS": "OFF",
+        "cmake.define.Kokkos_ARCH_HOPPER90": "ON",
+        "cmake.define.CMAKE_CUDA_ARCHITECTURES": "90",
+        "cmake.define.CSP_CUDA_PORTABLE_WHEEL": "OFF",
+        "cmake.define.CMAKE_CUDA_COMPILER": "/usr/local/cuda-12.9/bin/nvcc"
+      },
+      "validation": {
+        "wheel": "c_spikes-0.1.2.dev7+cu129-cp314-cp314-manylinux_2_34_x86_64.whl",
+        "sha256": "9da58535ef41607db321ae7774ae1898d2990eb2857045dc9f3c1e689391c39f",
+        "backend": "cuda",
+        "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+        "platform": "Linux-5.14.0-687.58.1.el9_8.x86_64-x86_64-with-glibc2.34",
+        "checks": [
+          "installed-origin",
+          "numpy-import-order",
+          "tiny-analyzer",
+          "oasis",
+          "native_core",
+          "python_contracts",
+          "cuda-forced-ptx-jit",
+          "cuda-code-images"
+        ]
+      },
+      "ctest_passed": 8,
+      "native_core_passed": 91,
+      "python_contracts_passed": 93
+    }
+  },
+  "output_checks": {
+    "initial": {
+      "default_1000": {
+        "all_finite": true,
+        "unique_parameter_sha256": [
+          "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce"
+        ],
+        "unique_trajectory_sha256": [
+          "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+        ]
+      },
+      "device_1000": {
+        "all_finite": true,
+        "unique_parameter_sha256": [
+          "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1"
+        ],
+        "unique_trajectory_sha256": [
+          "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+        ]
+      },
+      "device_8192": {
+        "all_finite": true,
+        "unique_parameter_sha256": [
+          "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e"
+        ],
+        "unique_trajectory_sha256": [
+          "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+        ]
+      }
+    },
+    "confirmation": {
+      "default_1000": {
+        "all_finite": true,
+        "unique_parameter_sha256": [
+          "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562"
+        ],
+        "unique_trajectory_sha256": [
+          "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+        ]
+      },
+      "device_1000": {
+        "all_finite": true,
+        "unique_parameter_sha256": [
+          "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f"
+        ],
+        "unique_trajectory_sha256": [
+          "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+        ]
+      },
+      "device_8192": {
+        "all_finite": true,
+        "unique_parameter_sha256": [
+          "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14"
+        ],
+        "unique_trajectory_sha256": [
+          "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+        ]
+      }
+    }
+  },
+  "confirmation_measured_telemetry": {
+    "clocks.current.sm [MHz]": {
+      "min": 1785.0,
+      "max": 1785.0,
+      "median": 1785.0
+    },
+    "temperature.gpu": {
+      "min": 44.0,
+      "max": 54.0,
+      "median": 50.0
+    },
+    "power.draw [W]": {
+      "min": 107.07,
+      "max": 157.15,
+      "median": 144.2
+    },
+    "utilization.gpu [%]": {
+      "min": 0.0,
+      "max": 97.0,
+      "median": 52.0
+    }
+  },
+  "initial": {
+    "iterations": 6,
+    "repeats": 6,
+    "warmups_per_case_per_build": 2,
+    "cases": [
+      {
+        "name": "default_1000",
+        "particles": 1000,
+        "resampling": "host",
+        "trajectory": "full"
+      },
+      {
+        "name": "device_1000",
+        "particles": 1000,
+        "resampling": "device",
+        "trajectory": "selected"
+      },
+      {
+        "name": "device_8192",
+        "particles": 8192,
+        "resampling": "device",
+        "trajectory": "selected"
+      }
+    ],
+    "input_sha256": "c169636e4e098da0b927f2b7091754b58bb9543e681cc8d293d036c4581aada8",
+    "constants_sha256": "cbab4a5aa06004ec9e814b465a7870cdcadbbd80d621c89eb8d0039b28e965e7",
+    "gparams_sha256": "1280692b5bc842d0d0f8effa17dcd6bdf5eb9cfa856d2c41aab85337a1cb3883",
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": "GPU-372ffaa5-87b1-a620-d84f-4a2d0427a8c4",
+      "CUDA_DISABLE_PTX_JIT": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OMP_PROC_BIND": "false"
+    },
+    "workers": {
+      "portable": {
+        "ready": true,
+        "module": "/tmp/c-spikes-h100-dmturner.x9cUnR/venv-portable/lib/python3.14/site-packages/c_spikes/pgas/pgas_bound_gpu.cpython-314-x86_64-linux-gnu.so",
+        "module_sha256": "02ed8c5ee1ed729d1e3bf4a77e9a4e75487528e180ed51b185f7814a4391831a",
+        "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+        "numpy": "2.5.4"
+      },
+      "hopper": {
+        "ready": true,
+        "module": "/tmp/c-spikes-h100-dmturner.x9cUnR/venv-hopper/lib/python3.14/site-packages/c_spikes/pgas/pgas_bound_gpu.cpython-314-x86_64-linux-gnu.so",
+        "module_sha256": "52a7bc013b9a6d41b518ddc83f291d17798dda1be72fee2f47f2290e6b410d30",
+        "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+        "numpy": "2.5.4"
+      }
+    },
+    "runs": [
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "default_1000_warmup_0",
+        "started_at_unix": 1793565752.881891,
+        "seconds": 0.7078618810046464,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "default_1000_warmup_0",
+        "started_at_unix": 1793565753.633457,
+        "seconds": 0.7118867200333625,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "default_1000_warmup_1",
+        "started_at_unix": 1793565754.3532302,
+        "seconds": 0.6751944139832631,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "default_1000_warmup_1",
+        "started_at_unix": 1793565755.03197,
+        "seconds": 0.6833139670779929,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "default_1000_measured_0",
+        "started_at_unix": 1793565755.7187638,
+        "seconds": 0.6750169370789081,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_0",
+        "started_at_unix": 1793565756.3972774,
+        "seconds": 0.6804269290296361,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_1",
+        "started_at_unix": 1793565757.0812237,
+        "seconds": 0.6809327469673008,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "default_1000_measured_1",
+        "started_at_unix": 1793565757.7659314,
+        "seconds": 0.6822419270174578,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "portable",
+        "run_id": "default_1000_measured_2",
+        "started_at_unix": 1793565758.4502203,
+        "seconds": 0.6723211950156838,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_2",
+        "started_at_unix": 1793565759.124416,
+        "seconds": 0.6809411679860204,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_3",
+        "started_at_unix": 1793565759.8070495,
+        "seconds": 0.6742435940541327,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "portable",
+        "run_id": "default_1000_measured_3",
+        "started_at_unix": 1793565760.4848263,
+        "seconds": 0.6791786160320044,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "portable",
+        "run_id": "default_1000_measured_4",
+        "started_at_unix": 1793565761.1675065,
+        "seconds": 0.6709479379933327,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_4",
+        "started_at_unix": 1793565761.842128,
+        "seconds": 0.6797621520236135,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_5",
+        "started_at_unix": 1793565762.5253112,
+        "seconds": 0.6815333400154486,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "portable",
+        "run_id": "default_1000_measured_5",
+        "started_at_unix": 1793565763.2108636,
+        "seconds": 0.6879727279301733,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "74f66473c42e42fdd177f70f397c734aad3e114cfcf24b98563b21b10c5e09ce",
+        "trajectory_sha256": "8f7b4ade325e0570aba47f7331f22275958305e15ae80c91b131906e490f391d"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "device_1000_warmup_0",
+        "started_at_unix": 1793565763.9030278,
+        "seconds": 0.5685498439706862,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "device_1000_warmup_0",
+        "started_at_unix": 1793565764.4765506,
+        "seconds": 0.5724331269739196,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "device_1000_warmup_1",
+        "started_at_unix": 1793565765.0534782,
+        "seconds": 0.5626276900293306,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "device_1000_warmup_1",
+        "started_at_unix": 1793565765.6207838,
+        "seconds": 0.5654152930947021,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "device_1000_measured_0",
+        "started_at_unix": 1793565766.190819,
+        "seconds": 0.5611461650114506,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_0",
+        "started_at_unix": 1793565766.7566264,
+        "seconds": 0.5659363740123808,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_1",
+        "started_at_unix": 1793565767.3273017,
+        "seconds": 0.5622213060269132,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "device_1000_measured_1",
+        "started_at_unix": 1793565767.8942163,
+        "seconds": 0.565964421024546,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "portable",
+        "run_id": "device_1000_measured_2",
+        "started_at_unix": 1793565768.4649587,
+        "seconds": 0.5610515889711678,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_2",
+        "started_at_unix": 1793565769.0306826,
+        "seconds": 0.5673661559121683,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_3",
+        "started_at_unix": 1793565769.603036,
+        "seconds": 0.5688171519432217,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "portable",
+        "run_id": "device_1000_measured_3",
+        "started_at_unix": 1793565770.176561,
+        "seconds": 0.5652494169771671,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "portable",
+        "run_id": "device_1000_measured_4",
+        "started_at_unix": 1793565770.7464051,
+        "seconds": 0.5630474479403347,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_4",
+        "started_at_unix": 1793565771.3141897,
+        "seconds": 0.5660377820022404,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_5",
+        "started_at_unix": 1793565771.8850288,
+        "seconds": 0.5617432750295848,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "portable",
+        "run_id": "device_1000_measured_5",
+        "started_at_unix": 1793565772.4512272,
+        "seconds": 0.5657831289572641,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "0fdc4eb98013dce882b5ffd9d691fd611e6565eccfdcfed690c2a086afe01cf1",
+        "trajectory_sha256": "4ed1904d5f39b8e29aa3ebb9f0a9042063fc68e0cd6e54cd2efe54e57cd5f6a9"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "device_8192_warmup_0",
+        "started_at_unix": 1793565773.0219033,
+        "seconds": 1.6622679240535945,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "device_8192_warmup_0",
+        "started_at_unix": 1793565774.6861212,
+        "seconds": 1.6296356990933418,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "device_8192_warmup_1",
+        "started_at_unix": 1793565776.3179064,
+        "seconds": 1.5515383790479973,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "device_8192_warmup_1",
+        "started_at_unix": 1793565777.871411,
+        "seconds": 1.5513073538895696,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "device_8192_measured_0",
+        "started_at_unix": 1793565779.4245412,
+        "seconds": 1.8073214810574427,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_0",
+        "started_at_unix": 1793565781.2340043,
+        "seconds": 1.560676191933453,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_1",
+        "started_at_unix": 1793565782.7965765,
+        "seconds": 1.556995304999873,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "device_8192_measured_1",
+        "started_at_unix": 1793565784.3555665,
+        "seconds": 1.5481589569244534,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "portable",
+        "run_id": "device_8192_measured_2",
+        "started_at_unix": 1793565785.9055867,
+        "seconds": 1.5576029509538785,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_2",
+        "started_at_unix": 1793565787.4651754,
+        "seconds": 1.541663910029456,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_3",
+        "started_at_unix": 1793565789.0087428,
+        "seconds": 1.5441985779907554,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "portable",
+        "run_id": "device_8192_measured_3",
+        "started_at_unix": 1793565790.5548944,
+        "seconds": 1.523325665970333,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "portable",
+        "run_id": "device_8192_measured_4",
+        "started_at_unix": 1793565792.0801144,
+        "seconds": 1.526881618076004,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_4",
+        "started_at_unix": 1793565793.608939,
+        "seconds": 1.5482006970560178,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_5",
+        "started_at_unix": 1793565795.1590595,
+        "seconds": 1.713968749041669,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "portable",
+        "run_id": "device_8192_measured_5",
+        "started_at_unix": 1793565796.8750641,
+        "seconds": 1.5595807769568637,
+        "parameter_shape": [
+          6,
+          6
+        ],
+        "trajectory_shape": [
+          1446,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "72fe02967f448c056f99f0f36636321b75f7505dd0109f48efc0d1477637507e",
+        "trajectory_sha256": "da5af608453ffd0ad81a50dba52c5081c1f672a65fa403280b1c03dde5f317fd"
+      }
+    ],
+    "summary": {
+      "default_1000": {
+        "seconds": {
+          "portable": [
+            0.6750169370789081,
+            0.6822419270174578,
+            0.6723211950156838,
+            0.6791786160320044,
+            0.6709479379933327,
+            0.6879727279301733
+          ],
+          "hopper": [
+            0.6804269290296361,
+            0.6809327469673008,
+            0.6809411679860204,
+            0.6742435940541327,
+            0.6797621520236135,
+            0.6815333400154486
+          ]
+        },
+        "median_seconds": {
+          "portable": 0.6770977765554562,
+          "hopper": 0.6806798379984684
+        },
+        "paired_portable_over_hopper": [
+          0.9920491213385054,
+          1.0019226275369892,
+          0.9873410899860388,
+          1.0073193457400138,
+          0.9870333851273695,
+          1.0094483828400511
+        ],
+        "median_paired_speedup": 0.9969858744377473
+      },
+      "device_1000": {
+        "seconds": {
+          "portable": [
+            0.5611461650114506,
+            0.565964421024546,
+            0.5610515889711678,
+            0.5652494169771671,
+            0.5630474479403347,
+            0.5657831289572641
+          ],
+          "hopper": [
+            0.5659363740123808,
+            0.5622213060269132,
+            0.5673661559121683,
+            0.5688171519432217,
+            0.5660377820022404,
+            0.5617432750295848
+          ]
+        },
+        "median_seconds": {
+          "portable": 0.5641484324587509,
+          "hopper": 0.5659870780073106
+        },
+        "paired_portable_over_hopper": [
+          0.9915357817223012,
+          1.006657725272072,
+          0.9888703848913081,
+          0.9937277999549305,
+          0.9947170769213884,
+          1.0071916373675618
+        ],
+        "median_paired_speedup": 0.9942224384381595
+      },
+      "device_8192": {
+        "seconds": {
+          "portable": [
+            1.8073214810574427,
+            1.5481589569244534,
+            1.5576029509538785,
+            1.523325665970333,
+            1.526881618076004,
+            1.5595807769568637
+          ],
+          "hopper": [
+            1.560676191933453,
+            1.556995304999873,
+            1.541663910029456,
+            1.5441985779907554,
+            1.5482006970560178,
+            1.713968749041669
+          ]
+        },
+        "median_seconds": {
+          "portable": 1.552880953939166,
+          "hopper": 1.5525980010279454
+        },
+        "paired_portable_over_hopper": [
+          1.1580374522266734,
+          0.9943247432750477,
+          1.0103388558431765,
+          0.9864830130542009,
+          0.9862297704551141,
+          0.9099236948333345
+        ],
+        "median_paired_speedup": 0.9904038781646243
+      }
+    }
+  },
+  "confirmation": {
+    "iterations": 30,
+    "repeats": 6,
+    "warmups_per_case_per_build": 2,
+    "cases": [
+      {
+        "name": "default_1000",
+        "particles": 1000,
+        "resampling": "host",
+        "trajectory": "full"
+      },
+      {
+        "name": "device_1000",
+        "particles": 1000,
+        "resampling": "device",
+        "trajectory": "selected"
+      },
+      {
+        "name": "device_8192",
+        "particles": 8192,
+        "resampling": "device",
+        "trajectory": "selected"
+      }
+    ],
+    "input_sha256": "c169636e4e098da0b927f2b7091754b58bb9543e681cc8d293d036c4581aada8",
+    "constants_sha256": "cbab4a5aa06004ec9e814b465a7870cdcadbbd80d621c89eb8d0039b28e965e7",
+    "gparams_sha256": "1280692b5bc842d0d0f8effa17dcd6bdf5eb9cfa856d2c41aab85337a1cb3883",
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": "GPU-372ffaa5-87b1-a620-d84f-4a2d0427a8c4",
+      "CUDA_DISABLE_PTX_JIT": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OMP_PROC_BIND": "false"
+    },
+    "workers": {
+      "portable": {
+        "ready": true,
+        "module": "/tmp/c-spikes-h100-dmturner.x9cUnR/venv-portable/lib/python3.14/site-packages/c_spikes/pgas/pgas_bound_gpu.cpython-314-x86_64-linux-gnu.so",
+        "module_sha256": "02ed8c5ee1ed729d1e3bf4a77e9a4e75487528e180ed51b185f7814a4391831a",
+        "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+        "numpy": "2.5.4"
+      },
+      "hopper": {
+        "ready": true,
+        "module": "/tmp/c-spikes-h100-dmturner.x9cUnR/venv-hopper/lib/python3.14/site-packages/c_spikes/pgas/pgas_bound_gpu.cpython-314-x86_64-linux-gnu.so",
+        "module_sha256": "52a7bc013b9a6d41b518ddc83f291d17798dda1be72fee2f47f2290e6b410d30",
+        "python": "3.14.7 (main, Sep  1 2026, 14:18:09) [Clang 22.1.3 ]",
+        "numpy": "2.5.4"
+      }
+    },
+    "runs": [
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "default_1000_warmup_0",
+        "started_at_unix": 1793565819.0969725,
+        "seconds": 3.361935992958024,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "default_1000_warmup_0",
+        "started_at_unix": 1793565822.4712417,
+        "seconds": 3.3603439200669527,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "default_1000_warmup_1",
+        "started_at_unix": 1793565825.8390903,
+        "seconds": 3.3025340570602566,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "default_1000_warmup_1",
+        "started_at_unix": 1793565829.147175,
+        "seconds": 3.3115531959338114,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "default_1000_measured_0",
+        "started_at_unix": 1793565832.4640687,
+        "seconds": 3.3239177429350093,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_0",
+        "started_at_unix": 1793565835.7936177,
+        "seconds": 3.3170497339451686,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_1",
+        "started_at_unix": 1793565839.1159456,
+        "seconds": 3.3114923500688747,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "default_1000_measured_1",
+        "started_at_unix": 1793565842.4319365,
+        "seconds": 3.323085698997602,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "portable",
+        "run_id": "default_1000_measured_2",
+        "started_at_unix": 1793565845.7608538,
+        "seconds": 3.3051690149586648,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_2",
+        "started_at_unix": 1793565849.0709727,
+        "seconds": 3.3094061230076477,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_3",
+        "started_at_unix": 1793565852.3850098,
+        "seconds": 3.311877378029749,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "portable",
+        "run_id": "default_1000_measured_3",
+        "started_at_unix": 1793565855.7002823,
+        "seconds": 3.325709586031735,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "portable",
+        "run_id": "default_1000_measured_4",
+        "started_at_unix": 1793565859.0314312,
+        "seconds": 3.306807538960129,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_4",
+        "started_at_unix": 1793565862.3432105,
+        "seconds": 3.3147302659926936,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "hopper",
+        "run_id": "default_1000_measured_5",
+        "started_at_unix": 1793565865.661212,
+        "seconds": 3.3145956890657544,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "default_1000",
+          "particles": 1000,
+          "resampling": "host",
+          "trajectory": "full"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "portable",
+        "run_id": "default_1000_measured_5",
+        "started_at_unix": 1793565868.9809616,
+        "seconds": 3.335744805051945,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "765ce724db5303945f671c69b22261ab74867516af30933912888533a3e02562",
+        "trajectory_sha256": "0957c9eba3fc9d68ef495e59b40729b609db55ad04025ac4cee64e08cbeba3a0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "device_1000_warmup_0",
+        "started_at_unix": 1793565872.3219981,
+        "seconds": 2.8015885290224105,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "device_1000_warmup_0",
+        "started_at_unix": 1793565875.1299543,
+        "seconds": 2.8258696029661223,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "device_1000_warmup_1",
+        "started_at_unix": 1793565877.9624267,
+        "seconds": 2.773519820999354,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "device_1000_warmup_1",
+        "started_at_unix": 1793565880.7401736,
+        "seconds": 2.7704540729755536,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "device_1000_measured_0",
+        "started_at_unix": 1793565883.516771,
+        "seconds": 2.771669988054782,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_0",
+        "started_at_unix": 1793565886.2946355,
+        "seconds": 2.8262092930963263,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_1",
+        "started_at_unix": 1793565889.1271772,
+        "seconds": 2.793678615009412,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "device_1000_measured_1",
+        "started_at_unix": 1793565891.9276876,
+        "seconds": 2.783407129929401,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "portable",
+        "run_id": "device_1000_measured_2",
+        "started_at_unix": 1793565894.7177517,
+        "seconds": 2.788093099021353,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_2",
+        "started_at_unix": 1793565897.5125184,
+        "seconds": 2.8377166690770537,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_3",
+        "started_at_unix": 1793565900.3570585,
+        "seconds": 2.814107092912309,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "portable",
+        "run_id": "device_1000_measured_3",
+        "started_at_unix": 1793565903.1778507,
+        "seconds": 2.795275507029146,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "portable",
+        "run_id": "device_1000_measured_4",
+        "started_at_unix": 1793565905.976554,
+        "seconds": 2.8042292969767004,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_4",
+        "started_at_unix": 1793565908.7879438,
+        "seconds": 2.773644558037631,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "hopper",
+        "run_id": "device_1000_measured_5",
+        "started_at_unix": 1793565911.5679636,
+        "seconds": 2.8094160449691117,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_1000",
+          "particles": 1000,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "portable",
+        "run_id": "device_1000_measured_5",
+        "started_at_unix": 1793565914.3830261,
+        "seconds": 2.7837835929822177,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "57efded6f1ebb0e3e564da0f9bc221859892be2e7a558e83d387939a5922655f",
+        "trajectory_sha256": "05bfb0e7f2dc2670deead19db21a80f21ec5ab3bd3aa8ad9cce339873da921d0"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "device_8192_warmup_0",
+        "started_at_unix": 1793565917.173152,
+        "seconds": 7.290344959008507,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "device_8192_warmup_0",
+        "started_at_unix": 1793565924.4670367,
+        "seconds": 7.432868069969118,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "device_8192_warmup_1",
+        "started_at_unix": 1793565931.9034476,
+        "seconds": 7.371034334064461,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "warmup",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "device_8192_warmup_1",
+        "started_at_unix": 1793565939.2782996,
+        "seconds": 7.204898335970938,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "portable",
+        "run_id": "device_8192_measured_0",
+        "started_at_unix": 1793565946.487342,
+        "seconds": 7.363797315978445,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 0,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_0",
+        "started_at_unix": 1793565953.8547752,
+        "seconds": 7.365517072961666,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_1",
+        "started_at_unix": 1793565961.2238777,
+        "seconds": 7.214714779984206,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 1,
+        "variant": "portable",
+        "run_id": "device_8192_measured_1",
+        "started_at_unix": 1793565968.442791,
+        "seconds": 7.349776507006027,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "portable",
+        "run_id": "device_8192_measured_2",
+        "started_at_unix": 1793565975.7961323,
+        "seconds": 7.477624932071194,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 2,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_2",
+        "started_at_unix": 1793565983.2775116,
+        "seconds": 7.294695765012875,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_3",
+        "started_at_unix": 1793565990.5757763,
+        "seconds": 7.914572013076395,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 3,
+        "variant": "portable",
+        "run_id": "device_8192_measured_3",
+        "started_at_unix": 1793565998.4939592,
+        "seconds": 7.212524692993611,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "portable",
+        "run_id": "device_8192_measured_4",
+        "started_at_unix": 1793566005.7103422,
+        "seconds": 7.187361153890379,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 4,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_4",
+        "started_at_unix": 1793566012.9013402,
+        "seconds": 7.354452930041589,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "hopper",
+        "run_id": "device_8192_measured_5",
+        "started_at_unix": 1793566020.2593691,
+        "seconds": 7.186200769036077,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      },
+      {
+        "case": {
+          "name": "device_8192",
+          "particles": 8192,
+          "resampling": "device",
+          "trajectory": "selected"
+        },
+        "phase": "measured",
+        "repeat": 5,
+        "variant": "portable",
+        "run_id": "device_8192_measured_5",
+        "started_at_unix": 1793566027.4491928,
+        "seconds": 7.224718373036012,
+        "parameter_shape": [
+          30,
+          6
+        ],
+        "trajectory_shape": [
+          7230,
+          6
+        ],
+        "finite": true,
+        "parameter_sha256": "91bd97d59a04a296323ebb80ece0d300022c97d94d4e2037f417c8acf15e7f14",
+        "trajectory_sha256": "fa895d3ed9cfa86165599b79e987ef79afe9c69c74b91b6d63018944c1347ecf"
+      }
+    ],
+    "summary": {
+      "default_1000": {
+        "seconds": {
+          "portable": [
+            3.3239177429350093,
+            3.323085698997602,
+            3.3051690149586648,
+            3.325709586031735,
+            3.306807538960129,
+            3.335744805051945
+          ],
+          "hopper": [
+            3.3170497339451686,
+            3.3114923500688747,
+            3.3094061230076477,
+            3.311877378029749,
+            3.3147302659926936,
+            3.3145956890657544
+          ]
+        },
+        "median_seconds": {
+          "portable": 3.3235017209663056,
+          "hopper": 3.3132365335477516
+        },
+        "paired_portable_over_hopper": [
+          1.0020705173394167,
+          1.0035009438957292,
+          0.9987196772195694,
+          1.0041765459354703,
+          0.9976098426125808,
+          1.0063806020311792
+        ],
+        "median_paired_speedup": 1.002785730617573,
+        "hopper_speedup_percent_from_medians": 0.3098235611799893
+      },
+      "device_1000": {
+        "seconds": {
+          "portable": [
+            2.771669988054782,
+            2.783407129929401,
+            2.788093099021353,
+            2.795275507029146,
+            2.8042292969767004,
+            2.7837835929822177
+          ],
+          "hopper": [
+            2.8262092930963263,
+            2.793678615009412,
+            2.8377166690770537,
+            2.814107092912309,
+            2.773644558037631,
+            2.8094160449691117
+          ]
+        },
+        "median_seconds": {
+          "portable": 2.7859383460017852,
+          "hopper": 2.8117615689407103
+        },
+        "paired_portable_over_hopper": [
+          0.9807023120422224,
+          0.9963233118423764,
+          0.9825128524646399,
+          0.9933081488154475,
+          1.0110269136145937,
+          0.9908762349269007
+        ],
+        "median_paired_speedup": 0.992092191871174,
+        "hopper_speedup_percent_from_medians": -0.9184001667913
+      },
+      "device_8192": {
+        "seconds": {
+          "portable": [
+            7.363797315978445,
+            7.349776507006027,
+            7.477624932071194,
+            7.212524692993611,
+            7.187361153890379,
+            7.224718373036012
+          ],
+          "hopper": [
+            7.365517072961666,
+            7.214714779984206,
+            7.294695765012875,
+            7.914572013076395,
+            7.354452930041589,
+            7.186200769036077
+          ]
+        },
+        "median_seconds": {
+          "portable": 7.287247440021019,
+          "hopper": 7.324574347527232
+        },
+        "paired_portable_over_hopper": [
+          0.9997665123892614,
+          1.0187203141275276,
+          1.0250770111531848,
+          0.9112968687475625,
+          0.9772801896020477,
+          1.005359939867795
+        ],
+        "median_paired_speedup": 1.0025632261285282,
+        "hopper_speedup_percent_from_medians": -0.5096119683570932
+      }
+    }
+  }
+}

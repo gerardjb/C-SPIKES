@@ -27,15 +27,30 @@ editable CPU installation. The checkout defaults to Python 3.14. Python edits
 are available immediately; after changing C++ or CMake files, run
 `uv sync --reinstall-package c-spikes` to rebuild. Run commands with `uv run`.
 
-For CUDA release wheels, provision the pinned toolkit and select the GPU
-architecture explicitly (this example targets an RTX 2080 Ti):
+To build and test a CUDA wheel locally, provision the pinned toolkit and use
+the portable GPU profile (including the RTX 2080 Ti):
 
 ```text
 uv run --no-sync python scripts/prepare_cuda.py
-uv run --no-sync python scripts/build_native.py --backend cuda --cuda-root build/tools/cuda --cuda-arch TURING75 --test
+uv run --no-sync python scripts/build_native.py --backend cuda --cuda-root build/tools/cuda-12.9.1 --cuda-arch PORTABLE --test
 ```
 
 Install the repaired wheel produced under `dist/` when distributing a build.
+CUDA 12.9 wheels contain native GPU code for Turing, Ampere, Ada, Hopper and
+Blackwell, plus PTX for forward compatibility. Runtime qualification is currently
+limited to the RTX 2080 Ti; see the guide for driver requirements and limitations.
+
+Once the first CUDA release and GitHub Pages deployment are published, users can
+install the latest CUDA wheel without a compiler or system CUDA toolkit:
+
+```text
+uv pip install c-spikes --index https://gerardjb.github.io/C-SPIKES/whl/cu129/
+```
+
+An NVIDIA driver is required. Use `--upgrade` to update an existing installation.
+The [release guide](docs/build-and-release.md#installing-published-wheels) also
+shows the persistent index configuration for users' `uv sync` projects.
+
 GUI, ENS2 and CASCADE framework requirements are optional extras: use
 `uv sync --extra gui`, `--extra ens2`, `--extra cascade`, or `--extra all`.
 For TensorFlow/CASCADE, select Python 3.13 with `uv python pin 3.13`, then run
