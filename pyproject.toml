@@ -91,7 +91,7 @@ dependencies = [
  before-all = "/opt/python/cp312-cp312/bin/python {project}/scripts/prepare_wheel_build.py"
 
  [tool.cibuildwheel.windows]
- repair-wheel-command = 'delvewheel repair --add-path "{project}/build/vcpkg-installed/x64-windows-csp/bin" -w {dest_dir} {wheel}'
+ repair-wheel-command = 'python "{project}/scripts/repair_windows_wheel.py" repair --add-path "{project}/build/vcpkg-installed/x64-windows-csp/bin" -w "{dest_dir}" "{wheel}"'
 
 [dependency-groups]
 test = ["pytest>=8", "pytest-cov>=5"]

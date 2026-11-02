@@ -56,7 +56,7 @@ def main():
     env = os.environ.copy()
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env["PATH"]
     if platform.system() == "Windows":
-        command = [sys.executable, "-m", "delvewheel", "repair", "-w", repaired]
+        command = [sys.executable, ROOT / "scripts/repair_windows_wheel.py", "repair", "-w", repaired]
         dll_paths = [args.dependency_bin, args.cuda_root / "bin" if args.cuda_root else None]
         if any(dll_paths):
             command.extend(["--add-path", os.pathsep.join(str(p.resolve()) for p in dll_paths if p)])

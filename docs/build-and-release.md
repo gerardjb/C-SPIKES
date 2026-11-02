@@ -220,6 +220,11 @@ Linux distribution. NVIDIA's `libcuda.so.1` and `nvcuda.dll` drivers are explici
 excluded from bundling, including WSL's host-driver proxy. Native dependency and CUDA runtime
 notices are included in the wheels.
 
+Windows repair uses `scripts/repair_windows_wheel.py` to keep delvewheel from
+writing renamed DLL imports into CUDA section padding. DLL bundling and name
+mangling remain enabled; the repaired GPU module must still pass cuobjdump's
+native-image and PTX checks.
+
 To reproduce cibuildwheel locally (Linux requires Docker or Podman):
 
 ```text

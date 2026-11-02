@@ -68,7 +68,7 @@ def main():
                 '-w "{dest_dir}" "{wheel}"')
         else:
             env["CIBW_REPAIR_WHEEL_COMMAND"] = (
-                'delvewheel repair --exclude nvcuda.dll '
+                'python "{project}/scripts/repair_windows_wheel.py" repair --exclude nvcuda.dll '
                 f'--add-path "{{project}}/build/vcpkg-installed/x64-windows-csp/bin;{cuda_root}/bin" '
                 '-w "{dest_dir}" "{wheel}"')
         # Inspect the repaired wheel even on hosted runners without a GPU.

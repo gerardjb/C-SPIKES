@@ -45,6 +45,9 @@ jobs:
           key: native-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'cmake/triplets/*', 'cmake/ports/**', 'scripts/build_native.py') }}
       - name: Install the development package
         run: uv sync --locked
+      - name: Test Windows wheel repair
+        if: runner.os == 'Windows'
+        run: uv run --no-sync python -m pytest tests/packaging/test_windows_wheel_repair.py --csp-profile all
       - name: Test the editable installation
         run: |
           uv run --no-sync python tests/packaging/wheel_smoke.py --backend cpu --import-order numpy-first
