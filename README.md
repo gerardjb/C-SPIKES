@@ -48,9 +48,8 @@ uv run --no-sync python scripts/build_native.py --backend cuda --cuda-root build
 
 Install the repaired wheel produced under `dist/` when distributing a build.
 CUDA 12.9 wheels contain native GPU code for Turing, Ampere, Ada, Hopper and
-Blackwell, plus PTX for forward compatibility. Runtime checks cover the RTX 2080 Ti;
-the portable CUDA profile was also benchmarked on an H100 NVL. See the guide
-for the exact artifacts tested and remaining validation limits.
+Blackwell, plus PTX for forward compatibility. Runtime checks cover the RTX 2080 Ti.
+See the guide for the exact artifacts tested and remaining validation limits.
 
 GUI, ENS2 and CASCADE framework requirements are optional extras: use
 `uv sync --extra gui`, `--extra ens2`, `--extra cascade`, or `--extra all`.

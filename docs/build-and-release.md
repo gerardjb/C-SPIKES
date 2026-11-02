@@ -199,14 +199,6 @@ native checks and Analyzer smoke runs. The earlier GitHub Pages wheel-index
 implementation and its validation are preserved at `eb4c7a2` on
 `build/cuda-wheel-index`; that publishing path is superseded by PyPI here.
 
-A subsequent [H100 NVL comparison](benchmarks/h100-cuda-architectures.md) on
-`della-rse` tested both `PORTABLE` and `HOPPER90` builds using CUDA 12.9.1,
-Kokkos 5.2.2, GCC 11.5 and Python 3.14.7. Each passed 8 native checks, 184 Python
-tests, and native/forced-PTX GPU smokes. Across three short PGAS workloads,
-median inference times differed by less than 1%, with no consistent advantage
-for `HOPPER90`. This supports retaining the portable profile for the current
-workload; it does not qualify performance on other GPU generations.
-
 ## CI and release artifacts
 
 `.github/workflows/build.yml` runs on pull requests, main/master pushes and
@@ -268,7 +260,7 @@ compiled as `compute_75`, with native machine code generated for each target:
 | Turing, including RTX 2080 Ti | sm75 | Local Linux/WSL and Windows |
 | Ampere | sm80, sm86 | Compiled; hardware testing needed |
 | Ada | sm89 | Compiled; hardware testing needed |
-| Hopper | sm90 | Linux H100 NVL: native, forced PTX, and architecture comparison |
+| Hopper | sm90 | Compiled; hardware qualification outside this PR |
 | Blackwell | sm100, sm103, sm120, sm121 | Compiled; hardware testing needed |
 
 The wheel also retains `compute_75` PTX for the driver's JIT compiler. We avoid
