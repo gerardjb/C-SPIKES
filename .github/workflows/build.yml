@@ -3,9 +3,9 @@ name: Build and test
 on:
   push:
     branches: [main, master]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -71,16 +71,10 @@ jobs:
           version: 0.12.1
           python-version: "3.12"
       - run: uv sync --locked --no-install-project
-      - run: uv run --no-sync python -m pytest tests/packaging/test_wheel_index.py --csp-profile all
+      - run: uv run --no-sync python -m pytest tests/packaging/test_release_validation.py --csp-profile all
 
   wheels:
-    strategy:
-      fail-fast: false
-      matrix:
-        backend: [cpu, cuda]
     uses: ./.github/workflows/wheels.yml
-    with:
-      backend: ${{ matrix.backend }}
 
   sdist:
     runs-on: ubuntu-24.04

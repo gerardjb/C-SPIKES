@@ -20,7 +20,6 @@ ARCHITECTURES = {"TURING75": "75", "AMPERE80": "80", "AMPERE86": "86",
                  "ADA89": "89", "HOPPER90": "90", "BLACKWELL100": "100",
                  "BLACKWELL103": "103", "BLACKWELL120": "120", "BLACKWELL121": "121"}
 CUDA_RELEASE = "12.9.1"
-CUDA_CHANNEL = "cu129"
 CUDA_ROOT = ROOT / "build/tools" / f"cuda-{CUDA_RELEASE}"
 
 
@@ -34,7 +33,7 @@ def cuda_settings(architecture):
     }
 
 
-def wheel_version(version=None, *, cuda=False):
+def wheel_version(version=None):
     from packaging.version import Version
     from setuptools_scm import get_version
 
@@ -42,12 +41,7 @@ def wheel_version(version=None, *, cuda=False):
         version = (os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION_FOR_C_SPIKES")
                    or os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION")
                    or get_version(root=ROOT))
-    parsed = Version(version)
-    if cuda:
-        # Set the version before building: filename, METADATA and _version.py
-        # must agree. Public release wheels have exactly +cu129 as their label.
-        return f"{parsed.public}+{CUDA_CHANNEL}"
-    return str(parsed)
+    return str(Version(version))
 
 
 def run(command, *, env, cwd=ROOT):
@@ -126,6 +120,8 @@ def main():
     build_name = f"{system}-{args.backend}-py{sys.version_info.major}{sys.version_info.minor}"
     if args.cuda_arch:
         build_name += "-" + args.cuda_arch.lower()
+    if args.backend == "cuda":
+        build_name += "-combined"
     if args.diagnostics:
         build_name += "-diagnostics"
     build_dir = (args.build_dir or ROOT / "build" / build_name).resolve()
@@ -163,17 +159,18 @@ def main():
         "cmake.define.CSP_NUMERICAL_PROFILE": "portable-lp64",
         "cmake.define.C_SPIKES_TEST_RESAMPLING": "ON",
         "cmake.define.C_SPIKES_OBSERVATIONAL_DIAGNOSTICS": "ON" if args.diagnostics else "OFF",
+        "cmake.define.CSP_COMBINED_WHEEL": "ON" if args.backend == "cuda" else "OFF",
     }
     if args.backend == "cuda":
         settings.update(cuda_settings(args.cuda_arch))
-        env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_C_SPIKES"] = wheel_version(cuda=True)
+        env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_C_SPIKES"] = wheel_version()
         nvcc = shutil.which("nvcc", path=env["PATH"])
         if not nvcc:
             parser.error("nvcc was not found; install a CUDA toolkit or pass --cuda-root")
         compiler_version = subprocess.check_output([nvcc, "--version"], env=env, text=True)
         cuda_series = ".".join(CUDA_RELEASE.split(".")[:2])
         if f"release {cuda_series}," not in compiler_version:
-            parser.error(f"The +{CUDA_CHANNEL} wheel profile requires CUDA {cuda_series}; "
+            parser.error(f"The CUDA wheel profile requires CUDA {cuda_series}; "
                          f"run scripts/prepare_cuda.py and use --cuda-root {CUDA_ROOT}")
         settings["cmake.define.CMAKE_CUDA_COMPILER"] = Path(nvcc).as_posix()
     output_dir.mkdir(parents=True, exist_ok=True)

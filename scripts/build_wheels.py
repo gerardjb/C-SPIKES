@@ -1,4 +1,4 @@
-"""Run cibuildwheel for one explicit CPU/CUDA artifact set (no publishing)."""
+"""Build combined CPU/CUDA distribution wheels; CPU-only builds are opt-in."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--backend", choices=("cpu", "cuda"), default="cuda")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--platform", choices=("linux", "windows"), default=platform.system().lower())
     parser.add_argument("--print-build-identifiers", action="store_true")
@@ -34,6 +34,7 @@ def main():
         "cmake.define.VCPKG_MANIFEST_MODE": "OFF",
         "cmake.define.PGAS_BUILD_GPU": "ON" if gpu else "OFF",
         "cmake.define.Kokkos_ENABLE_CUDA": "ON" if gpu else "OFF",
+        "cmake.define.CSP_COMBINED_WHEEL": "ON" if gpu else "OFF",
     }
     if gpu:
         settings.update(cuda_settings(args.cuda_arch))
@@ -45,16 +46,22 @@ def main():
     env["CIBW_ARCHS"] = "AMD64" if system == "windows" else "x86_64"
     env["CIBW_ENVIRONMENT"] = f"CSP_WHEEL_BACKEND={args.backend} CMAKE_GENERATOR=Ninja CMAKE_BUILD_PARALLEL_LEVEL=2 VCPKG_MAX_CONCURRENCY=2 OMP_NUM_THREADS=1 OMP_PROC_BIND=false OPENBLAS_NUM_THREADS=1"
     if gpu or args.version:
-        version = wheel_version(args.version, cuda=gpu)
+        version = wheel_version(args.version)
         env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_C_SPIKES"] = version
         env["CIBW_ENVIRONMENT"] += f" SETUPTOOLS_SCM_PRETEND_VERSION_FOR_C_SPIKES={version}"
     if system == "linux":
         toolchain = "/opt/rh/gcc-toolset-12/root/usr/bin"
         env["CIBW_ENVIRONMENT"] += f' CC={toolchain}/gcc CXX={toolchain}/g++ FC={toolchain}/gfortran PATH="{toolchain}:$PATH"'
     if gpu:
-        # Standard hosted runners have no CUDA device. Runtime qualification is
-        # performed with build_native.py --test on an actual GPU, never faked.
-        env["CIBW_TEST_SKIP"] = "*"
+        # CPU must work without a driver on hosted runners. GPU execution is
+        # qualified separately with build_native.py --backend cuda --test.
+        env["CIBW_TEST_COMMAND"] = " && ".join([
+            'python "{project}/tests/packaging/wheel_smoke.py" --backend cpu --import-order numpy-first',
+            'python "{project}/tests/packaging/wheel_smoke.py" --backend cpu --import-order native-first',
+            'python "{project}/tests/packaging/combined_wheel_smoke.py" --no-gpu',
+            'python -m pytest "{project}/tests" --csp-profile=native_core',
+            'python -m pytest "{project}/tests" --csp-profile=python_contracts',
+        ])
         if system == "linux":
             env["CIBW_REPAIR_WHEEL_COMMAND"] = (
                 f'LD_LIBRARY_PATH="{cuda_root}/lib" auditwheel repair --exclude libcuda.so.1 '

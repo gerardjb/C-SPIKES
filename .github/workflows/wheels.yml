@@ -5,13 +5,7 @@ on:
     inputs:
       backend:
         type: string
-        required: true
-      ref:
-        type: string
-        default: ""
-      version:
-        type: string
-        default: ""
+        default: cuda
 
 permissions:
   contents: read
@@ -32,7 +26,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
@@ -48,12 +41,8 @@ jobs:
       - name: Build repaired CPython 3.11–3.14 wheels
         env:
           WHEEL_BACKEND: ${{ inputs.backend }}
-          RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
-        run: |
-          args=(--backend "$WHEEL_BACKEND" --output-dir "dist/wheels-$WHEEL_BACKEND")
-          if [[ -n "$RELEASE_VERSION" ]]; then args+=(--version "$RELEASE_VERSION"); fi
-          uv run --no-sync python scripts/build_wheels.py "${args[@]}"
+        run: uv run --no-sync python scripts/build_wheels.py --backend "$WHEEL_BACKEND" --output-dir "dist/wheels-$WHEEL_BACKEND"
       # Hosted runners cannot execute CUDA kernels. The separate hardware
       # workflow and build_native.py --test qualify CUDA runtime behavior.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

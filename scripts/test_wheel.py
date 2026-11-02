@@ -117,6 +117,12 @@ def main():
             for import_order in ("numpy-first", "native-first"):
                 run([python, ROOT / "tests/packaging/wheel_smoke.py", "--backend", "gpu",
                      "--import-order", import_order, "--prefix", runtime], env=ptx_env, cwd=work, timeout=180)
+        if args.backend == "cuda":
+            for first in ("cpu", "cuda"):
+                run([python, ROOT / "tests/packaging/combined_wheel_smoke.py", "--gpu",
+                     "--first", first], env=env, cwd=work, timeout=120)
+            run([python, ROOT / "tests/packaging/combined_wheel_smoke.py", "--no-gpu"],
+                env=dict(env, CUDA_VISIBLE_DEVICES="-1"), cwd=work, timeout=120)
         run([python, "-m", "pytest", ROOT / "tests", "--csp-profile=native_core",
              "--junitxml", wheel_dir / "native-core.xml"], env=env, cwd=work, timeout=300)
         run([python, "-m", "pytest", ROOT / "tests", "--csp-profile=python_contracts",
@@ -129,6 +135,8 @@ def main():
         evidence["checks"].append("cuda-forced-ptx-jit")
         if args.cuda_root:
             evidence["checks"].append("cuda-code-images")
+    if args.backend == "cuda":
+        evidence["checks"].extend(["cpu-cuda-coexistence-both-orders", "cpu-with-no-visible-gpu"])
     (wheel_dir / "validation.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
 
 

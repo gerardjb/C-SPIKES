@@ -1,9 +1,15 @@
 # Linux and Windows builds
 
-The wheel matrix targets x86-64 Linux and Windows, CPython 3.11–3.14, and
-separate CPU and CUDA artifacts. macOS, ARM, musllinux, free-threaded Python and
-additional Python versions are deferred. A CUDA build contains both PGAS backends
-and CPU OASIS; the CPU build needs no CUDA toolkit or NVIDIA driver.
+The release matrix targets x86-64 Linux and Windows, CPython 3.11–3.14.
+Every published wheel includes independent CPU OpenMP and CUDA PGAS backends
+and CPU OASIS. CPU execution works without an NVIDIA driver. GPU execution is
+selected explicitly and requires a compatible driver, but no system CUDA toolkit.
+macOS, ARM, musllinux and free-threaded Python support are deferred.
+
+`build_wheels.py` and CI default to combined wheels. CPU-only builds remain
+available with `--backend cpu`, and source-checkout `uv sync` still builds an
+editable CPU package. See [combined wheels](combined-wheels.md) for the two
+native build trees, lazy backend selection and validation evidence.
 
 ## Build inputs
 
@@ -110,17 +116,18 @@ build, the script also accepts `TURING75`, `AMPERE80`, `AMPERE86`, `ADA89`,
 `HOPPER90`, `BLACKWELL100`, `BLACKWELL103`, `BLACKWELL120` and `BLACKWELL121`.
 Use a fresh build directory when changing the selected Kokkos architecture or
 toolkit. Individual architecture builds are for local use, not publication to
-the shared release index. `prepare_cuda.py` does not install a display driver.
+PyPI. `prepare_cuda.py` does not install a display driver.
 WSL uses the Windows host's driver.
 
 CUDA `--test` requires a working GPU and fails if the GPU extension or its kernels
-cannot run. The CPU extension inside a CUDA wheel can still have CUDA runtime
-dependencies; use the separate CPU artifact on machines without NVIDIA support.
+cannot run. The independent CPU extension remains usable without CUDA or an NVIDIA driver.
+CUDA validation also exercises both backends in one process in both import
+orders and checks CPU execution after an unavailable-GPU request.
 
 Install the single repaired wheel from the chosen build's `repaired/` directory
-using `uv pip install /path/to/the-wheel.whl`. CPU and CUDA variants share the
-`c-spikes` distribution and `c_spikes` import package. CUDA wheels add `+cu129`
-to their version (for example `0.2.0+cu129`); install one variant per environment.
+using `uv pip install /path/to/the-wheel.whl`. Combined wheels use the ordinary
+`c-spikes` version and the `c_spikes` import package. CPU-only local builds use
+the same distribution name; install one wheel per environment.
 GUI, ENS2 and CASCADE frameworks are optional extras: `c-spikes[gui]`,
 `c-spikes[ens2]`, `c-spikes[cascade]`, or `c-spikes[all]` for the previous full stack.
 The native-wheel checks do not validate those optional applications.
@@ -135,6 +142,14 @@ builds remain independent of TensorFlow. Python 3.15 is deferred because the cor
 wheels. Free-threaded interpreters are not included in this matrix.
 
 ## Local validation
+
+The current combined-wheel results are recorded in [combined wheels](combined-wheels.md):
+Windows and Linux CPython 3.14 passed eight native checks, 184 Python tests,
+CPU/GPU coexistence, and GPU native/forced-PTX execution. Linux additionally
+passed CPU tests and consumer `uv sync` in a container without an NVIDIA driver.
+The following earlier runs document the portable CUDA architecture work before
+the independent CPU/CUDA packaging change. They are not full-matrix qualification
+of the combined wheel.
 
 The initial 2026-10-30 local run used Kokkos 5.2.2 and Python 3.12 on Ubuntu 24.04 under
 WSL and native Windows, with an RTX 2080 Ti (sm75) and the pinned CUDA 12.6
@@ -179,13 +194,10 @@ local portable-profile run exercised CPython 3.14 on Turing. The local
 `0.2.0+cu129` artifacts used an explicit test version;
 no `v0.2.0` tag or public release was created by these checks.
 
-The Python regression profiles exercise the CPU backend inside the CUDA wheel;
-GPU execution is covered by the native checks and Analyzer smoke runs. The
-release/index suite has 22 passing tests, and workflow lint passes. A locally
-served index using the real CPython 3.14 wheels was tested with unversioned
-`uv pip install`, a consumer project's `uv sync`, and repeat locked sync. The
-lockfile retained the advertised wheel hashes, and locked sync rejected a
-deliberately modified download.
+The Python regression profiles exercise CPU; GPU execution is covered by the
+native checks and Analyzer smoke runs. The earlier GitHub Pages wheel-index
+implementation and its validation are preserved at `eb4c7a2` on
+`build/cuda-wheel-index`; that publishing path is superseded by PyPI here.
 
 A subsequent [H100 NVL comparison](benchmarks/h100-cuda-architectures.md) on
 `della-rse` tested both `PORTABLE` and `HOPPER90` builds using CUDA 12.9.1,
@@ -197,13 +209,16 @@ workload; it does not qualify performance on other GPU generations.
 
 ## CI and release artifacts
 
-`.github/workflows/build.yml` runs on pull requests, main/master pushes, version
-tags and manual dispatch. It builds and tests native CPU wheels on Ubuntu and
-Windows with Python 3.14, creates an sdist, and runs cibuildwheel for Python
-3.11, 3.12, 3.13 and 3.14 for both CPU and CUDA variants.
-The cibuildwheel matrix repairs wheels with auditwheel/delvewheel and runs the
-installed-wheel checks on CPU artifacts. CUDA jobs compile and repair; standard
-hosted runners have no GPU, so CUDA runtime tests are explicitly skipped there.
+`.github/workflows/build.yml` runs on pull requests, main/master pushes and
+manual dispatch. `release.yml` also calls it for a version-tag release. It
+builds/tests native CPU development wheels on Ubuntu and Windows with Python
+3.14, creates an sdist, tests release-bundle validation, and builds combined
+wheels with cibuildwheel for Python 3.11–3.14 on both operating systems.
+
+Every combined wheel is repaired and runs installed CPU/import/regression tests
+on hosted runners, including lazy loading and unavailable-CUDA behavior. CUDA
+execution still requires the separate hardware checks; hosted builds inspect the
+GPU code images without executing kernels.
 
 The manylinux job uses the `manylinux_2_28` image selected by the pinned cibuildwheel
 version and GCC toolset 12, including Fortran. Linux wheels built directly on
@@ -217,13 +232,14 @@ To reproduce cibuildwheel locally (Linux requires Docker or Podman):
 
 ```text
 uv sync --locked --no-install-project --group ci
+uv run --no-sync python scripts/build_wheels.py --output-dir dist/wheels
+# Optional CPU-only development artifacts:
 uv run --no-sync python scripts/build_wheels.py --backend cpu --output-dir dist/wheels-cpu
-uv run --no-sync python scripts/build_wheels.py --backend cuda --output-dir dist/wheels-cuda
 ```
 
 CUDA cibuildwheel builds default to `--cuda-arch PORTABLE`. Every repaired CUDA
 wheel is inspected with cuobjdump on the build runner, checking all native images
-and PTX in both PGAS modules without needing a GPU.
+and PTX in the GPU module and requiring no device code in the CPU module.
 
 `--platform linux` also permits running the Linux container builds from Windows
 with Docker Desktop. `--print-build-identifiers` previews the selected matrix.
@@ -237,9 +253,9 @@ labels. It runs the same CTest and installed-wheel CUDA execution checks as the
 local script, including forced-PTX smoke checks. `PORTABLE` is its default profile.
 No runner registration is performed by this change.
 
-`wheels.yml` is shared by CI and the CUDA release workflow so their build and
-repair steps stay aligned. CPU wheels and sdists remain CI artifacts; PyPI
-trusted publishing is a separate setup and is not enabled here.
+`wheels.yml` is reused by both CI and tagged releases. Only the combined
+`wheels-Linux-cuda` / `wheels-Windows-cuda` artifacts and the sdist are admitted
+to PyPI; native development wheels are never selected for publishing.
 
 ## CUDA GPU coverage
 
@@ -257,7 +273,8 @@ compiled as `compute_75`, with native machine code generated for each target:
 
 The wheel also retains `compute_75` PTX for the driver's JIT compiler. We avoid
 architecture-specific `a`/`f` targets, which have narrower compatibility rules.
-Both PGAS modules and Kokkos itself carry the same code images. This uses standard
+The GPU PGAS module and its Kokkos runtime carry these code images.
+The independent CPU module contains no CUDA device code. This uses standard
 nvcc code generation and does not patch Kokkos or attempt to enable several
 Kokkos architecture configurations together. See NVIDIA's
 [compiler documentation](https://docs.nvidia.com/cuda/archive/12.9.1/cuda-compiler-driver-nvcc/index.html)
@@ -272,8 +289,9 @@ platform support: ARM systems still need a separate build.
 Installed-wheel CUDA tests run real Analyzer kernels normally and again with
 `CUDA_FORCE_PTX_JIT=1` and the JIT cache disabled. The latter verifies the shipped
 PTX path on available hardware; it does not substitute for testing a Blackwell
-device. The prebuilt core wheel statically links cudart, so users need an NVIDIA
-driver but no CUDA toolkit or separate NVIDIA runtime pip packages. Optional
+device. The GPU extension statically links cudart, so GPU users need an NVIDIA
+driver but no CUDA toolkit or separate NVIDIA runtime pip packages. CPU users
+need neither the toolkit nor the driver. Optional
 PyTorch/TensorFlow integrations have their own runtime requirements.
 
 Use a driver supporting CUDA 12.9 Update 1 or newer. NVIDIA lists Linux
@@ -284,109 +302,94 @@ See [NVIDIA's release notes](https://docs.nvidia.com/cuda/archive/12.9.1/cuda-to
 
 ## Installing published wheels
 
-The following CUDA URL becomes available after the first successful release and
-Pages deployment. It is not provisioned by a local build or a pull-request run.
+After the first release containing this packaging is published, the same command
+installs CPU and CUDA support:
 
 ```text
-uv pip install c-spikes --index https://gerardjb.github.io/C-SPIKES/whl/cu129/
+uv pip install c-spikes
 ```
 
-This selects the latest compatible stable CUDA wheel. Add `--upgrade` when
-updating an already installed CPU or CUDA variant. PyPI remains the fallback for
-dependencies such as NumPy; uv's default first-index policy keeps `c-spikes` on
-the CUDA index. To pin a particular release, use `c-spikes==0.2.0+cu129` instead.
-With pip, pin the CUDA version when combining indexes:
+Use `uv pip install --upgrade c-spikes` to update, or pin a published version with
+`uv pip install "c-spikes==0.2.0"` (`0.2.0` is an example, not a claimed release).
+For a consumer uv project:
 
 ```text
-pip install "c-spikes==0.2.0+cu129" --extra-index-url https://gerardjb.github.io/C-SPIKES/whl/cu129/
+uv add c-spikes
+uv sync
 ```
 
-`0.2.0` is an example; use a version present in the index. CPU installations use
-the normal `uv pip install c-spikes` command once CPU releases exist on PyPI.
+Commit the generated `pyproject.toml` and `uv.lock`. Subsequent syncs use the lock;
+`uv sync --upgrade-package c-spikes` selects a newer compatible release. No
+custom index or source mapping is required. `uv sync` in this repository is a
+source development install and continues to build CPU by default.
 
-For a user's own uv project, add the dependency and named index:
+CPU is the runtime default. Set `C_SPIKES_PGAS_BACKEND=cuda` for the inference
+pipeline, or select the native backend after import:
+
+```python
+from c_spikes.pgas import get_backend
+cpu = get_backend("cpu")
+gpu = get_backend("cuda")
+```
+
+The modules can coexist; existing Analyzer objects remain on their original
+backend. An explicit CUDA request fails with an actionable error when the driver
+or GPU is unavailable. See [combined wheels](combined-wheels.md).
+
+## Publishing tagged releases to PyPI
+
+One-time setup by the repository/PyPI owner:
+
+1. Configure a PyPI Trusted Publisher for project **c-spikes**, repository owner
+   **gerardjb**, repository **C-SPIKES**, workflow **release.yml**, environment
+   **pypi**. A pending publisher can create the project on its first upload.
+2. Configure the GitHub **pypi** environment to permit **tags matching `v*`**.
+   A main-branch-only environment rule blocks this tag-triggered workflow.
+   If environment reviewers are configured, their approval is still required.
+3. Merge these workflows into `main` before tagging a commit that contains them.
+   This workflow replaces the manual backend-selection design in PR #14;
+   reconcile that PR before merging both implementations. No
+   `PYPI_PUBLISHING_ENABLED` variable or long-lived API token is used here.
+
+Publishing begins when a canonical version tag such as `v0.2.0` or `v0.2.0rc1`
+is pushed. Creating a GitHub Release is optional and does not trigger a second
+upload. A pull request or ordinary branch push cannot publish.
+
+`release.yml` performs these steps:
+
+1. Validate the tag (no development/local suffix) and require the tagged commit
+   to belong to `main` history.
+2. Run the same full build/test workflow used by PRs, producing eight combined
+   wheels and one sdist. All build jobs must succeed before preparing a release.
+3. Download the three exact artifact names from that same workflow run. Validate
+   all CPython/platform slots, public version and metadata, both PGAS extensions,
+   the lazy loader, and absence of bundled NVIDIA drivers. Linux requires
+   manylinux_2_28 or older; local Ubuntu wheels are rejected.
+4. Record the source SHA, run identity and each distribution's SHA-256 in
+   `release-manifest.json`, then upload the validated set as `pypi-distributions`.
+5. In a separate job using the `pypi` environment, verify those hashes and publish
+   with PyPI Trusted Publishing and attestations. Only this job receives
+   `id-token: write`; it does not check out or build package code.
+
+A `v0.2.0` tag produces version `0.2.0`, with both backends in every wheel.
+Prerelease tags retain prerelease semantics on PyPI. The publisher refuses
+existing filenames rather than silently skipping a possibly different build.
+After a failure before any upload, use **Re-run failed jobs** to reuse successful
+artifacts. If an upload partially succeeds, inspect PyPI before retrying; do not
+move the tag or rebuild and replace already published files. A new version may
+be needed to publish a corrected complete release.
+
+The local bundle check does not upload:
 
 ```text
-uv add c-spikes --index cspikes-cu129=https://gerardjb.github.io/C-SPIKES/whl/cu129/
+uv run --no-sync python scripts/validate_release.py bundle --tag v0.2.0 --directory dist/release --manifest build/release-manifest.json
 ```
 
-Keep the generated source mapping and mark the index explicit in `pyproject.toml`:
-
-```toml
-[[tool.uv.index]]
-name = "cspikes-cu129"
-url = "https://gerardjb.github.io/C-SPIKES/whl/cu129/"
-explicit = true
-
-[tool.uv.sources]
-c-spikes = { index = "cspikes-cu129" }
-```
-
-Commit `pyproject.toml` and `uv.lock`. Subsequent `uv sync` installs the locked
-CUDA wheel; `uv sync --upgrade-package c-spikes` selects a newer release.
-The index supplies SHA-256 hashes that uv records in `uv.lock` and verifies
-when downloading during sync.
-`explicit = true` leaves unrelated dependencies on PyPI. This is consumer-project
-configuration; `uv sync` in the C-SPIKES source checkout still builds editable CPU.
-See [uv's index configuration](https://docs.astral.sh/uv/concepts/indexes/).
-
-## Publishing CUDA releases
-
-One-time repository setup:
-
-1. Merge the build and publishing workflows into the default branch before
-   creating a release tag that includes them.
-2. In **Settings → Pages → Build and deployment**, select **GitHub Actions**.
-   The site is `https://gerardjb.github.io/C-SPIKES/`. These workflows deploy the
-   repository's entire Pages site, so combine outputs first if it later hosts docs.
-3. Ensure the `github-pages` environment permits deployment from release tags
-   as well as the default branch. Existing environment approval rules still apply.
-
-Publish a GitHub release for a canonical public version tag such as `v0.2.0`
-or `v0.2.0rc1`. `cuda-release.yml` then:
-
-1. Validates the version and builds Linux/Windows CPython 3.11–3.14 wheels using
-   the shared workflow. A `v0.2.0` tag produces `0.2.0+cu129` CUDA metadata.
-2. Requires all eight portable wheels, matching metadata, CPU/GPU modules,
-   and no bundled NVIDIA driver.
-3. Uploads the wheels to that existing release. It uploads `c-spikes-cu129.json`
-   last, recording each filename, size, SHA-256 and Python requirement.
-4. Calls `wheel-index.yml`, which reads all published release manifests and
-   deploys a PEP 503 HTML index. Pages holds only small HTML files; downloads
-   go directly to GitHub Release assets with `#sha256=` integrity fragments.
-
-No PyPI project is needed for the CUDA variant, and no long-lived publishing
-token is stored: release uploads use the job's `GITHUB_TOKEN`, while Pages uses
-the Pages deployment action and OIDC. CUDA `+cu129` wheels must not be uploaded
-to PyPI. CPU artifacts keep their public version without the CUDA suffix.
-
-Incomplete releases are not indexed. Older versions and CUDA channels remain
-available, and prerelease versions retain their prerelease version semantics.
-Re-running the upload job accepts identical existing assets but refuses to
-overwrite different bytes. Use **Re-run failed jobs** to reuse successful build
-artifacts after a publication failure; rebuilding the same version can produce
-different bytes and requires a new version rather than replacing a release.
-The publishing workflow also accepts an existing release tag via manual dispatch.
-
-Run **Deploy CUDA wheel index** manually to retry only Pages deployment or
-reconcile deleted releases. It rebuilds from release assets without compiling
-wheels. It refuses an empty deployment or a manifest with missing/corrupt assets.
-Release upload and Pages deployment are separately retryable, so an unavailable
-Pages configuration does not discard uploaded wheels.
-
-For a local offline preview after generating release manifests:
-
-```text
-uv run --no-sync python scripts/wheel_index.py manifest --repository gerardjb/C-SPIKES --tag v0.2.0 --wheel-dir dist/cuda-release
-uv run --no-sync python scripts/wheel_index.py build --repository gerardjb/C-SPIKES --manifests path/to/manifests --output build/wheel-index
-python -m http.server --directory build/wheel-index
-```
-
-Save the first command's JSON output as `c-spikes-cu129.json` in the manifests
-directory. The release job creates it automatically. A preview requires the full
-release matrix and changes no remote state. The native GPU smoke/CTest checks
-and scientific acceptance described above remain release validation tasks;
-standard hosted runners check compilation and code images, not GPU execution.
+Native GPU qualification and scientific acceptance remain release-owner tasks;
+hosted CI checks CPU behavior and GPU code images. The workflow does not claim
+that the historical numerical-reference suite has passed. See PyPI's
+[Trusted Publisher setup](https://docs.pypi.org/trusted-publishers/adding-a-publisher/)
+and [publishing guide](https://docs.pypi.org/trusted-publishers/using-a-publisher/).
 
 The structure follows [Scientific Python cookie](https://github.com/scientific-python/cookie):
 declarative packaging, an explicit supported matrix, isolated wheel tests, uv for

@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import zipfile
 
-from build_native import ARCHITECTURES, CUDA_CHANNEL
+from build_native import ARCHITECTURES
 
 
 def check_wheel(wheel, cuda_root, architecture="PORTABLE"):
@@ -21,16 +21,25 @@ def check_wheel(wheel, cuda_root, architecture="PORTABLE"):
         modules = [name for name in names if re.search(r"/pgas_bound_(cpu|gpu)\.[^/]+\.(so|pyd)$", name)]
         if len(modules) != 2:
             raise ValueError(f"Expected CPU and GPU PGAS modules in {wheel.name}")
-        if f"+{CUDA_CHANNEL}-" not in wheel.name:
-            raise ValueError(f"Missing +{CUDA_CHANNEL} CUDA wheel version: {wheel.name}")
         for name in modules:
             binary = Path(temporary) / Path(name).name
             binary.write_bytes(package.read(name))
             counts = []
             for kind, suffix in [("elf", "cubin"), ("ptx", "ptx")]:
-                output = subprocess.check_output([str(cuobjdump), f"--list-{kind}", str(binary)], text=True)
+                result = subprocess.run([str(cuobjdump), f"--list-{kind}", str(binary)],
+                                        text=True, capture_output=True)
+                cpu_only = "/pgas_bound_cpu." in name
+                diagnostic = result.stdout + result.stderr
+                if result.returncode and not (cpu_only and "does not contain device code" in diagnostic):
+                    raise RuntimeError(diagnostic)
+                output = result.stdout
                 counts.append(Counter(re.findall(rf"\.sm_(\d+)\.{suffix}\b", output)))
             native, ptx = counts
+            if "/pgas_bound_cpu." in name:
+                if native or ptx:
+                    raise ValueError(f"CPU extension unexpectedly contains CUDA code: {name}")
+                print(f"{wheel.name}: {Path(name).name}: independent CPU extension")
+                continue
             if set(native) != expected or len(set(native.values())) != 1:
                 raise ValueError(f"Incomplete native CUDA images in {name}: {dict(native)}; expected {sorted(expected)}")
             if set(ptx) != {baseline} or ptx[baseline] != native[baseline]:
