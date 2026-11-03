@@ -12,16 +12,18 @@ import tempfile
 import urllib.request
 import zipfile
 
+from build_native import CUDA_RELEASE, CUDA_ROOT
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--destination", type=Path, default=ROOT / "build/tools/cuda")
+    parser.add_argument("--destination", type=Path, default=CUDA_ROOT)
     parser.add_argument("--platform", choices=("linux-x86_64", "windows-x86_64"),
                         default=platform.system().lower() + "-x86_64")
     args = parser.parse_args()
-    manifest_path = ROOT / "cmake/cuda-12.6.3.json"
+    manifest_path = ROOT / f"cmake/cuda-{CUDA_RELEASE}.json"
     manifest_bytes = manifest_path.read_bytes()
     manifest = json.loads(manifest_bytes)
     destination = args.destination.resolve()
@@ -31,6 +33,8 @@ def main():
     if receipt.exists() and json.loads(receipt.read_text()) == identity:
         print(destination)
         return
+    if receipt.exists():
+        raise RuntimeError(f"CUDA inputs changed; use a fresh destination instead of mixing toolkits in {destination}")
     destination.mkdir(parents=True, exist_ok=True)
     cache = destination.parent / "downloads"
     cache.mkdir(exist_ok=True)

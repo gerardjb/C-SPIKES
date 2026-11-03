@@ -17,7 +17,31 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 VCPKG_REVISION = "d186940b2f0c4e8e5b4ff804af57d2a26fbfa091"
 ARCHITECTURES = {"TURING75": "75", "AMPERE80": "80", "AMPERE86": "86",
-                 "ADA89": "89", "HOPPER90": "90"}
+                 "ADA89": "89", "HOPPER90": "90", "BLACKWELL100": "100",
+                 "BLACKWELL103": "103", "BLACKWELL120": "120", "BLACKWELL121": "121"}
+CUDA_RELEASE = "12.9.1"
+CUDA_ROOT = ROOT / "build/tools" / f"cuda-{CUDA_RELEASE}"
+
+
+def cuda_settings(architecture):
+    portable = architecture == "PORTABLE"
+    architecture = "TURING75" if portable else architecture
+    return {
+        f"cmake.define.Kokkos_ARCH_{architecture}": "ON",
+        "cmake.define.CMAKE_CUDA_ARCHITECTURES": ARCHITECTURES[architecture],
+        "cmake.define.CSP_CUDA_PORTABLE_WHEEL": "ON" if portable else "OFF",
+    }
+
+
+def wheel_version(version=None):
+    from packaging.version import Version
+    from setuptools_scm import get_version
+
+    if version is None:
+        version = (os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION_FOR_C_SPIKES")
+                   or os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION")
+                   or get_version(root=ROOT))
+    return str(Version(version))
 
 
 def run(command, *, env, cwd=ROOT):
@@ -53,7 +77,7 @@ def msvc_environment(env):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", choices=("cpu", "cuda"), default="cpu")
-    parser.add_argument("--cuda-arch", choices=ARCHITECTURES)
+    parser.add_argument("--cuda-arch", choices=["PORTABLE", *ARCHITECTURES])
     parser.add_argument("--cuda-root", type=Path)
     parser.add_argument("--vcpkg-root", type=Path, default=ROOT / "build/tools/vcpkg")
     parser.add_argument("--dependency-root", type=Path, default=ROOT / "build/vcpkg-installed")
@@ -96,6 +120,8 @@ def main():
     build_name = f"{system}-{args.backend}-py{sys.version_info.major}{sys.version_info.minor}"
     if args.cuda_arch:
         build_name += "-" + args.cuda_arch.lower()
+    if args.backend == "cuda":
+        build_name += "-combined"
     if args.diagnostics:
         build_name += "-diagnostics"
     build_dir = (args.build_dir or ROOT / "build" / build_name).resolve()
@@ -133,13 +159,19 @@ def main():
         "cmake.define.CSP_NUMERICAL_PROFILE": "portable-lp64",
         "cmake.define.C_SPIKES_TEST_RESAMPLING": "ON",
         "cmake.define.C_SPIKES_OBSERVATIONAL_DIAGNOSTICS": "ON" if args.diagnostics else "OFF",
+        "cmake.define.CSP_COMBINED_WHEEL": "ON" if args.backend == "cuda" else "OFF",
     }
     if args.backend == "cuda":
-        settings[f"cmake.define.Kokkos_ARCH_{args.cuda_arch}"] = "ON"
-        settings["cmake.define.CMAKE_CUDA_ARCHITECTURES"] = ARCHITECTURES[args.cuda_arch]
+        settings.update(cuda_settings(args.cuda_arch))
+        env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_C_SPIKES"] = wheel_version()
         nvcc = shutil.which("nvcc", path=env["PATH"])
         if not nvcc:
             parser.error("nvcc was not found; install a CUDA toolkit or pass --cuda-root")
+        compiler_version = subprocess.check_output([nvcc, "--version"], env=env, text=True)
+        cuda_series = ".".join(CUDA_RELEASE.split(".")[:2])
+        if f"release {cuda_series}," not in compiler_version:
+            parser.error(f"The CUDA wheel profile requires CUDA {cuda_series}; "
+                         f"run scripts/prepare_cuda.py and use --cuda-root {CUDA_ROOT}")
         settings["cmake.define.CMAKE_CUDA_COMPILER"] = Path(nvcc).as_posix()
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "validation.json").unlink(missing_ok=True)
@@ -161,6 +193,8 @@ def main():
                      "--dependency-bin", dependency_root / triplet / "bin", "--backend", args.backend]
         if args.cuda_root:
             validator.extend(["--cuda-root", args.cuda_root.resolve()])
+        if args.cuda_arch:
+            validator.extend(["--cuda-arch", args.cuda_arch])
         run(validator, env=env)
 
 

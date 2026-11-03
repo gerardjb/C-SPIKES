@@ -1,0 +1,108 @@
+name: Publish tagged release to PyPI
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: github.repository == 'gerardjb/C-SPIKES'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release tag and source
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 scripts/validate_release.py version --tag "$RELEASE_TAG"
+          git merge-base --is-ancestor HEAD origin/main
+
+  build:
+    needs: version
+    uses: ./.github/workflows/build.yml
+
+  prepare:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # Select only the portable combined artifacts from this workflow run.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: wheels-Linux-cuda
+          path: dist/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: wheels-Windows-cuda
+          path: dist/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: sdist
+          path: dist/release
+      - name: Validate the full matrix and record distribution hashes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 scripts/validate_release.py bundle --tag "$RELEASE_TAG" --directory dist/release
+          echo '### Validated release artifacts' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat release-manifest.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pypi-distributions
+          path: |
+            dist/release/*.whl
+            dist/release/*.tar.gz
+            release-manifest.json
+          if-no-files-found: error
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/c-spikes
+    permissions:
+      id-token: write
+    steps:
+      # No package checkout or build in the job holding the publishing identity.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: pypi-distributions
+          path: prepared
+      - name: Verify the prepared bytes
+        run: |
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path('prepared')
+          manifest = json.loads((root / 'release-manifest.json').read_text())
+          files = list((root / 'dist/release').iterdir())
+          assert {p.name for p in files} == set(manifest['files']), 'Distribution set changed'
+          for path in files:
+              with path.open('rb') as stream:
+                  assert hashlib.file_digest(stream, 'sha256').hexdigest() == manifest['files'][path.name], path.name
+          PY
+      - name: Publish combined wheels and sdist using Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        with:
+          packages-dir: prepared/dist/release/
+          attestations: true
+          skip-existing: false
+          print-hash: true

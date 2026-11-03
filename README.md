@@ -10,11 +10,22 @@ The Python distribution is named `c-spikes`; its import package is `c_spikes`
 
 ## System requirements and installation
 
-The portable build targets **Linux and Windows x86-64**, with separate CPU and
-CUDA wheels for CPython 3.11–3.14. It uses scikit-build-core, CMake, pinned vcpkg
-native dependencies, uv and cibuildwheel. macOS and other architectures are deferred.
-See the [build and release guide](docs/build-and-release.md) for prerequisites,
-artifact selection, the CI matrix and validation limits.
+The release wheels target **Linux and Windows x86-64**, CPython 3.11–3.14.
+Each wheel includes independent CPU OpenMP and CUDA backends, plus CPU OASIS.
+CPU execution needs no NVIDIA driver; GPU execution needs a compatible driver
+but no system CUDA toolkit. macOS support is planned separately.
+
+Once a release containing this packaging is published to PyPI:
+
+```text
+uv pip install c-spikes
+```
+
+For a consumer uv project, use `uv add c-spikes`, then `uv sync` as usual.
+No extra index or CUDA-specific version suffix is needed. See the
+[build and release guide](docs/build-and-release.md) for driver requirements,
+CI and tag-triggered publishing, and the
+[combined backend design](docs/combined-wheels.md) for runtime isolation and tests.
 
 From a complete source checkout with the native compiler prerequisites installed:
 
@@ -27,15 +38,19 @@ editable CPU installation. The checkout defaults to Python 3.14. Python edits
 are available immediately; after changing C++ or CMake files, run
 `uv sync --reinstall-package c-spikes` to rebuild. Run commands with `uv run`.
 
-For CUDA release wheels, provision the pinned toolkit and select the GPU
-architecture explicitly (this example targets an RTX 2080 Ti):
+To build and test a CUDA wheel locally, provision the pinned toolkit and use
+the portable GPU profile (including the RTX 2080 Ti):
 
 ```text
 uv run --no-sync python scripts/prepare_cuda.py
-uv run --no-sync python scripts/build_native.py --backend cuda --cuda-root build/tools/cuda --cuda-arch TURING75 --test
+uv run --no-sync python scripts/build_native.py --backend cuda --cuda-root build/tools/cuda-12.9.1 --cuda-arch PORTABLE --test
 ```
 
 Install the repaired wheel produced under `dist/` when distributing a build.
+CUDA 12.9 wheels contain native GPU code for Turing, Ampere, Ada, Hopper and
+Blackwell, plus PTX for forward compatibility. Runtime checks cover the RTX 2080 Ti.
+See the guide for the exact artifacts tested and remaining validation limits.
+
 GUI, ENS2 and CASCADE framework requirements are optional extras: use
 `uv sync --extra gui`, `--extra ens2`, `--extra cascade`, or `--extra all`.
 For TensorFlow/CASCADE, select Python 3.13 with `uv python pin 3.13`, then run
@@ -46,8 +61,16 @@ not install TensorFlow or PyTorch and also support Python 3.14.
 
 GPU PGAS is the intended inference/performance path. CPU PGAS is available for
 small smoke checks; do not assume it is a practical substitute for long GPU runs.
-The automatic `pgas_bound` shim prefers GPU when importable. Set
-`C_SPIKES_PGAS_BACKEND=gpu` to require that backend for an inference command.
+The lazy `pgas_bound` shim defaults to CPU. Set `C_SPIKES_PGAS_BACKEND=cuda`
+to select GPU for an inference command, or use the native API explicitly:
+
+```python
+from c_spikes.pgas import get_backend
+
+cpu = get_backend("cpu")
+gpu = get_backend("cuda")  # Requires a working NVIDIA GPU and compatible driver.
+# Use cpu.Analyzer(...) or gpu.Analyzer(...); existing objects keep their backend.
+```
 
 The [historical Linux provider](docs/numerical-provider-linux.md) and
 [native-core installation](docs/native-core-installation.md) still require the

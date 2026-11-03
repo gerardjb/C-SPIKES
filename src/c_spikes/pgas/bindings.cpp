@@ -47,12 +47,20 @@ auto cleanup_callback = []() {
 
 PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
   m.attr("numerical_diagnostics_enabled") = py::bool_(csp_diagnostics::enabled);
+#if defined(USE_GPU) && USE_GPU
+  // Report an unavailable GPU as a Python error before Kokkos can abort.
+  int device_count = 0;
+  const auto cuda_status = cudaGetDeviceCount(&device_count);
+  if (cuda_status != cudaSuccess || device_count == 0) {
+    throw py::import_error("CUDA backend requires a compatible NVIDIA driver and a visible GPU");
+  }
+#endif
   // Initialize kokkos on binding to prevent finalize() call prior to initialization
   if (!Kokkos::is_initialized() && !Kokkos::is_finalized())
         Kokkos::initialize();
 
 	// bindings for Analyzer.cpp
-		py::class_<Analyzer>(m, "Analyzer")
+		py::class_<Analyzer>(m, "Analyzer", py::module_local())
         .def(py::init([](const csp_python::ScalarInputCopy& time, const csp_python::ScalarInputCopy& data,
                       const std::string& constants_file, const std::string& output_folder, unsigned int column,
                       const std::string& tag, unsigned int niter, const std::string& trainedPriorFile,
@@ -75,10 +83,10 @@ PYBIND11_MODULE(PGAS_PYBIND_MODULE, m) {
 	
 				
 	// bindings for GCaMP_model.cpp
-    py::enum_<TimeStepMode>(m, "TimeStepMode")
+    py::enum_<TimeStepMode>(m, "TimeStepMode", py::module_local())
         .value("FIXED", FIXED)
         .value("FIXEDLA", FIXEDLA);
-		auto gcamp = py::class_<GCaMP>(m, "GCaMP")
+		auto gcamp = py::class_<GCaMP>(m, "GCaMP", py::module_local())
         .def(py::init<double, double, double, double, double, double, std::string>(), py::call_guard<csp_diagnostics::PythonScope>())
 				.def(py::init<std::string, std::string>(), py::arg("Gparam_file"), py::arg("Cparam_file"), py::call_guard<csp_diagnostics::PythonScope>())
 				.def(py::init([](const csp_python::ScalarInputCopy& g, const csp_python::ScalarInputCopy& c){ return std::make_unique<GCaMP>(g.view(),c.view()); }), py::arg("Gparams_in"), py::arg("Cparams_in"), py::call_guard<csp_diagnostics::PythonScope>())

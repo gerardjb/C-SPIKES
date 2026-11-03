@@ -1,0 +1,63 @@
+{
+  "release": "12.9.1",
+  "source": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.1.json",
+  "source_sha256": "8335301010b0023ee1ff61eb11e2600ca62002d76780de4089011ad77e0c7630",
+  "components": {
+    "cuda_nvcc": {
+      "linux-x86_64": {
+        "relative_path": "cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-12.9.86-archive.tar.xz",
+        "sha256": "7a1a5b652e5ef85c82b721d10672fc9a2dbaab44e9bd3c65a69517bf53998c35",
+        "md5": "ac1871c955070267e117bd985f6dbb36",
+        "size": "81100244"
+      },
+      "windows-x86_64": {
+        "relative_path": "cuda_nvcc/windows-x86_64/cuda_nvcc-windows-x86_64-12.9.86-archive.zip",
+        "sha256": "227b109663b5e57d2718bcabb24a4ba0d9d4e52d958e327dc476f7c28691be85",
+        "md5": "ff9b2942aaa3a1dfb487da6767bc689f",
+        "size": "126917884"
+      }
+    },
+    "cuda_cudart": {
+      "linux-x86_64": {
+        "relative_path": "cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-12.9.79-archive.tar.xz",
+        "sha256": "1f6ad42d4f530b24bfa35894ccf6b7209d2354f59101fd62ec4a6192a184ce99",
+        "md5": "6153e2b6a43389e5be3d68b04c6488f5",
+        "size": "1514676"
+      },
+      "windows-x86_64": {
+        "relative_path": "cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-12.9.79-archive.zip",
+        "sha256": "179e9c43b0735ffe67207b3da556eb5a0c50f3047961882b7657d3b822d34ef8",
+        "md5": "22e500ce68dc9e099ec18f57e1309808",
+        "size": "3521238"
+      }
+    },
+    "cuda_cccl": {
+      "linux-x86_64": {
+        "relative_path": "cuda_cccl/linux-x86_64/cuda_cccl-linux-x86_64-12.9.27-archive.tar.xz",
+        "sha256": "8b1a5095669e94f2f9afd7715533314d418179e9452be61e2fde4c82a3e542aa",
+        "md5": "59e3cb66aeb96423dcca73218c85bc02",
+        "size": "997888"
+      },
+      "windows-x86_64": {
+        "relative_path": "cuda_cccl/windows-x86_64/cuda_cccl-windows-x86_64-12.9.27-archive.zip",
+        "sha256": "17aaa7c6b8f94a417d8f3261780b7e34b9cbdfab7513bce86768623b06aa28b5",
+        "md5": "afdfa89a35951f67b5bd70c513f5ef09",
+        "size": "3127658"
+      }
+    },
+    "cuda_cuobjdump": {
+      "linux-x86_64": {
+        "relative_path": "cuda_cuobjdump/linux-x86_64/cuda_cuobjdump-linux-x86_64-12.9.82-archive.tar.xz",
+        "sha256": "ee0de40e8c18068bfcc53e73510e7e7a1a80555205347940df67fa525d24452f",
+        "md5": "fb4ceb446f3ca58c4ca5381a2c0eee06",
+        "size": "214896"
+      },
+      "windows-x86_64": {
+        "relative_path": "cuda_cuobjdump/windows-x86_64/cuda_cuobjdump-windows-x86_64-12.9.82-archive.zip",
+        "sha256": "1eda43a76a2eac25fce5bdb4b68673b5bda737d54cca5513148c36362ab7c811",
+        "md5": "0a1c8b1f69537bc605c0d5fc28110258",
+        "size": "6219088"
+      }
+    }
+  }
+}

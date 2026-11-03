@@ -12,6 +12,9 @@ import sys
 import tempfile
 import zipfile
 
+from build_native import ARCHITECTURES
+from check_cuda_wheel import check_wheel
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -41,6 +44,7 @@ def main():
     parser.add_argument("--cuda-root", type=Path)
     parser.add_argument("--skip-repair", action="store_true", help="Test an already repaired cibuildwheel artifact")
     parser.add_argument("--backend", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--cuda-arch", choices=["PORTABLE", *ARCHITECTURES], default="PORTABLE")
     args = parser.parse_args()
     wheel_dir = args.wheel_dir.resolve()
     (wheel_dir / "validation.json").unlink(missing_ok=True)
@@ -52,7 +56,7 @@ def main():
     env = os.environ.copy()
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env["PATH"]
     if platform.system() == "Windows":
-        command = [sys.executable, "-m", "delvewheel", "repair", "-w", repaired]
+        command = [sys.executable, ROOT / "scripts/repair_windows_wheel.py", "repair", "-w", repaired]
         dll_paths = [args.dependency_bin, args.cuda_root / "bin" if args.cuda_root else None]
         if any(dll_paths):
             command.extend(["--add-path", os.pathsep.join(str(p.resolve()) for p in dll_paths if p)])
@@ -80,9 +84,12 @@ def main():
         has_gpu = any("/pgas_bound_gpu." in name for name in names)
         if has_gpu != (args.backend == "cuda"):
             raise RuntimeError("Wheel contents do not match the selected CPU/CUDA variant")
+    if args.backend == "cuda" and args.cuda_root:
+        check_wheel(wheel, args.cuda_root.resolve(), args.cuda_arch)
     # Deliberately remove dependency/toolchain lookup overrides before runtime
     # checks. Windows' system PATH (including the display driver) remains intact.
-    for key in ("PYTHONPATH", "LD_LIBRARY_PATH", "LIBRARY_PATH", "CMAKE_PREFIX_PATH"):
+    for key in ("PYTHONPATH", "LD_LIBRARY_PATH", "LIBRARY_PATH", "CMAKE_PREFIX_PATH",
+                "CUDA_FORCE_PTX_JIT", "CUDA_DISABLE_PTX_JIT", "CUDA_CACHE_DISABLE"):
         env.pop(key, None)
     for directory in (args.dependency_bin, args.cuda_root / "bin" if args.cuda_root else None):
         if not directory:
@@ -103,6 +110,19 @@ def main():
             for import_order in ("numpy-first", "native-first"):
                 run([python, ROOT / "tests/packaging/wheel_smoke.py", "--backend", backend,
                      "--import-order", import_order, "--prefix", runtime], env=env, cwd=work, timeout=120)
+        if args.backend == "cuda":
+            # NVIDIA's forward-compatibility check: ignore every native cubin
+            # and execute the actual application via freshly JIT-compiled PTX.
+            ptx_env = dict(env, CUDA_FORCE_PTX_JIT="1", CUDA_CACHE_DISABLE="1")
+            for import_order in ("numpy-first", "native-first"):
+                run([python, ROOT / "tests/packaging/wheel_smoke.py", "--backend", "gpu",
+                     "--import-order", import_order, "--prefix", runtime], env=ptx_env, cwd=work, timeout=180)
+        if args.backend == "cuda":
+            for first in ("cpu", "cuda"):
+                run([python, ROOT / "tests/packaging/combined_wheel_smoke.py", "--gpu",
+                     "--first", first], env=env, cwd=work, timeout=120)
+            run([python, ROOT / "tests/packaging/combined_wheel_smoke.py", "--no-gpu"],
+                env=dict(env, CUDA_VISIBLE_DEVICES="-1"), cwd=work, timeout=120)
         run([python, "-m", "pytest", ROOT / "tests", "--csp-profile=native_core",
              "--junitxml", wheel_dir / "native-core.xml"], env=env, cwd=work, timeout=300)
         run([python, "-m", "pytest", ROOT / "tests", "--csp-profile=python_contracts",
@@ -111,6 +131,12 @@ def main():
                 "backend": args.backend, "python": sys.version, "platform": platform.platform(),
                 "checks": ["installed-origin", "numpy-import-order", "tiny-analyzer",
                            "oasis", "native_core", "python_contracts"]}
+    if args.backend == "cuda":
+        evidence["checks"].append("cuda-forced-ptx-jit")
+        if args.cuda_root:
+            evidence["checks"].append("cuda-code-images")
+    if args.backend == "cuda":
+        evidence["checks"].extend(["cpu-cuda-coexistence-both-orders", "cpu-with-no-visible-gpu"])
     (wheel_dir / "validation.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
 
 

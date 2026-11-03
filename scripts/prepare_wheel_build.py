@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-# CUDA 12.6 supports GCC <=13. Use one compiler for the C++, CUDA host and
+# Use one supported compiler for the C++, CUDA host and
 # Fortran dependencies, including CPU wheels built in the same manylinux image.
 if sys.platform == "linux":
     subprocess.run(["dnf", "install", "-y", "gcc-toolset-12-gcc", "gcc-toolset-12-gcc-c++",
