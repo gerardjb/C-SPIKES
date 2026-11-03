@@ -126,10 +126,10 @@ both NumPy/native import orders, a tiny real Analyzer run, OASIS, and the
 overrides so a developer's library path cannot conceal an incomplete wheel.
 JUnit files, build settings and a successful validation receipt with wheel SHA-256
 are written under `dist/`. Use `--help` for custom paths and parallelism.
-The wheel scripts use Ninja on both operating systems. Plain `uv sync` uses
+The wheel scripts use Ninja on all three operating systems. Plain `uv sync` uses
 scikit-build-core's default generator (Visual Studio on Windows).
 
-For CUDA, install a compatible NVIDIA display driver on the host, then:
+For CUDA on Linux/Windows, install a compatible NVIDIA display driver on the host, then:
 
 ```text
 uv run --no-sync python scripts/prepare_cuda.py
@@ -165,6 +165,25 @@ dependencies are not silently omitted on newer Python versions. Core Python 3.14
 builds remain independent of TensorFlow. Python 3.15 is deferred because the core
 [h5py dependency](https://pypi.org/project/h5py/) does not yet provide matching
 wheels. Free-threaded interpreters are not included in this matrix.
+
+## Apple Silicon validation
+
+[CI run 41561755714](https://github.com/gerardjb/C-SPIKES/actions/runs/41561755714)
+built the macOS implementation at commit `9bc98c720c43fc00e26f146743feeb2aab8c258d`.
+The native `macos-14` job passed the editable `uv sync` import checks, all five
+native C++ checks, and 91 native-core plus 93 Python contract tests on the repaired
+Python 3.14 wheel. Kokkos reports OpenMP as its host parallel execution space.
+The separate wheel job passed the same 184 Python tests on each of Python
+3.11, 3.12, 3.13 and 3.14, plus both NumPy import orders and clean CUDA-unavailable
+behavior followed by CPU inference.
+
+The four `macosx_14_0_arm64` wheels were downloaded and inspected: both extensions
+and all four bundled runtime dylibs are ARM64. Their dependencies refer only to
+package-relative locations or macOS system libraries; there are no external
+rpaths. OpenMP, GFortran, quadmath and GCC support libraries are bundled. Local
+copies of the artifacts and inspection receipt are under `build/macos-ci-validation/`.
+This is build/runtime qualification on macOS 14.8.9, not the handoff's historical
+numerical-reference acceptance or qualification of optional ML/GUI frameworks.
 
 ## Local validation
 
