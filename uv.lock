@@ -41,6 +41,15 @@ wheels = [
 ]
 
 [[package]]
+name = "altgraph"
+version = "0.17.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/f8/97fdf103f38fed6792a1601dbc16cc8aac56e7459a9fff08c812d8ae177a/altgraph-0.17.5.tar.gz", hash = "sha256:c87b395dd12fabde9c99573a9749d67da8d29ef9de0125c7f536699b4a9bc9e7", size = 48428, upload-time = "2025-11-21T20:35:50.583Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/ba/000a1996d4308bc65120167c21241a3b205464a2e0b58deda26ae8ac21d1/altgraph-0.17.5-py2.py3-none-any.whl", hash = "sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597", size = 21228, upload-time = "2025-11-21T20:35:49.444Z" },
+]
+
+[[package]]
 name = "anyio"
 version = "4.15.1"
 source = { registry = "https://pypi.org/simple" }
@@ -315,6 +324,7 @@ build = [
     { name = "auditwheel", marker = "sys_platform == 'linux'" },
     { name = "build" },
     { name = "cmake" },
+    { name = "delocate", marker = "sys_platform == 'darwin'" },
     { name = "delvewheel", marker = "sys_platform == 'win32'" },
     { name = "ninja" },
     { name = "packaging" },
@@ -330,6 +340,7 @@ dev = [
     { name = "auditwheel", marker = "sys_platform == 'linux'" },
     { name = "build" },
     { name = "cmake" },
+    { name = "delocate", marker = "sys_platform == 'darwin'" },
     { name = "delvewheel", marker = "sys_platform == 'win32'" },
     { name = "ninja" },
     { name = "packaging" },
@@ -377,6 +388,7 @@ build = [
     { name = "auditwheel", marker = "sys_platform == 'linux'", specifier = ">=6" },
     { name = "build", specifier = ">=1.2" },
     { name = "cmake", specifier = ">=3.24,<4" },
+    { name = "delocate", marker = "sys_platform == 'darwin'", specifier = ">=0.13" },
     { name = "delvewheel", marker = "sys_platform == 'win32'", specifier = ">=1.9" },
     { name = "ninja", specifier = ">=1.11" },
     { name = "packaging", specifier = ">=24" },
@@ -390,6 +402,7 @@ dev = [
     { name = "auditwheel", marker = "sys_platform == 'linux'", specifier = ">=6" },
     { name = "build", specifier = ">=1.2" },
     { name = "cmake", specifier = ">=3.24,<4" },
+    { name = "delocate", marker = "sys_platform == 'darwin'", specifier = ">=0.13" },
     { name = "delvewheel", marker = "sys_platform == 'win32'", specifier = ">=1.9" },
     { name = "ninja", specifier = ">=1.11" },
     { name = "packaging", specifier = ">=24" },
@@ -1144,6 +1157,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz", hash = "sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69", size = 75520, upload-time = "2021-03-08T10:59:26.269Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl", hash = "sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61", size = 25604, upload-time = "2021-03-08T10:59:24.45Z" },
+]
+
+[[package]]
+name = "delocate"
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "macholib" },
+    { name = "packaging" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2d/21/f1679803b2582632e7b9fdd83e675d5fc661513433c0f661938414978bc7/delocate-0.13.0.tar.gz", hash = "sha256:a93e67a9f56ee01a3f7096a042231d4ac37fecac873cd5ea34ea2b4f43a8fa13", size = 240774, upload-time = "2025-01-30T06:43:43.632Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2b/dd/437e601fa9d2b6bf8507256daf52196a226c3b340261f4cde8fac8e853ea/delocate-0.13.0-py3-none-any.whl", hash = "sha256:11f7596f88984c33f76b27fe2eea7637d1ce369a9e0b6737bbc706b6426e862c", size = 238040, upload-time = "2025-01-30T06:43:41.113Z" },
 ]
 
 [[package]]
@@ -2023,6 +2050,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/2d/c2/de1db8c6d413597076a4259cea409b83459b2db997c003578affdd32bf66/libclang-18.1.1-py2.py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:69f8eb8f65c279e765ffd28aaa7e9e364c776c17618af8bff22a8df58677ff4f", size = 24921494, upload-time = "2024-03-17T16:14:20.132Z" },
     { url = "https://files.pythonhosted.org/packages/0b/2d/3f480b1e1d31eb3d6de5e3ef641954e5c67430d5ac93b7fa7e07589576c7/libclang-18.1.1-py2.py3-none-win_amd64.whl", hash = "sha256:4dd2d3b82fab35e2bf9ca717d7b63ac990a3519c7e312f19fa8e86dcc712f7fb", size = 26415083, upload-time = "2024-03-17T16:42:21.703Z" },
     { url = "https://files.pythonhosted.org/packages/71/cf/e01dc4cc79779cd82d77888a88ae2fa424d93b445ad4f6c02bfc18335b70/libclang-18.1.1-py2.py3-none-win_arm64.whl", hash = "sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8", size = 22361112, upload-time = "2024-03-17T16:42:59.565Z" },
+]
+
+[[package]]
+name = "macholib"
+version = "1.16.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "altgraph" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/10/2f/97589876ea967487978071c9042518d28b958d87b17dceb7cdc1d881f963/macholib-1.16.4.tar.gz", hash = "sha256:f408c93ab2e995cd2c46e34fe328b130404be143469e41bc366c807448979362", size = 59427, upload-time = "2025-11-22T08:28:38.373Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/d1/a9f36f8ecdf0fb7c9b1e78c8d7af12b8c8754e74851ac7b94a8305540fc7/macholib-1.16.4-py2.py3-none-any.whl", hash = "sha256:da1a3fa8266e30f0ce7e97c6a54eefaae8edd1e5f86f3eb8b95457cae90265ea", size = 38117, upload-time = "2025-11-22T08:28:36.939Z" },
 ]
 
 [[package]]

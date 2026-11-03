@@ -12,6 +12,7 @@ import tarfile
 import zipfile
 
 PYTHONS = {"cp311", "cp312", "cp313", "cp314"}
+BACKENDS = {"Linux": ("cpu", "gpu"), "Windows": ("cpu", "gpu"), "macOS": ("cpu",)}
 NUMBER = r"(?:0|[1-9]\d*)"
 TAG = re.compile(rf"v({NUMBER}\.{NUMBER}\.{NUMBER}(?:(?:a|b|rc){NUMBER})?(?:\.post{NUMBER})?)\Z")
 
@@ -36,8 +37,9 @@ def check_metadata(data, version):
 
 def validate_bundle(directory, version):
     files = sorted(Path(directory).iterdir())
-    require(len(files) == 9 and all(p.is_file() and not p.is_symlink() for p in files),
-            "Require exactly eight wheels and one sdist")
+    require(len(files) == len(PYTHONS) * len(BACKENDS) + 1
+            and all(p.is_file() and not p.is_symlink() for p in files),
+            "Require exactly twelve wheels and one sdist")
     seen, sdists, hashes = set(), 0, {}
     for path in files:
         with path.open("rb") as stream:
@@ -50,6 +52,9 @@ def validate_bundle(directory, version):
             require(python in PYTHONS and abi == python, "Unexpected Python/ABI tag")
             if platform == "win_amd64":
                 system, suffix = "Windows", "pyd"
+            elif platform.startswith("macosx_"):
+                require(platform == "macosx_14_0_arm64", "Require macOS 14.0 arm64 wheels")
+                system, suffix = "macOS", "so"
             else:
                 for tag in platform.split("."):
                     match = re.fullmatch(r"manylinux_2_(\d+)_x86_64", tag)
@@ -67,7 +72,8 @@ def validate_bundle(directory, version):
                 for backend in ("cpu", "gpu"):
                     native = [n for n in names if re.fullmatch(
                         rf"c_spikes/pgas/pgas_bound_{backend}\.[^/]+\.{suffix}", n)]
-                    require(len(native) == 1, f"Missing/duplicate {backend} extension")
+                    expected = 1 if backend in BACKENDS[system] else 0
+                    require(len(native) == expected, f"Unexpected/missing/duplicate {backend} extension for {system}")
                 require("c_spikes/pgas/backends.py" in names, "Missing lazy backend loader")
                 require(not any(Path(n).name.lower().startswith(("nvcuda", "libcuda.", "libcuda-")) for n in names),
                         "Bundled NVIDIA driver")
@@ -80,7 +86,7 @@ def validate_bundle(directory, version):
                 check_metadata(archive.extractfile(matches[0]).read(), version)
         else:
             raise ValueError("Unexpected distribution: " + path.name)
-    require(seen == {(s, p) for s in ("Linux", "Windows") for p in PYTHONS} and sdists == 1,
+    require(seen == {(s, p) for s in BACKENDS for p in PYTHONS} and sdists == 1,
             "Incomplete release matrix")
     return hashes
 
@@ -96,7 +102,7 @@ def main():
     if args.command == "version":
         print(version)
         return
-    receipt = {"tag": args.tag, "version": version, "backend": "cpu+cuda",
+    receipt = {"tag": args.tag, "version": version, "backends": BACKENDS,
                "source_sha": os.environ.get("GITHUB_SHA"), "run_id": os.environ.get("GITHUB_RUN_ID"),
                "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
                "files": validate_bundle(args.directory, version)}

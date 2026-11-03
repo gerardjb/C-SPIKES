@@ -1,4 +1,4 @@
-"""Build combined CPU/CUDA distribution wheels; CPU-only builds are opt-in."""
+"""Build CPU/CUDA wheels on Linux/Windows and CPU OpenMP wheels on Apple Silicon."""
 from __future__ import annotations
 
 import argparse
@@ -8,29 +8,34 @@ import platform
 import subprocess
 import sys
 
-from build_native import ARCHITECTURES, CUDA_RELEASE, cuda_settings, msvc_environment, wheel_version
+from build_native import (ARCHITECTURES, CUDA_RELEASE, MACOS_MINIMUM, TRIPLETS,
+                          cuda_settings, macos_environment, msvc_environment, wheel_version)
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("cpu", "cuda"), default="cuda")
+    parser.add_argument("--backend", choices=("cpu", "cuda"), help="Default: CPU on macOS, CUDA elsewhere")
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--platform", choices=("linux", "windows"), default=platform.system().lower())
+    parser.add_argument("--platform", choices=("linux", "windows", "macos"),
+                        default={"Darwin": "macos"}.get(platform.system(), platform.system().lower()))
     parser.add_argument("--print-build-identifiers", action="store_true")
     parser.add_argument("--cuda-arch", default="PORTABLE", choices=["PORTABLE", *ARCHITECTURES])
     parser.add_argument("--version", help="Public version for a release build (otherwise derive from Git)")
     args = parser.parse_args()
     system = args.platform
-    if system not in {"linux", "windows"}:
-        parser.error("Only Linux and Windows wheel builds are configured")
+    if system not in TRIPLETS:
+        parser.error("Only Linux, Windows and macOS wheel builds are configured")
+    args.backend = args.backend or ("cpu" if system == "macos" else "cuda")
+    if system == "macos" and args.backend == "cuda":
+        parser.error("macOS supports CPU OpenMP wheels; CUDA is unavailable")
     gpu = args.backend == "cuda"
     cuda_root = f"{{project}}/build/tools/cuda-{CUDA_RELEASE}"
     settings = {
         "cmake.define.CMAKE_TOOLCHAIN_FILE": "{project}/build/tools/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "cmake.define.VCPKG_INSTALLED_DIR": "{project}/build/vcpkg-installed",
-        "cmake.define.VCPKG_TARGET_TRIPLET": f"x64-{system}-csp",
+        "cmake.define.VCPKG_TARGET_TRIPLET": TRIPLETS[system],
         "cmake.define.VCPKG_MANIFEST_MODE": "OFF",
         "cmake.define.PGAS_BUILD_GPU": "ON" if gpu else "OFF",
         "cmake.define.Kokkos_ENABLE_CUDA": "ON" if gpu else "OFF",
@@ -42,9 +47,19 @@ def main():
     env = os.environ.copy()
     if system == "windows" and platform.system() == "Windows" and not args.print_build_identifiers:
         env = msvc_environment(env)
+    if system == "macos":
+        if not args.print_build_identifiers:
+            if platform.system() != "Darwin" or platform.machine().lower() != "arm64":
+                parser.error("Build macOS wheels on a native Apple Silicon runner")
+            env = macos_environment(env)
+        env.setdefault("MACOSX_DEPLOYMENT_TARGET", MACOS_MINIMUM)
+        settings["cmake.define.CMAKE_OSX_ARCHITECTURES"] = "arm64"
+        settings["cmake.define.CMAKE_OSX_DEPLOYMENT_TARGET"] = env["MACOSX_DEPLOYMENT_TARGET"]
     env["CIBW_CONFIG_SETTINGS"] = " ".join(f'{key}="{value}"' for key, value in settings.items())
-    env["CIBW_ARCHS"] = "AMD64" if system == "windows" else "x86_64"
+    env["CIBW_ARCHS"] = {"windows": "AMD64", "linux": "x86_64", "macos": "arm64"}[system]
     env["CIBW_ENVIRONMENT"] = f"CSP_WHEEL_BACKEND={args.backend} CMAKE_GENERATOR=Ninja CMAKE_BUILD_PARALLEL_LEVEL=2 VCPKG_MAX_CONCURRENCY=2 OMP_NUM_THREADS=1 OMP_PROC_BIND=false OPENBLAS_NUM_THREADS=1"
+    if system == "macos":
+        env["CIBW_ENVIRONMENT"] += f' MACOSX_DEPLOYMENT_TARGET={env["MACOSX_DEPLOYMENT_TARGET"]}'
     if gpu or args.version:
         version = wheel_version(args.version)
         env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_C_SPIKES"] = version

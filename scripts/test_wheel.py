@@ -12,7 +12,7 @@ import sys
 import tempfile
 import zipfile
 
-from build_native import ARCHITECTURES
+from build_native import ARCHITECTURES, MACOS_MINIMUM
 from check_cuda_wheel import check_wheel
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +63,9 @@ def main():
         if args.backend == "cuda":
             command.extend(["--exclude", "nvcuda.dll"])
         command.append(wheels[0])
+    elif platform.system() == "Darwin":
+        env.setdefault("MACOSX_DEPLOYMENT_TARGET", MACOS_MINIMUM)
+        command = ["delocate-wheel", "--require-archs", "arm64", "-v", "-w", repaired, wheels[0]]
     else:
         command = [sys.executable, "-m", "auditwheel", "repair", "-w", repaired, wheels[0]]
         if args.backend == "cuda":
@@ -88,7 +91,8 @@ def main():
         check_wheel(wheel, args.cuda_root.resolve(), args.cuda_arch)
     # Deliberately remove dependency/toolchain lookup overrides before runtime
     # checks. Windows' system PATH (including the display driver) remains intact.
-    for key in ("PYTHONPATH", "LD_LIBRARY_PATH", "LIBRARY_PATH", "CMAKE_PREFIX_PATH",
+    for key in ("PYTHONPATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH",
+                "DYLD_INSERT_LIBRARIES", "LIBRARY_PATH", "CMAKE_PREFIX_PATH",
                 "CUDA_FORCE_PTX_JIT", "CUDA_DISABLE_PTX_JIT", "CUDA_CACHE_DISABLE"):
         env.pop(key, None)
     for directory in (args.dependency_bin, args.cuda_root / "bin" if args.cuda_root else None):
@@ -110,6 +114,9 @@ def main():
             for import_order in ("numpy-first", "native-first"):
                 run([python, ROOT / "tests/packaging/wheel_smoke.py", "--backend", backend,
                      "--import-order", import_order, "--prefix", runtime], env=env, cwd=work, timeout=120)
+        if args.backend == "cpu":
+            run([python, ROOT / "tests/packaging/combined_wheel_smoke.py", "--no-gpu"],
+                env=env, cwd=work, timeout=120)
         if args.backend == "cuda":
             # NVIDIA's forward-compatibility check: ignore every native cubin
             # and execute the actual application via freshly JIT-compiled PTX.

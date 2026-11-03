@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      # Select only the portable combined artifacts from this workflow run.
+      # Select portable CPU/CUDA Linux/Windows and CPU-only Apple Silicon wheels.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: wheels-Linux-cuda
@@ -48,6 +48,10 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: wheels-Windows-cuda
+          path: dist/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: wheels-macOS-cpu
           path: dist/release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -99,7 +103,7 @@ jobs:
               with path.open('rb') as stream:
                   assert hashlib.file_digest(stream, 'sha256').hexdigest() == manifest['files'][path.name], path.name
           PY
-      - name: Publish combined wheels and sdist using Trusted Publishing
+      - name: Publish platform wheels and sdist using Trusted Publishing
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
           packages-dir: prepared/dist/release/

@@ -10,10 +10,11 @@ The Python distribution is named `c-spikes`; its import package is `c_spikes`
 
 ## System requirements and installation
 
-The release wheels target **Linux and Windows x86-64**, CPython 3.11–3.14.
-Each wheel includes independent CPU OpenMP and CUDA backends, plus CPU OASIS.
-CPU execution needs no NVIDIA driver; GPU execution needs a compatible driver
-but no system CUDA toolkit. macOS support is planned separately.
+The release wheels target CPython 3.11–3.14 on **Linux and Windows x86-64**
+(CPU OpenMP + CUDA) and **Apple Silicon macOS 14 or newer** (CPU OpenMP).
+Every wheel includes CPU OASIS. CPU execution needs no NVIDIA driver; CUDA
+execution on Linux/Windows needs a compatible driver but no system CUDA toolkit.
+Intel Macs and Linux/Windows ARM64 are not yet supported.
 
 Once a release containing this packaging is published to PyPI:
 
@@ -38,7 +39,11 @@ editable CPU installation. The checkout defaults to Python 3.14. Python edits
 are available immediately; after changing C++ or CMake files, run
 `uv sync --reinstall-package c-spikes` to rebuild. Run commands with `uv run`.
 
-To build and test a CUDA wheel locally, provision the pinned toolkit and use
+On Apple Silicon, install Xcode command-line tools and `brew install gcc@14 pkgconf`
+before `uv sync`. The native OpenMP runtime and numerical libraries are built
+automatically. Published wheels bundle the required runtimes and do not need Homebrew.
+
+On Linux/Windows, to build and test a CUDA wheel locally, provision the pinned toolkit and use
 the portable GPU profile (including the RTX 2080 Ti):
 
 ```text
@@ -68,7 +73,7 @@ to select GPU for an inference command, or use the native API explicitly:
 from c_spikes.pgas import get_backend
 
 cpu = get_backend("cpu")
-gpu = get_backend("cuda")  # Requires a working NVIDIA GPU and compatible driver.
+gpu = get_backend("cuda")  # Linux/Windows: requires a working NVIDIA GPU and compatible driver.
 # Use cpu.Analyzer(...) or gpu.Analyzer(...); existing objects keep their backend.
 ```
 

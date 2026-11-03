@@ -5,7 +5,7 @@
   "dependencies": [
     "gsl",
     "jsoncpp",
-    { "name": "csp-openmp", "platform": "windows" },
+    { "name": "csp-openmp", "platform": "windows | osx" },
     { "name": "openblas", "default-features": false },
     { "name": "lapack-reference", "default-features": false, "features": ["noblas"] }
   ],

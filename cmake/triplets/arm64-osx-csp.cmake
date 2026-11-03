@@ -1,0 +1,12 @@
+set(VCPKG_TARGET_ARCHITECTURE arm64)
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
+set(VCPKG_CMAKE_SYSTEM_NAME Darwin)
+set(VCPKG_OSX_DEPLOYMENT_TARGET 14.0)
+set(VCPKG_BUILD_TYPE release)
+if(PORT STREQUAL "openblas")
+    # Use the ARMv8 baseline rather than the build runner's CPU features.
+    set(VCPKG_CMAKE_CONFIGURE_OPTIONS -DTARGET=ARMV8)
+elseif(PORT STREQUAL "csp-openmp")
+    set(VCPKG_LIBRARY_LINKAGE dynamic)
+endif()
