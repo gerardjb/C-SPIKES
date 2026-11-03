@@ -10,21 +10,22 @@ The release matrix targets CPython 3.11–3.14 on these platforms:
 | macOS | 14.0 or newer, arm64 (Apple Silicon) | CPU OpenMP |
 
 Every wheel includes CPU OASIS. CPU execution works without an NVIDIA driver.
-CUDA execution on Linux (x86-64/ARM64) and Windows x86-64 is selected explicitly and requires a compatible
-driver, but no system CUDA toolkit. Intel Macs, Windows ARM64, musllinux
+CUDA execution on Linux (x86-64/ARM64) and Windows x86-64 is selected explicitly
+and requires a compatible driver, but no system CUDA toolkit. Intel Macs, Windows ARM64, musllinux
 and free-threaded Python remain outside this matrix.
 
 `build_wheels.py` defaults to combined wheels on Linux (x86-64/ARM64) and Windows
-x86-64, and CPU-only wheels on macOS ARM64. Source-checkout `uv sync` builds an editable CPU
-package on every supported platform. See [combined wheels](combined-wheels.md) for backend isolation.
+x86-64, and CPU-only wheels on macOS ARM64. Source-checkout `uv sync` builds an
+editable CPU package on every supported platform. See
+[combined wheels](combined-wheels.md) for backend isolation.
 
 ## Build inputs
 
 - scikit-build-core builds the existing CMake project. CMake defaults to CPU.
 - uv manages Python environments using the committed `uv.lock`.
 - `vcpkg.json` pins GSL 2.8, JsonCpp 1.9.6, serial LP64 OpenBLAS 0.3.29 and
-  reference LAPACK 3.11.0. The triplets use CORE2 on x86-64 and ARMV8 on Linux/macOS ARM64, so distributable
-  wheels do not depend on the build runner's CPU-specific instructions.
+  reference LAPACK 3.11.0. The triplets use CORE2 on x86-64 and ARMV8 on
+  Linux/macOS ARM64, so distributable wheels do not depend on the build runner's CPU-specific instructions.
 - The bootstrap pins vcpkg tooling separately from its package baseline. Windows
   explicitly enables vcpkg's MinGW Fortran provider and uses MSVC for C++. A small
   overlay port builds LLVM OpenMP 19.1.7 from hash-pinned upstream archives. This
@@ -68,8 +69,8 @@ Linux ARM64 uses the same commands and selects `arm64-linux-csp` automatically.
 Kokkos 5 requires C++20; use GCC 10.4 or newer (the manylinux build uses GCC 12).
 On Windows install Visual Studio 2022 C++ build tools and an x64 Windows SDK. Use
 a native Windows checkout and PowerShell for Windows builds, and a Linux checkout
-for WSL builds. Do not reuse build directories between operating systems or
-compiler toolchains.
+for WSL builds. Do not reuse build directories between operating systems, CPU
+architectures, or compiler toolchains.
 
 On Apple Silicon macOS 14 or newer, install Xcode command-line tools and Fortran:
 
@@ -170,6 +171,36 @@ builds remain independent of TensorFlow. Python 3.15 is deferred because the cor
 [h5py dependency](https://pypi.org/project/h5py/) does not yet provide matching
 wheels. Free-threaded interpreters are not included in this matrix.
 
+## Linux ARM64 validation
+
+[CI run 41673321821](https://github.com/gerardjb/C-SPIKES/actions/runs/41673321821)
+built the ARM implementation at commit `edb7a27eacba70408c8c2c67440ef44e736b8b26`.
+Its native Ubuntu ARM64 job passed `uv sync`, both import-order smoke checks,
+all five C++ tests, and 91 native-core plus 93 Python contract tests on the
+repaired Python 3.14 wheel. Kokkos uses OpenMP, with GCC/GFortran 13.3.0.
+The downloaded development wheel's extensions and bundled OpenMP/Fortran
+runtimes are AArch64. Its Ubuntu glibc 2.39 tag is for local validation; the
+release wheels come from the separate manylinux_2_28 job.
+
+The ARM manylinux job built combined CPU/CUDA wheels for Python 3.11–3.14 using
+GCC/GFortran 12.2.1 and nvcc 12.9.86. Every repaired wheel passed all 184 Python
+tests, both NumPy import orders, and CUDA-unavailable/CPU-reuse checks. cuobjdump
+verified all nine native GPU targets and `compute_75` PTX in each GPU extension,
+and no device code in the CPU extension.
+
+All four downloaded wheels carry `manylinux_2_27_aarch64` and
+`manylinux_2_28_aarch64` tags. Inspection confirmed five AArch64 ELF binaries per
+wheel: CPU PGAS, CUDA PGAS, OASIS, GFortran and OpenMP. Search paths are relative
+to the package; dependencies are bundled or manylinux system libraries, with
+the NVIDIA driver required only by the GPU extension and excluded from bundling.
+The 65 packaging checks pass, and the sdist includes the ARM triplet and pinned
+SBSA provisioning inputs. Artifacts and an ELF inspection receipt are retained
+under `build/linux-arm64-ci-validation/` locally.
+
+ARM CUDA GPU execution remains pending hardware access. These results qualify
+the builds and CPU operation, not execution or performance on Grace/Blackwell,
+Jetson support, optional ML/GUI frameworks, or historical numerical references.
+
 ## Apple Silicon validation
 
 [CI run 41561755714](https://github.com/gerardjb/C-SPIKES/actions/runs/41561755714)
@@ -252,8 +283,9 @@ implementation and its validation are preserved at `eb4c7a2` on
 `.github/workflows/build.yml` runs on pull requests, main/master pushes and
 manual dispatch. `release.yml` also calls it for a version-tag release. It
 builds/tests CPU development installs and native C++ checks on Ubuntu x86-64 and
-ARM64, Windows x86-64 and Apple Silicon with Python 3.14. It creates an sdist, tests release validation
-and platform selection, and builds Python 3.11–3.14 wheels for all four platform/architecture combinations.
+ARM64, Windows x86-64 and Apple Silicon with Python 3.14. It creates an sdist,
+tests release validation and platform selection, and builds Python 3.11–3.14
+wheels for all four platform/architecture combinations.
 Linux (x86-64/ARM64) and Windows x86-64 wheels contain both backends; macOS
 wheels contain CPU only.
 
@@ -273,6 +305,8 @@ Grace Blackwell. Hosted CI inspects those images and tests CPU fallback without
 a GPU; execution on ARM GPU hardware remains unqualified. Jetson/JetPack is not
 covered by this SBSA build. Rubin is not an explicitly supported GPU target in
 CUDA 12.9; native Rubin support requires a separate toolkit upgrade and validation.
+NVIDIA introduced the native Rubin target as a preview in
+[CUDA 13.4](https://developer.nvidia.com/blog/cuda-toolkit-13-4-adds-windows-on-arm-support-and-greater-control-over-shared-gpus/).
 
 The manylinux jobs use the `manylinux_2_28` image selected by the pinned cibuildwheel
 version and GCC toolset 12, including Fortran. Linux wheels built directly on
@@ -315,7 +349,8 @@ No runner registration is performed by this change.
 
 `wheels.yml` is reused by both CI and tagged releases. The selected artifacts are
 `wheels-Linux-X64-cuda`, `wheels-Windows-X64-cuda`, `wheels-Linux-ARM64-cuda`,
-`wheels-macOS-ARM64-cpu` and `sdist`. Only these are admitted to PyPI; native development wheels are never selected for publishing.
+`wheels-macOS-ARM64-cpu` and `sdist`. Only these are admitted to PyPI; native
+development wheels are never selected for publishing.
 
 ## CUDA GPU coverage
 
@@ -344,7 +379,8 @@ The common feature baseline preserves the 2080 Ti path. It does not enable every
 newer GPU optimization; Kokkos can warn that its compiled feature baseline differs
 from the detected device. Newer GPUs still need hardware qualification and
 performance measurements. Code images do not extend the Python wheel's host
-platform support: ARM systems still need a separate build.
+platform support: ARM systems install a separate aarch64 wheel containing ARM
+host code, even when its GPU code images match the x86-64 wheel's images.
 
 Installed-wheel CUDA tests run real Analyzer kernels normally and again with
 `CUDA_FORCE_PTX_JIT=1` and the JIT cache disabled. The latter verifies the shipped
@@ -423,8 +459,8 @@ upload. A pull request or ordinary branch push cannot publish.
    Linux x86-64/ARM64 and Windows x86-64 wheels, four CPU-only macOS ARM64
    wheels and one sdist. All build jobs must succeed before preparing a release.
 3. Download the five exact artifact names from that same workflow run. Validate
-   all sixteen CPython/platform/architecture slots, public version and metadata, the required
-   PGAS backends for each platform, the lazy loader, and absence of NVIDIA drivers.
+   all sixteen CPython/platform/architecture slots, public version and metadata,
+   the required PGAS backends for each platform, the lazy loader, and absence of NVIDIA drivers.
    macOS requires the `macosx_14_0_arm64` tag and CPU only. Linux requires
    manylinux_2_28 or older, CPU+CUDA on both aarch64 and x86-64; local
    Ubuntu wheels and mixed-architecture platform tags are rejected.
