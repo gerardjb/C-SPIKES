@@ -75,12 +75,13 @@ dependencies = [
  
  # Prep across platforms/hardware/OS with unit tests
  [tool.cibuildwheel]
- build = ["cp{311,312,313,314}-manylinux_x86_64", "cp{311,312,313,314}-win_amd64"]
+ build = ["cp{311,312,313,314}-manylinux_x86_64", "cp{311,312,313,314}-win_amd64", "cp{311,312,313,314}-macosx_arm64"]
  build-frontend = "build[uv]"
  before-all = "python {project}/scripts/prepare_wheel_build.py"
  test-command = [
    "python {project}/tests/packaging/wheel_smoke.py --backend cpu --import-order numpy-first",
    "python {project}/tests/packaging/wheel_smoke.py --backend cpu --import-order native-first",
+   "python {project}/tests/packaging/combined_wheel_smoke.py --no-gpu",
    "python -m pytest {project}/tests --csp-profile=native_core",
    "python -m pytest {project}/tests --csp-profile=python_contracts",
  ]
@@ -92,6 +93,11 @@ dependencies = [
 
  [tool.cibuildwheel.windows]
  repair-wheel-command = 'python "{project}/scripts/repair_windows_wheel.py" repair --add-path "{project}/build/vcpkg-installed/x64-windows-csp/bin" -w "{dest_dir}" "{wheel}"'
+
+ [tool.cibuildwheel.macos]
+ archs = ["arm64"]
+ environment = { MACOSX_DEPLOYMENT_TARGET = "14.0" }
+ repair-wheel-command = 'delocate-wheel --require-archs arm64 -w "{dest_dir}" -v "{wheel}"'
 
 [dependency-groups]
 test = ["pytest>=8", "pytest-cov>=5"]
@@ -106,6 +112,7 @@ build = [
   "auditwheel>=6; sys_platform == 'linux'",
   "patchelf; sys_platform == 'linux'",
   "delvewheel>=1.9; sys_platform == 'win32'",
+  "delocate>=0.13; sys_platform == 'darwin'",
 ]
 dev = [{include-group = "test"}, {include-group = "build"}]
 ci = ["cibuildwheel==4.3.0"]

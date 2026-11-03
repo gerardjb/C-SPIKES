@@ -1,5 +1,6 @@
 # Keep private numerical symbols out of the Python modules' public exports.
-# Linux uses an ELF version script; Windows uses explicit PyInit exports.
+# Linux uses an ELF version script; macOS uses a Mach-O export list.
+# Windows uses explicit PyInit exports.
 function(csp_isolate_python_module target)
  get_target_property(kind "${target}" TYPE)
  if(NOT kind STREQUAL "MODULE_LIBRARY")
@@ -10,14 +11,19 @@ function(csp_isolate_python_module target)
   # public; do not enable CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS.
   set_target_properties(${target} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS OFF)
   return()
- elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  message(FATAL_ERROR "Python-module isolation is implemented for Linux and Windows")
+ elseif(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  message(FATAL_ERROR "Python-module isolation is implemented for Linux, macOS and Windows")
  endif()
  if(NOT target MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
   message(FATAL_ERROR "Invalid Python extension entry-point name")
  endif()
  set(exports "${CMAKE_CURRENT_BINARY_DIR}/${target}.exports")
- file(GENERATE OUTPUT "${exports}" CONTENT "{ global: PyInit_${target}; local: *; };\n")
- target_link_options("${target}" PRIVATE "LINKER:--version-script,${exports}")
+ if(APPLE)
+  file(GENERATE OUTPUT "${exports}" CONTENT "_PyInit_${target}\n")
+  target_link_options("${target}" PRIVATE "LINKER:-exported_symbols_list,${exports}")
+ else()
+  file(GENERATE OUTPUT "${exports}" CONTENT "{ global: PyInit_${target}; local: *; };\n")
+  target_link_options("${target}" PRIVATE "LINKER:--version-script,${exports}")
+ endif()
  set_property(TARGET "${target}" APPEND PROPERTY LINK_DEPENDS "${exports}")
 endfunction()

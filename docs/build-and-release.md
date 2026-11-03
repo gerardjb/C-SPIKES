@@ -1,23 +1,29 @@
-# Linux and Windows builds
+# Linux, Windows and Apple Silicon builds
 
-The release matrix targets x86-64 Linux and Windows, CPython 3.11–3.14.
-Every published wheel includes independent CPU OpenMP and CUDA PGAS backends
-and CPU OASIS. CPU execution works without an NVIDIA driver. GPU execution is
-selected explicitly and requires a compatible driver, but no system CUDA toolkit.
-macOS, ARM, musllinux and free-threaded Python support are deferred.
+The release matrix targets CPython 3.11–3.14 on these platforms:
 
-`build_wheels.py` and CI default to combined wheels. CPU-only builds remain
-available with `--backend cpu`, and source-checkout `uv sync` still builds an
-editable CPU package. See [combined wheels](combined-wheels.md) for the two
-native build trees, lazy backend selection and validation evidence.
+| Platform | Minimum OS / architecture | PGAS backends |
+|---|---|---|
+| Linux | manylinux_2_28, x86-64 | CPU OpenMP and CUDA |
+| Windows | x86-64 | CPU OpenMP and CUDA |
+| macOS | 14.0 or newer, arm64 (Apple Silicon) | CPU OpenMP |
+
+Every wheel includes CPU OASIS. CPU execution works without an NVIDIA driver.
+CUDA execution on Linux/Windows is selected explicitly and requires a compatible
+driver, but no system CUDA toolkit. Intel Macs, Linux/Windows ARM64, musllinux
+and free-threaded Python remain outside this matrix.
+
+`build_wheels.py` defaults to combined wheels on Linux/Windows and CPU-only wheels
+on macOS. Source-checkout `uv sync` builds an editable CPU package on all three
+platforms. See [combined wheels](combined-wheels.md) for backend isolation.
 
 ## Build inputs
 
 - scikit-build-core builds the existing CMake project. CMake defaults to CPU.
 - uv manages Python environments using the committed `uv.lock`.
 - `vcpkg.json` pins GSL 2.8, JsonCpp 1.9.6, serial LP64 OpenBLAS 0.3.29 and
-  reference LAPACK 3.11.0. The custom triplets use a generic CORE2 OpenBLAS target,
-  rather than selecting the build machine's CPU instruction set.
+  reference LAPACK 3.11.0. The triplets use CORE2 on x86-64 and ARMV8 on Apple Silicon, so distributable
+  wheels do not depend on the build runner's CPU-specific instructions.
 - The bootstrap pins vcpkg tooling separately from its package baseline. Windows
   explicitly enables vcpkg's MinGW Fortran provider and uses MSVC for C++. A small
   overlay port builds LLVM OpenMP 19.1.7 from hash-pinned upstream archives. This
@@ -25,6 +31,10 @@ native build trees, lazy backend selection and validation evidence.
   nonredistributable experimental runtime from Visual Studio.
   MSVC's `_OPENMP` macro still reports 2.0, so CMake verifies the required LLVM
   runtime API and OpenMP linkage before reporting 3.0 to Kokkos's dependency check.
+- Apple Silicon uses AppleClang and the same pinned LLVM OpenMP runtime, with
+  GFortran 14 for reference LAPACK. macOS keeps OpenBLAS and LAPACK static, hides
+  private symbols with a Mach-O export list, and uses delocate to bundle OpenMP
+  and Fortran runtime dylibs and remove external library search paths.
 - Kokkos [5.2.2](https://github.com/kokkos/kokkos/releases/tag/5.2.2) is pinned to
   commit `8e15454876298832f013ebcaf08d53825b5bda40` and uses C++20 for host and
   CUDA compilation. Its upstream Windows CUDA fixes replace the previous local
@@ -57,7 +67,20 @@ a native Windows checkout and PowerShell for Windows builds, and a Linux checkou
 for WSL builds. Do not reuse build directories between operating systems or
 compiler toolchains.
 
-From the checkout root, on either OS:
+On Apple Silicon macOS 14 or newer, install Xcode command-line tools and Fortran:
+
+```text
+xcode-select --install
+brew install gcc@14 pkgconf
+```
+
+The bootstrap discovers `gfortran-14`; an explicit `FC` setting can select another
+compiler for local development. CI uses GFortran 14 on native `macos-14` runners.
+Release builds target macOS 14.0, including the bundled library dependencies;
+delocate rejects a library that needs a newer OS. Users of published wheels do
+not need a compiler, Homebrew, or a separately installed OpenMP runtime.
+
+From the checkout root, on any supported OS:
 
 ```text
 uv sync
@@ -69,7 +92,9 @@ the CPU package in editable mode. The first run needs network access and can
 take several minutes to compile native dependencies. Later runs reuse the
 dependency cache under `build/` and the editable build under
 `build/editable/`. On Windows, the editable install includes its native runtime
-DLLs beside the extension; no developer DLL search path is required.
+DLLs beside the extension; no developer DLL search path is required. On macOS,
+the editable build resolves its prepared runtimes under `build/` and the selected
+Fortran compiler installation; distribution wheels use bundled runtime copies.
 
 Python source edits take effect immediately. After native C++ or CMake edits:
 
@@ -101,10 +126,10 @@ both NumPy/native import orders, a tiny real Analyzer run, OASIS, and the
 overrides so a developer's library path cannot conceal an incomplete wheel.
 JUnit files, build settings and a successful validation receipt with wheel SHA-256
 are written under `dist/`. Use `--help` for custom paths and parallelism.
-The wheel scripts use Ninja on both operating systems. Plain `uv sync` uses
+The wheel scripts use Ninja on all three operating systems. Plain `uv sync` uses
 scikit-build-core's default generator (Visual Studio on Windows).
 
-For CUDA, install a compatible NVIDIA display driver on the host, then:
+For CUDA on Linux/Windows, install a compatible NVIDIA display driver on the host, then:
 
 ```text
 uv run --no-sync python scripts/prepare_cuda.py
@@ -140,6 +165,25 @@ dependencies are not silently omitted on newer Python versions. Core Python 3.14
 builds remain independent of TensorFlow. Python 3.15 is deferred because the core
 [h5py dependency](https://pypi.org/project/h5py/) does not yet provide matching
 wheels. Free-threaded interpreters are not included in this matrix.
+
+## Apple Silicon validation
+
+[CI run 41561755714](https://github.com/gerardjb/C-SPIKES/actions/runs/41561755714)
+built the macOS implementation at commit `9bc98c720c43fc00e26f146743feeb2aab8c258d`.
+The native `macos-14` job passed the editable `uv sync` import checks, all five
+native C++ checks, and 91 native-core plus 93 Python contract tests on the repaired
+Python 3.14 wheel. Kokkos reports OpenMP as its host parallel execution space.
+The separate wheel job passed the same 184 Python tests on each of Python
+3.11, 3.12, 3.13 and 3.14, plus both NumPy import orders and clean CUDA-unavailable
+behavior followed by CPU inference.
+
+The four `macosx_14_0_arm64` wheels were downloaded and inspected: both extensions
+and all four bundled runtime dylibs are ARM64. Their dependencies refer only to
+package-relative locations or macOS system libraries; there are no external
+rpaths. OpenMP, GFortran, quadmath and GCC support libraries are bundled. Local
+copies of the artifacts and inspection receipt are under `build/macos-ci-validation/`.
+This is build/runtime qualification on macOS 14.8.9, not the handoff's historical
+numerical-reference acceptance or qualification of optional ML/GUI frameworks.
 
 ## Local validation
 
@@ -203,11 +247,12 @@ implementation and its validation are preserved at `eb4c7a2` on
 
 `.github/workflows/build.yml` runs on pull requests, main/master pushes and
 manual dispatch. `release.yml` also calls it for a version-tag release. It
-builds/tests native CPU development wheels on Ubuntu and Windows with Python
-3.14, creates an sdist, tests release-bundle validation, and builds combined
-wheels with cibuildwheel for Python 3.11–3.14 on both operating systems.
+builds/tests CPU development installs and native C++ checks on Ubuntu, Windows
+and Apple Silicon with Python 3.14. It creates an sdist, tests release validation
+and platform selection, and builds Python 3.11–3.14 wheels on all three systems.
+Linux/Windows wheels contain both backends; macOS wheels contain CPU only.
 
-Every combined wheel is repaired and runs installed CPU/import/regression tests
+Every wheel is repaired and runs installed CPU/import/regression tests
 on hosted runners, including lazy loading and unavailable-CUDA behavior. CUDA
 execution still requires the separate hardware checks; hosted builds inspect the
 GPU code images without executing kernels.
@@ -251,7 +296,8 @@ local script, including forced-PTX smoke checks. `PORTABLE` is its default profi
 No runner registration is performed by this change.
 
 `wheels.yml` is reused by both CI and tagged releases. Only the combined
-`wheels-Linux-cuda` / `wheels-Windows-cuda` artifacts and the sdist are admitted
+`wheels-Linux-cuda`, `wheels-Windows-cuda`, `wheels-macOS-cpu` artifacts
+and the sdist are admitted
 to PyPI; native development wheels are never selected for publishing.
 
 ## CUDA GPU coverage
@@ -300,7 +346,7 @@ See [NVIDIA's release notes](https://docs.nvidia.com/cuda/archive/12.9.1/cuda-to
 ## Installing published wheels
 
 After the first release containing this packaging is published, the same command
-installs CPU and CUDA support:
+installs CPU OpenMP on every supported platform, plus CUDA on Linux/Windows:
 
 ```text
 uv pip install c-spikes
@@ -326,7 +372,7 @@ pipeline, or select the native backend after import:
 ```python
 from c_spikes.pgas import get_backend
 cpu = get_backend("cpu")
-gpu = get_backend("cuda")
+gpu = get_backend("cuda")  # Linux/Windows with a compatible NVIDIA GPU
 ```
 
 The modules can coexist; existing Analyzer objects remain on their original
@@ -357,10 +403,11 @@ upload. A pull request or ordinary branch push cannot publish.
 1. Validate the tag (no development/local suffix) and require the tagged commit
    to belong to `main` history.
 2. Run the same full build/test workflow used by PRs, producing eight combined
-   wheels and one sdist. All build jobs must succeed before preparing a release.
-3. Download the three exact artifact names from that same workflow run. Validate
-   all CPython/platform slots, public version and metadata, both PGAS extensions,
-   the lazy loader, and absence of bundled NVIDIA drivers. Linux requires
+   Linux/Windows wheels, four CPU-only macOS arm64 wheels and one sdist. All build jobs must succeed before preparing a release.
+3. Download the four exact artifact names from that same workflow run. Validate
+   all twelve CPython/platform slots, public version and metadata, the required
+   PGAS backends for each platform, the lazy loader, and absence of NVIDIA drivers.
+   macOS requires the `macosx_14_0_arm64` tag and CPU only. Linux requires
    manylinux_2_28 or older; local Ubuntu wheels are rejected.
 4. Record the source SHA, run identity and each distribution's SHA-256 in
    `release-manifest.json`, then upload the validated set as `pypi-distributions`.
@@ -368,7 +415,8 @@ upload. A pull request or ordinary branch push cannot publish.
    with PyPI Trusted Publishing and attestations. Only this job receives
    `id-token: write`; it does not check out or build package code.
 
-A `v0.2.0` tag produces version `0.2.0`, with both backends in every wheel.
+A `v0.2.0` tag produces version `0.2.0` for every platform, with CPU OpenMP on
+macOS and both CPU/CUDA backends on Linux/Windows.
 Prerelease tags retain prerelease semantics on PyPI. The publisher refuses
 existing filenames rather than silently skipping a possibly different build.
 After a failure before any upload, use **Re-run failed jobs** to reuse successful

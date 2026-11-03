@@ -18,13 +18,14 @@ def metadata(version):
 
 def bundle(directory, version="0.2.0", *, backend="combined", extra_member=None):
     for python in ("cp311", "cp312", "cp313", "cp314"):
-        for platform in ("manylinux_2_27_x86_64.manylinux_2_28_x86_64", "win_amd64"):
+        for platform in ("manylinux_2_27_x86_64.manylinux_2_28_x86_64", "win_amd64", "macosx_14_0_arm64"):
             path = directory / f"c_spikes-{version}-{python}-{python}-{platform}.whl"
             with zipfile.ZipFile(path, "w") as wheel:
                 wheel.writestr(f"c_spikes-{version}.dist-info/METADATA", metadata(version))
                 wheel.writestr("c_spikes/pgas/backends.py", "")
                 suffix = "pyd" if platform == "win_amd64" else "so"
-                for name in (("cpu", "gpu") if backend == "combined" else (backend,)):
+                names = ("cpu",) if platform.startswith("macosx_") else (("cpu", "gpu") if backend == "combined" else (backend,))
+                for name in names:
                     wheel.writestr(f"c_spikes/pgas/pgas_bound_{name}.{python}.{suffix}", b"test fixture")
                 if extra_member:
                     wheel.writestr(extra_member, b"test fixture")
@@ -39,7 +40,7 @@ def bundle(directory, version="0.2.0", *, backend="combined", extra_member=None)
 @pytest.mark.parametrize("version", ["0.2.0", "0.2.0rc1", "0.2.0.post1"])
 def test_complete_release_hashes_every_file(tmp_path, version):
     files = validate_bundle(bundle(tmp_path, version), version_for_tag("v" + version))
-    assert len(files) == 9
+    assert len(files) == 13
     assert files == {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.iterdir()}
 
 
@@ -117,4 +118,28 @@ def test_sdist_metadata_must_match_tag(tmp_path):
         info.size = len(data)
         sdist.addfile(info, io.BytesIO(data))
     with pytest.raises(ValueError, match="version"):
+        validate_bundle(tmp_path, "0.2.0")
+
+
+@pytest.mark.parametrize("mutation", ["missing", "intel", "universal2", "higher-os", "lower-os", "no-cpu", "cuda"])
+def test_macos_requires_arm64_cpu_wheels(tmp_path, mutation):
+    bundle(tmp_path)
+    path = next(tmp_path.glob("*cp314*macosx*.whl"))
+    if mutation == "missing":
+        path.unlink()
+    elif mutation in {"intel", "universal2", "higher-os", "lower-os"}:
+        replacement = {"intel": "macosx_14_0_x86_64", "universal2": "macosx_14_0_universal2",
+                       "higher-os": "macosx_15_0_arm64", "lower-os": "macosx_11_0_arm64"}[mutation]
+        path.rename(path.with_name(path.name.replace("macosx_14_0_arm64", replacement)))
+    else:
+        with zipfile.ZipFile(path) as wheel:
+            contents = {n: wheel.read(n) for n in wheel.namelist()}
+        if mutation == "no-cpu":
+            del contents["c_spikes/pgas/pgas_bound_cpu.cp314.so"]
+        else:
+            contents["c_spikes/pgas/pgas_bound_gpu.cp314.so"] = b"unexpected CUDA module"
+        with zipfile.ZipFile(path, "w") as wheel:
+            for name, data in contents.items():
+                wheel.writestr(name, data)
+    with pytest.raises(ValueError):
         validate_bundle(tmp_path, "0.2.0")

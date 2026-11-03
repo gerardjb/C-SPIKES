@@ -3,8 +3,8 @@
 if(CMAKE_TOOLCHAIN_FILE AND NOT CSP_MANAGED_TOOLCHAIN)
     return()
 endif()
-if(NOT CMAKE_HOST_SYSTEM_NAME MATCHES "^(Linux|Windows)$")
-    message(FATAL_ERROR "Automatic native dependency setup supports Linux/Windows x86-64")
+if(NOT CMAKE_HOST_SYSTEM_NAME MATCHES "^(Linux|Windows|Darwin)$")
+    message(FATAL_ERROR "Automatic dependency setup supports Linux/Windows x86-64 and macOS arm64")
 endif()
 
 set(CSP_VCPKG_ROOT "${CMAKE_SOURCE_DIR}/build/tools/vcpkg" CACHE PATH "Pinned vcpkg checkout")
@@ -21,8 +21,20 @@ execute_process(
         --dependency-root "${VCPKG_INSTALLED_DIR}"
     COMMAND_ERROR_IS_FATAL ANY
 )
-string(TOLOWER "${CMAKE_HOST_SYSTEM_NAME}" _csp_host)
-set(VCPKG_TARGET_TRIPLET "x64-${_csp_host}-csp" CACHE STRING "Pinned native dependency triplet")
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(_csp_triplet arm64-osx-csp)
+    set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "Apple Silicon architecture")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0 CACHE STRING "Minimum macOS version")
+    if(NOT CMAKE_Fortran_COMPILER AND NOT DEFINED ENV{FC})
+        find_program(_csp_gfortran NAMES gfortran-14 gfortran
+            HINTS /opt/homebrew/opt/gcc@14/bin REQUIRED)
+        set(CMAKE_Fortran_COMPILER "${_csp_gfortran}" CACHE FILEPATH "Fortran compiler")
+    endif()
+else()
+    string(TOLOWER "${CMAKE_HOST_SYSTEM_NAME}" _csp_host)
+    set(_csp_triplet "x64-${_csp_host}-csp")
+endif()
+set(VCPKG_TARGET_TRIPLET "${_csp_triplet}" CACHE STRING "Pinned native dependency triplet")
 set(VCPKG_MANIFEST_MODE OFF CACHE BOOL "Dependencies were prepared above")
 set(CMAKE_TOOLCHAIN_FILE "${CSP_VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
     CACHE FILEPATH "Pinned vcpkg toolchain")

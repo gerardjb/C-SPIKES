@@ -10,6 +10,9 @@ __pycache__
 *.so
 *.o
 *.a
+*.dylib
+*.dSYM/
+.DS_Store
 
 # Windows native build outputs
 *.obj

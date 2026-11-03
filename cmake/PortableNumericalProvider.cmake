@@ -20,6 +20,11 @@ find_package(LAPACK REQUIRED)
 add_library(csp_numerical_provider INTERFACE)
 if(WIN32)
     target_link_libraries(csp_numerical_provider INTERFACE OpenBLAS::OpenBLAS LAPACK::LAPACK)
+elseif(APPLE)
+    # Apple's linker resolves archive dependencies without GNU rescan groups.
+    target_link_libraries(csp_numerical_provider INTERFACE LAPACK::LAPACK OpenBLAS::OpenBLAS
+        ${CMAKE_Fortran_IMPLICIT_LINK_LIBRARIES})
+    target_link_directories(csp_numerical_provider INTERFACE ${CMAKE_Fortran_IMPLICIT_LINK_DIRECTORIES})
 else()
     # LAPACK references BLAS; BLAS can reference LAPACK error handlers. Keep
     # both archives in a rescan group rather than relying on duplicate entries

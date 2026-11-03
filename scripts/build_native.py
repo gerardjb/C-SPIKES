@@ -21,6 +21,31 @@ ARCHITECTURES = {"TURING75": "75", "AMPERE80": "80", "AMPERE86": "86",
                  "BLACKWELL103": "103", "BLACKWELL120": "120", "BLACKWELL121": "121"}
 CUDA_RELEASE = "12.9.1"
 CUDA_ROOT = ROOT / "build/tools" / f"cuda-{CUDA_RELEASE}"
+TRIPLETS = {"linux": "x64-linux-csp", "windows": "x64-windows-csp", "macos": "arm64-osx-csp"}
+MACOS_MINIMUM = "14.0"
+
+
+def host_platform():
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    if system == "darwin" and machine in {"arm64", "aarch64"}:
+        return "macos"
+    if system in {"linux", "windows"} and machine in {"x86_64", "amd64"}:
+        return system
+    raise ValueError("Supported build hosts: Linux/Windows x86-64 and macOS arm64")
+
+
+def macos_environment(env):
+    env = env.copy()
+    env.setdefault("MACOSX_DEPLOYMENT_TARGET", MACOS_MINIMUM)
+    if not env.get("FC"):
+        compiler = (shutil.which("gfortran-14", path=env["PATH"])
+                    or shutil.which("gfortran-14", path="/opt/homebrew/opt/gcc@14/bin")
+                    or shutil.which("gfortran", path=env["PATH"]))
+        if not compiler:
+            raise RuntimeError("Install a Fortran compiler with 'brew install gcc@14', or set FC")
+        env["FC"] = compiler
+    return env
 
 
 def cuda_settings(architecture):
@@ -95,9 +120,12 @@ def main():
         parser.error("CUDA builds require an explicit --cuda-arch")
     if args.backend == "cpu" and (args.cuda_arch or args.cuda_root):
         parser.error("CUDA options require --backend cuda")
-    system = platform.system().lower()
-    if system not in {"linux", "windows"} or platform.machine().lower() not in {"x86_64", "amd64"}:
-        parser.error("This build profile currently supports Linux and Windows x86-64")
+    try:
+        system = host_platform()
+    except ValueError as exc:
+        parser.error(str(exc))
+    if system == "macos" and args.backend == "cuda":
+        parser.error("macOS supports the CPU OpenMP backend; CUDA is unavailable")
 
     env = os.environ.copy()
     if system == "linux" and "microsoft" in platform.release().lower():
@@ -107,6 +135,8 @@ def main():
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env["PATH"]
     if system == "windows":
         env = msvc_environment(env)
+    elif system == "macos":
+        env = macos_environment(env)
     env.update(CMAKE_GENERATOR="Ninja", CMAKE_BUILD_PARALLEL_LEVEL=str(args.jobs), VCPKG_MAX_CONCURRENCY=str(args.jobs))
     if args.cuda_root:
         env["PATH"] = str(args.cuda_root.resolve() / "bin") + os.pathsep + env["PATH"]
@@ -114,7 +144,7 @@ def main():
             cuda = args.cuda_root.resolve()
             env["LD_LIBRARY_PATH"] = os.pathsep.join(
                 [str(cuda / "lib64"), str(cuda / "lib"), env.get("LD_LIBRARY_PATH", "")]).rstrip(os.pathsep)
-    triplet = f"x64-{system}-csp"
+    triplet = TRIPLETS[system]
     vcpkg_root = args.vcpkg_root.resolve()
     dependency_root = args.dependency_root.resolve()
     build_name = f"{system}-{args.backend}-py{sys.version_info.major}{sys.version_info.minor}"
@@ -161,6 +191,12 @@ def main():
         "cmake.define.C_SPIKES_OBSERVATIONAL_DIAGNOSTICS": "ON" if args.diagnostics else "OFF",
         "cmake.define.CSP_COMBINED_WHEEL": "ON" if args.backend == "cuda" else "OFF",
     }
+    if system == "macos":
+        settings.update({
+            "cmake.define.CMAKE_OSX_ARCHITECTURES": "arm64",
+            "cmake.define.CMAKE_OSX_DEPLOYMENT_TARGET": env["MACOSX_DEPLOYMENT_TARGET"],
+            "cmake.define.CMAKE_Fortran_COMPILER": env["FC"],
+        })
     if args.backend == "cuda":
         settings.update(cuda_settings(args.cuda_arch))
         env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_C_SPIKES"] = wheel_version()

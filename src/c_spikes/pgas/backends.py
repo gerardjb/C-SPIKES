@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 
 
 def backend_name(backend: str | None = None) -> str:
@@ -25,6 +26,11 @@ def get_backend(backend: str | None = None):
         return importlib.import_module(f"c_spikes.pgas.pgas_bound_{name}")
     except (ImportError, OSError) as exc:
         if name == "gpu":
+            if sys.platform == "darwin":
+                raise ImportError(
+                    "CUDA backend unavailable on macOS. Apple Silicon wheels provide CPU OpenMP; "
+                    "use get_backend('cpu')."
+                ) from exc
             raise ImportError(
                 "CUDA backend unavailable. Install a CUDA-enabled c-spikes wheel and a "
                 "compatible NVIDIA driver, and make a GPU visible; use get_backend('cpu') "

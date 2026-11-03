@@ -1,10 +1,14 @@
 # Combined CPU/CUDA wheels
 
-Release wheels bundle independent CPU and CUDA PGAS extensions in one
+Linux/Windows release wheels bundle independent CPU and CUDA PGAS extensions in one
 `c-spikes` distribution. Once published, install with `uv pip install c-spikes`,
 or a normal dependency followed by `uv sync` in a consumer project.
 See [tagged publishing](build-and-release.md#publishing-tagged-releases-to-pypi)
 for release triggers and the one-time Trusted Publisher setup.
+
+Apple Silicon macOS wheels use the same package name and version with the CPU
+OpenMP backend and OASIS only. Explicit CUDA selection there raises an error
+explaining that macOS wheels are CPU-only.
 
 ## Implementation
 
@@ -86,7 +90,8 @@ in both import orders and runs the first model again after the other backend.
 
 Source-checkout `uv sync` and `build_native.py` still default to CPU development
 builds. `build_native.py --backend cuda` selects independent CPU/CUDA builds;
-`build_wheels.py` defaults to that combined profile, with `--backend cpu` available
+`build_wheels.py` defaults to that combined profile on Linux/Windows and CPU on
+macOS, with `--backend cpu` available
 for CPU-only artifacts. No extra `--combined` option is needed.
 
 The former GitHub Pages release-index implementation is preserved at `eb4c7a2`
