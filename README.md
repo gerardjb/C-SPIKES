@@ -10,11 +10,12 @@ The Python distribution is named `c-spikes`; its import package is `c_spikes`
 
 ## System requirements and installation
 
-The release wheels target CPython 3.11–3.14 on **Linux and Windows x86-64**
-(CPU OpenMP + CUDA) and **Linux ARM64 / Apple Silicon macOS 14 or newer** (CPU OpenMP).
-Linux wheels require glibc 2.28 or newer.
+The release wheels target CPython 3.11–3.14 on **Linux x86-64/ARM64 and Windows x86-64**
+(CPU OpenMP + CUDA) and **Apple Silicon macOS 14 or newer** (CPU OpenMP).
+Linux wheels require glibc 2.28 or newer. ARM CUDA targets SBSA servers such as
+Grace Hopper/Blackwell; Jetson is not covered, and ARM GPU runtime testing is pending.
 Every wheel includes CPU OASIS. CPU execution needs no NVIDIA driver; CUDA
-execution on Linux/Windows x86-64 needs a compatible driver but no system CUDA toolkit.
+execution needs a compatible driver but no system CUDA toolkit.
 Intel Macs and Windows ARM64 are not yet supported.
 
 Once a release containing this packaging is published to PyPI:
@@ -44,7 +45,7 @@ On Apple Silicon, install Xcode command-line tools and `brew install gcc@14 pkgc
 before `uv sync`. The native OpenMP runtime and numerical libraries are built
 automatically. Published wheels bundle the required runtimes and do not need Homebrew.
 
-On Linux/Windows x86-64, to build and test a CUDA wheel locally, provision the pinned toolkit and use
+On Linux (x86-64/ARM64) or Windows x86-64, to build and test a CUDA wheel locally, provision the pinned toolkit and use
 the portable GPU profile (including the RTX 2080 Ti):
 
 ```text

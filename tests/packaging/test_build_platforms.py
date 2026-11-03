@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import build_native
 import build_wheels
+import prepare_cuda
 
 
 @pytest.mark.parametrize("system,machine,expected,triplet", [
@@ -35,7 +36,7 @@ def test_unsupported_build_hosts(monkeypatch, system, machine):
 
 
 @pytest.mark.parametrize("machine,arch,triplet,backend", [
-    ("aarch64", "aarch64", "arm64-linux-csp", "cpu"),
+    ("aarch64", "aarch64", "arm64-linux-csp", "cuda"),
     ("x86_64", "x86_64", "x64-linux-csp", "cuda"),
 ])
 def test_linux_wheel_defaults_match_host(monkeypatch, tmp_path, machine, arch, triplet, backend):
@@ -59,13 +60,13 @@ def test_linux_wheel_defaults_match_host(monkeypatch, tmp_path, machine, arch, t
     (build_wheels, ["--output-dir", "unused", "--backend", "cuda"]),
     (build_native, ["--backend", "cuda", "--cuda-arch", "PORTABLE"]),
 ])
-def test_arm_cuda_rejected_before_provisioning(monkeypatch, capsys, script, options):
-    monkeypatch.setattr(build_native.platform, "system", lambda: "Linux")
+def test_macos_cuda_rejected_before_provisioning(monkeypatch, capsys, script, options):
+    monkeypatch.setattr(build_native.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(build_native.platform, "machine", lambda: "aarch64")
     monkeypatch.setattr(sys, "argv", [script.__file__, *options])
     with pytest.raises(SystemExit):
         script.main()
-    assert "CUDA builds are configured for Linux/Windows x86-64 only" in capsys.readouterr().err
+    assert "use --backend cpu on macOS" in capsys.readouterr().err
 
 
 def test_cross_arch_build_rejected(monkeypatch, capsys):
@@ -75,3 +76,21 @@ def test_cross_arch_build_rejected(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         build_wheels.main()
     assert "native runner" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("system,machine,target", [
+    ("Linux", "aarch64", "linux-sbsa"), ("Linux", "arm64", "linux-sbsa"),
+    ("Linux", "x86_64", "linux-x86_64"), ("Windows", "AMD64", "windows-x86_64"),
+])
+def test_cuda_toolkit_matches_host(monkeypatch, system, machine, target):
+    monkeypatch.setattr(build_native.platform, "system", lambda: system)
+    monkeypatch.setattr(build_native.platform, "machine", lambda: machine)
+    assert prepare_cuda.native_cuda_platform() == target
+
+
+@pytest.mark.parametrize("system,machine", [("Darwin", "arm64"), ("Windows", "ARM64"), ("Linux", "armv7l")])
+def test_unsupported_cuda_host_cannot_download_x86_tools(monkeypatch, system, machine):
+    monkeypatch.setattr(build_native.platform, "system", lambda: system)
+    monkeypatch.setattr(build_native.platform, "machine", lambda: machine)
+    with pytest.raises(ValueError, match="Pinned CUDA tools support"):
+        prepare_cuda.native_cuda_platform()

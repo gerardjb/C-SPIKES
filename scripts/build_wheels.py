@@ -1,4 +1,4 @@
-"""Build CPU/CUDA wheels on x86-64 and CPU OpenMP wheels on Linux/macOS ARM64."""
+"""Build CPU/CUDA wheels on Linux/Windows and CPU OpenMP wheels on Apple Silicon."""
 from __future__ import annotations
 
 import argparse
@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("cpu", "cuda"), help="Default: CPU on ARM64, CUDA on x86-64")
+    parser.add_argument("--backend", choices=("cpu", "cuda"), help="Default: CPU on macOS, CUDA on Linux/Windows")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--platform", choices=("linux", "windows", "macos"),
                         default={"Darwin": "macos"}.get(platform.system(), platform.system().lower()))
@@ -30,7 +30,7 @@ def main():
     architecture = args.arch or ("arm64" if system == "macos" else host_architecture())
     if (system, architecture) not in TRIPLETS:
         parser.error(f"Unsupported wheel platform: {system}/{architecture}")
-    args.backend = args.backend or ("cpu" if architecture == "arm64" else "cuda")
+    args.backend = args.backend or ("cpu" if system == "macos" else "cuda")
     try:
         check_backend(system, architecture, args.backend)
         if not args.print_build_identifiers and (system, architecture) != (host_platform(), host_architecture()):

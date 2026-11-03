@@ -12,7 +12,7 @@ import tarfile
 import zipfile
 
 PYTHONS = {"cp311", "cp312", "cp313", "cp314"}
-BACKENDS = {"Linux-x86_64": ("cpu", "gpu"), "Linux-aarch64": ("cpu",),
+BACKENDS = {"Linux-x86_64": ("cpu", "gpu"), "Linux-aarch64": ("cpu", "gpu"),
             "Windows-x86_64": ("cpu", "gpu"), "macOS-arm64": ("cpu",)}
 NUMBER = r"(?:0|[1-9]\d*)"
 TAG = re.compile(rf"v({NUMBER}\.{NUMBER}\.{NUMBER}(?:(?:a|b|rc){NUMBER})?(?:\.post{NUMBER})?)\Z")

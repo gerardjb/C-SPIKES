@@ -23,7 +23,7 @@ jobs:
           - os: ubuntu-24.04
             backend: ${{ inputs.backend }}
           - os: ubuntu-24.04-arm
-            backend: cpu
+            backend: ${{ inputs.backend }}
           - os: windows-2022
             backend: ${{ inputs.backend }}
           - os: macos-14

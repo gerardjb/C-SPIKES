@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      # Select combined x86-64 wheels and CPU-only Linux/macOS ARM64 wheels.
+      # Select combined Linux/Windows wheels and CPU-only Apple Silicon wheels.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: wheels-Linux-X64-cuda
@@ -55,7 +55,7 @@ jobs:
           path: dist/release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: wheels-Linux-ARM64-cpu
+          name: wheels-Linux-ARM64-cuda
           path: dist/release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:

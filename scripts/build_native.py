@@ -40,8 +40,8 @@ def host_platform():
 
 
 def check_backend(system, architecture, backend):
-    if backend == "cuda" and (system, architecture) not in {("linux", "x64"), ("windows", "x64")}:
-        raise ValueError("CUDA builds are configured for Linux/Windows x86-64 only; use --backend cpu on ARM64")
+    if backend == "cuda" and (system, architecture) not in {("linux", "x64"), ("linux", "arm64"), ("windows", "x64")}:
+        raise ValueError("CUDA builds support Linux x86-64/ARM64 and Windows x86-64; use --backend cpu on macOS")
 
 
 def macos_environment(env):

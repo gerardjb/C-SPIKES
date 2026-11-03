@@ -17,16 +17,28 @@ from build_native import CUDA_RELEASE, CUDA_ROOT, host_architecture
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def native_cuda_platform():
+    # NVIDIA calls its server ARM platform SBSA. Its linux-aarch64 archives
+    # in CUDA 12.9 are Jetson builds, not the toolkit for Grace/ARM servers.
+    targets = {("Linux", "x64"): "linux-x86_64", ("Linux", "arm64"): "linux-sbsa",
+               ("Windows", "x64"): "windows-x86_64"}
+    try:
+        return targets[platform.system(), host_architecture()]
+    except KeyError:
+        raise ValueError("Pinned CUDA tools support Linux x86-64/ARM64 servers and Windows x86-64") from None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--destination", type=Path, default=CUDA_ROOT)
-    parser.add_argument("--platform", choices=("linux-x86_64", "windows-x86_64"),
-                        help="Target toolkit platform; defaults to the native x86-64 host")
+    parser.add_argument("--platform", choices=("linux-x86_64", "linux-sbsa", "windows-x86_64"),
+                        help="Target toolkit platform; defaults to the native host (SBSA on Linux ARM64)")
     args = parser.parse_args()
     if args.platform is None:
-        if platform.system() not in {"Linux", "Windows"} or host_architecture() != "x64":
-            parser.error("Pinned CUDA tools support Linux/Windows x86-64 only; ARM64 builds use CPU OpenMP")
-        args.platform = platform.system().lower() + "-x86_64"
+        try:
+            args.platform = native_cuda_platform()
+        except ValueError as exc:
+            parser.error(str(exc))
     manifest_path = ROOT / f"cmake/cuda-{CUDA_RELEASE}.json"
     manifest_bytes = manifest_path.read_bytes()
     manifest = json.loads(manifest_bytes)
@@ -72,7 +84,7 @@ def main():
                 shutil.copy2(license_file, notices / license_file.name)
     # Linux component archives use lib/, while nvcc's toolkit layout expects
     # lib64/. Keep both CMake discovery and nvcc's own linker search working.
-    if args.platform == "linux-x86_64" and not (destination / "lib64").exists():
+    if args.platform.startswith("linux-") and not (destination / "lib64").exists():
         (destination / "lib64").symlink_to("lib", target_is_directory=True)
     receipt.write_text(json.dumps(identity, indent=2) + "\n", encoding="utf-8")
     print(destination)

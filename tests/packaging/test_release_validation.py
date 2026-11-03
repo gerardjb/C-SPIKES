@@ -25,7 +25,7 @@ def bundle(directory, version="0.2.0", *, backend="combined", extra_member=None)
                 wheel.writestr(f"c_spikes-{version}.dist-info/METADATA", metadata(version))
                 wheel.writestr("c_spikes/pgas/backends.py", "")
                 suffix = "pyd" if platform == "win_amd64" else "so"
-                cpu_only = platform.startswith("macosx_") or platform.endswith("aarch64")
+                cpu_only = platform.startswith("macosx_")
                 names = ("cpu",) if cpu_only else (("cpu", "gpu") if backend == "combined" else (backend,))
                 for name in names:
                     wheel.writestr(f"c_spikes/pgas/pgas_bound_{name}.{python}.{suffix}", b"test fixture")
@@ -147,8 +147,8 @@ def test_macos_requires_arm64_cpu_wheels(tmp_path, mutation):
         validate_bundle(tmp_path, "0.2.0")
 
 
-@pytest.mark.parametrize("mutation", ["missing", "high-glibc", "local-linux", "arm32", "mixed-arch", "duplicate-slot", "no-cpu", "cuda"])
-def test_linux_arm_requires_portable_cpu_wheels(tmp_path, mutation):
+@pytest.mark.parametrize("mutation", ["missing", "high-glibc", "local-linux", "arm32", "mixed-arch", "duplicate-slot", "no-cpu", "no-cuda"])
+def test_linux_arm_requires_portable_combined_wheels(tmp_path, mutation):
     bundle(tmp_path)
     path = next(tmp_path.glob("*cp314*manylinux*aarch64.whl"))
     if mutation == "missing":
@@ -166,7 +166,7 @@ def test_linux_arm_requires_portable_cpu_wheels(tmp_path, mutation):
         if mutation == "no-cpu":
             del contents["c_spikes/pgas/pgas_bound_cpu.cp314.so"]
         else:
-            contents["c_spikes/pgas/pgas_bound_gpu.cp314.so"] = b"unexpected CUDA module"
+            del contents["c_spikes/pgas/pgas_bound_gpu.cp314.so"]
         with zipfile.ZipFile(path, "w") as wheel:
             for name, data in contents.items():
                 wheel.writestr(name, data)
