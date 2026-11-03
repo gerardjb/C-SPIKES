@@ -40,18 +40,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      # Select portable CPU/CUDA Linux/Windows and CPU-only Apple Silicon wheels.
+      # Select combined Linux/Windows wheels and CPU-only Apple Silicon wheels.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: wheels-Linux-cuda
+          name: wheels-Linux-X64-cuda
           path: dist/release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: wheels-Windows-cuda
+          name: wheels-Windows-X64-cuda
           path: dist/release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: wheels-macOS-cpu
+          name: wheels-macOS-ARM64-cpu
+          path: dist/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: wheels-Linux-ARM64-cuda
           path: dist/release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:

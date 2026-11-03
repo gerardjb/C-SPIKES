@@ -75,7 +75,7 @@ dependencies = [
  
  # Prep across platforms/hardware/OS with unit tests
  [tool.cibuildwheel]
- build = ["cp{311,312,313,314}-manylinux_x86_64", "cp{311,312,313,314}-win_amd64", "cp{311,312,313,314}-macosx_arm64"]
+ build = ["cp{311,312,313,314}-manylinux_x86_64", "cp{311,312,313,314}-manylinux_aarch64", "cp{311,312,313,314}-win_amd64", "cp{311,312,313,314}-macosx_arm64"]
  build-frontend = "build[uv]"
  before-all = "python {project}/scripts/prepare_wheel_build.py"
  test-command = [
@@ -89,6 +89,7 @@ dependencies = [
 
  [tool.cibuildwheel.linux]
  manylinux-x86_64-image = "manylinux_2_28"
+ manylinux-aarch64-image = "manylinux_2_28"
  before-all = "/opt/python/cp312-cp312/bin/python {project}/scripts/prepare_wheel_build.py"
 
  [tool.cibuildwheel.windows]

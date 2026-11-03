@@ -4,7 +4,7 @@ if(CMAKE_TOOLCHAIN_FILE AND NOT CSP_MANAGED_TOOLCHAIN)
     return()
 endif()
 if(NOT CMAKE_HOST_SYSTEM_NAME MATCHES "^(Linux|Windows|Darwin)$")
-    message(FATAL_ERROR "Automatic dependency setup supports Linux/Windows x86-64 and macOS arm64")
+    message(FATAL_ERROR "Automatic dependency setup supports Linux x86-64/arm64, Windows x86-64 and macOS arm64")
 endif()
 
 set(CSP_VCPKG_ROOT "${CMAKE_SOURCE_DIR}/build/tools/vcpkg" CACHE PATH "Pinned vcpkg checkout")
@@ -32,7 +32,16 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     endif()
 else()
     string(TOLOWER "${CMAKE_HOST_SYSTEM_NAME}" _csp_host)
-    set(_csp_triplet "x64-${_csp_host}-csp")
+    # Query the same Python helper used to install dependencies. This runs
+    # before project(), when CMake's processor variables may not be populated.
+    execute_process(
+        COMMAND "${Python_EXECUTABLE}" -c
+            "import sys; sys.path.insert(0, sys.argv[1]); from build_native import host_architecture; print(host_architecture())"
+            "${CMAKE_SOURCE_DIR}/scripts"
+        OUTPUT_VARIABLE _csp_arch OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+    set(_csp_triplet "${_csp_arch}-${_csp_host}-csp")
 endif()
 set(VCPKG_TARGET_TRIPLET "${_csp_triplet}" CACHE STRING "Pinned native dependency triplet")
 set(VCPKG_MANIFEST_MODE OFF CACHE BOOL "Dependencies were prepared above")

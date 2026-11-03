@@ -18,13 +18,15 @@ def metadata(version):
 
 def bundle(directory, version="0.2.0", *, backend="combined", extra_member=None):
     for python in ("cp311", "cp312", "cp313", "cp314"):
-        for platform in ("manylinux_2_27_x86_64.manylinux_2_28_x86_64", "win_amd64", "macosx_14_0_arm64"):
+        for platform in ("manylinux_2_27_x86_64.manylinux_2_28_x86_64", "manylinux_2_28_aarch64",
+                         "win_amd64", "macosx_14_0_arm64"):
             path = directory / f"c_spikes-{version}-{python}-{python}-{platform}.whl"
             with zipfile.ZipFile(path, "w") as wheel:
                 wheel.writestr(f"c_spikes-{version}.dist-info/METADATA", metadata(version))
                 wheel.writestr("c_spikes/pgas/backends.py", "")
                 suffix = "pyd" if platform == "win_amd64" else "so"
-                names = ("cpu",) if platform.startswith("macosx_") else (("cpu", "gpu") if backend == "combined" else (backend,))
+                cpu_only = platform.startswith("macosx_")
+                names = ("cpu",) if cpu_only else (("cpu", "gpu") if backend == "combined" else (backend,))
                 for name in names:
                     wheel.writestr(f"c_spikes/pgas/pgas_bound_{name}.{python}.{suffix}", b"test fixture")
                 if extra_member:
@@ -40,7 +42,7 @@ def bundle(directory, version="0.2.0", *, backend="combined", extra_member=None)
 @pytest.mark.parametrize("version", ["0.2.0", "0.2.0rc1", "0.2.0.post1"])
 def test_complete_release_hashes_every_file(tmp_path, version):
     files = validate_bundle(bundle(tmp_path, version), version_for_tag("v" + version))
-    assert len(files) == 13
+    assert len(files) == 17
     assert files == {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.iterdir()}
 
 
@@ -59,7 +61,7 @@ def test_both_extensions_required(tmp_path, backend):
 @pytest.mark.parametrize("mutation", ["missing-wheel", "missing-sdist", "extra", "duplicate-slot", "local-cuda-version", "wrong-abi", "local-linux", "high-glibc"])
 def test_bad_artifact_sets(tmp_path, mutation):
     bundle(tmp_path)
-    wheel = next(tmp_path.glob("*manylinux*.whl"))
+    wheel = next(tmp_path.glob("*manylinux*x86_64.whl"))
     if mutation == "missing-wheel":
         wheel.unlink()
     elif mutation == "missing-sdist":
@@ -67,7 +69,7 @@ def test_bad_artifact_sets(tmp_path, mutation):
     elif mutation == "extra":
         (tmp_path / "unexpected.txt").write_text("not a distribution")
     elif mutation == "duplicate-slot":
-        other = next(tmp_path.glob("*cp312*manylinux*.whl"))
+        other = next(tmp_path.glob("*cp312*manylinux*x86_64.whl"))
         other.rename(other.with_name(other.name.replace("cp312", "cp311").replace("manylinux_2_27_x86_64.", "")))
     elif mutation == "local-cuda-version":
         wheel.rename(wheel.with_name(wheel.name.replace("0.2.0-", "0.2.0+cu129-")))
@@ -138,6 +140,33 @@ def test_macos_requires_arm64_cpu_wheels(tmp_path, mutation):
             del contents["c_spikes/pgas/pgas_bound_cpu.cp314.so"]
         else:
             contents["c_spikes/pgas/pgas_bound_gpu.cp314.so"] = b"unexpected CUDA module"
+        with zipfile.ZipFile(path, "w") as wheel:
+            for name, data in contents.items():
+                wheel.writestr(name, data)
+    with pytest.raises(ValueError):
+        validate_bundle(tmp_path, "0.2.0")
+
+
+@pytest.mark.parametrize("mutation", ["missing", "high-glibc", "local-linux", "arm32", "mixed-arch", "duplicate-slot", "no-cpu", "no-cuda"])
+def test_linux_arm_requires_portable_combined_wheels(tmp_path, mutation):
+    bundle(tmp_path)
+    path = next(tmp_path.glob("*cp314*manylinux*aarch64.whl"))
+    if mutation == "missing":
+        path.unlink()
+    elif mutation in {"high-glibc", "local-linux", "arm32", "mixed-arch"}:
+        replacement = {"high-glibc": "manylinux_2_34_aarch64", "local-linux": "linux_aarch64",
+                       "arm32": "manylinux_2_28_armv7l",
+                       "mixed-arch": "manylinux_2_28_aarch64.manylinux_2_28_x86_64"}[mutation]
+        path.rename(path.with_name(path.name.replace("manylinux_2_28_aarch64", replacement)))
+    elif mutation == "duplicate-slot":
+        path.rename(path.with_name(path.name.replace("cp314", "cp311").replace("manylinux_2_28", "manylinux_2_27")))
+    else:
+        with zipfile.ZipFile(path) as wheel:
+            contents = {n: wheel.read(n) for n in wheel.namelist()}
+        if mutation == "no-cpu":
+            del contents["c_spikes/pgas/pgas_bound_cpu.cp314.so"]
+        else:
+            del contents["c_spikes/pgas/pgas_bound_gpu.cp314.so"]
         with zipfile.ZipFile(path, "w") as wheel:
             for name, data in contents.items():
                 wheel.writestr(name, data)

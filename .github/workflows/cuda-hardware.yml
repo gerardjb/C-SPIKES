@@ -9,6 +9,12 @@ on:
         type: choice
         options: [Linux, Windows]
         required: true
+      host_architecture:
+        description: Registered GPU runner CPU architecture (ARM64 requires Linux)
+        type: choice
+        options: [x64, ARM64]
+        default: x64
+        required: true
       architecture:
         description: GPU architecture of the selected runner
         type: choice
@@ -21,7 +27,8 @@ permissions:
 
 jobs:
   hardware:
-    runs-on: [self-hosted, "${{ inputs.os }}", x64, c-spikes-cuda]
+    if: inputs.os == 'Linux' || inputs.host_architecture == 'x64'
+    runs-on: [self-hosted, "${{ inputs.os }}", "${{ inputs.host_architecture }}", c-spikes-cuda]
     timeout-minutes: 90
     env:
       UV_LINK_MODE: copy
@@ -40,7 +47,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
-          name: cuda-hardware-${{ runner.os }}-${{ inputs.architecture }}
+          name: cuda-hardware-${{ runner.os }}-${{ runner.arch }}-${{ inputs.architecture }}
           path: |
             dist/cuda-hardware
             build/*/Testing/Temporary/LastTest.log

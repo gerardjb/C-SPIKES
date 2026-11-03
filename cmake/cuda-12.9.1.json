@@ -15,6 +15,12 @@
         "sha256": "227b109663b5e57d2718bcabb24a4ba0d9d4e52d958e327dc476f7c28691be85",
         "md5": "ff9b2942aaa3a1dfb487da6767bc689f",
         "size": "126917884"
+      },
+      "linux-sbsa": {
+        "relative_path": "cuda_nvcc/linux-sbsa/cuda_nvcc-linux-sbsa-12.9.86-archive.tar.xz",
+        "sha256": "0aa1fce92dbae76c059c27eefb9d0ffb58e1291151e44ff7c7f1fc2dd9376c0d",
+        "md5": "1322a14e4d6482f69d4b8a14a7d5f4c5",
+        "size": "73407012"
       }
     },
     "cuda_cudart": {
@@ -29,6 +35,12 @@
         "sha256": "179e9c43b0735ffe67207b3da556eb5a0c50f3047961882b7657d3b822d34ef8",
         "md5": "22e500ce68dc9e099ec18f57e1309808",
         "size": "3521238"
+      },
+      "linux-sbsa": {
+        "relative_path": "cuda_cudart/linux-sbsa/cuda_cudart-linux-sbsa-12.9.79-archive.tar.xz",
+        "sha256": "8b422a3b2cb8452cb678181b0bf9d7aa7342df168b5319c5488ae3b8514101fc",
+        "md5": "c4b3e0d206f5dc3aceaddb78a32424d3",
+        "size": "1521596"
       }
     },
     "cuda_cccl": {
@@ -43,6 +55,12 @@
         "sha256": "17aaa7c6b8f94a417d8f3261780b7e34b9cbdfab7513bce86768623b06aa28b5",
         "md5": "afdfa89a35951f67b5bd70c513f5ef09",
         "size": "3127658"
+      },
+      "linux-sbsa": {
+        "relative_path": "cuda_cccl/linux-sbsa/cuda_cccl-linux-sbsa-12.9.27-archive.tar.xz",
+        "sha256": "8c3da24801b500f1d9217d191bb4b63e5d2096c8e7d0b7695e876853180ba82f",
+        "md5": "b39d03cfac57a3b2ded8e9b0a6b0e782",
+        "size": "997840"
       }
     },
     "cuda_cuobjdump": {
@@ -57,6 +75,12 @@
         "sha256": "1eda43a76a2eac25fce5bdb4b68673b5bda737d54cca5513148c36362ab7c811",
         "md5": "0a1c8b1f69537bc605c0d5fc28110258",
         "size": "6219088"
+      },
+      "linux-sbsa": {
+        "relative_path": "cuda_cuobjdump/linux-sbsa/cuda_cuobjdump-linux-sbsa-12.9.82-archive.tar.xz",
+        "sha256": "2d39ae9309f81a7980df296a93c0e49215c6fb22d316fd9daae211d29a731d27",
+        "md5": "9ec739cea851b184b55017d0a6185304",
+        "size": "208936"
       }
     }
   }

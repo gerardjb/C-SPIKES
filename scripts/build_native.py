@@ -21,18 +21,27 @@ ARCHITECTURES = {"TURING75": "75", "AMPERE80": "80", "AMPERE86": "86",
                  "BLACKWELL103": "103", "BLACKWELL120": "120", "BLACKWELL121": "121"}
 CUDA_RELEASE = "12.9.1"
 CUDA_ROOT = ROOT / "build/tools" / f"cuda-{CUDA_RELEASE}"
-TRIPLETS = {"linux": "x64-linux-csp", "windows": "x64-windows-csp", "macos": "arm64-osx-csp"}
+TRIPLETS = {("linux", "x64"): "x64-linux-csp", ("linux", "arm64"): "arm64-linux-csp",
+            ("windows", "x64"): "x64-windows-csp", ("macos", "arm64"): "arm64-osx-csp"}
 MACOS_MINIMUM = "14.0"
+
+
+def host_architecture():
+    machine = platform.machine().lower()
+    return {"x86_64": "x64", "amd64": "x64", "aarch64": "arm64", "arm64": "arm64"}.get(machine, machine)
 
 
 def host_platform():
     system = platform.system().lower()
-    machine = platform.machine().lower()
-    if system == "darwin" and machine in {"arm64", "aarch64"}:
-        return "macos"
-    if system in {"linux", "windows"} and machine in {"x86_64", "amd64"}:
+    system = "macos" if system == "darwin" else system
+    if (system, host_architecture()) in TRIPLETS:
         return system
-    raise ValueError("Supported build hosts: Linux/Windows x86-64 and macOS arm64")
+    raise ValueError("Supported build hosts: Linux x86-64/arm64, Windows x86-64 and macOS arm64")
+
+
+def check_backend(system, architecture, backend):
+    if backend == "cuda" and (system, architecture) not in {("linux", "x64"), ("linux", "arm64"), ("windows", "x64")}:
+        raise ValueError("CUDA builds support Linux x86-64/ARM64 and Windows x86-64; use --backend cpu on macOS")
 
 
 def macos_environment(env):
@@ -122,10 +131,10 @@ def main():
         parser.error("CUDA options require --backend cuda")
     try:
         system = host_platform()
+        architecture = host_architecture()
+        check_backend(system, architecture, args.backend)
     except ValueError as exc:
         parser.error(str(exc))
-    if system == "macos" and args.backend == "cuda":
-        parser.error("macOS supports the CPU OpenMP backend; CUDA is unavailable")
 
     env = os.environ.copy()
     if system == "linux" and "microsoft" in platform.release().lower():
@@ -144,10 +153,10 @@ def main():
             cuda = args.cuda_root.resolve()
             env["LD_LIBRARY_PATH"] = os.pathsep.join(
                 [str(cuda / "lib64"), str(cuda / "lib"), env.get("LD_LIBRARY_PATH", "")]).rstrip(os.pathsep)
-    triplet = TRIPLETS[system]
+    triplet = TRIPLETS[system, architecture]
     vcpkg_root = args.vcpkg_root.resolve()
     dependency_root = args.dependency_root.resolve()
-    build_name = f"{system}-{args.backend}-py{sys.version_info.major}{sys.version_info.minor}"
+    build_name = f"{system}-{architecture}-{args.backend}-py{sys.version_info.major}{sys.version_info.minor}"
     if args.cuda_arch:
         build_name += "-" + args.cuda_arch.lower()
     if args.backend == "cuda":
