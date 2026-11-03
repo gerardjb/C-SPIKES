@@ -1,7 +1,7 @@
 # Native build prerequisites
 
 Use the [build and release guide](docs/build-and-release.md) for the reproducible
-Linux/Windows CPU and CUDA wheels and Apple Silicon CPU wheels. It covers uv, the pinned vcpkg dependency
+Linux/Windows x86-64 CPU and CUDA wheels and Linux/macOS ARM64 CPU wheels. It covers uv, the pinned vcpkg dependency
 manifest, CUDA provisioning, installed-wheel tests and CI artifacts. CMake fetches
 Kokkos 5.2.2 at a fixed commit and builds with C++20; a separate global Kokkos
 installation is unnecessary.

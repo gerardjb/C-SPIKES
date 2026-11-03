@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import platform
 import sys
 
 
@@ -29,6 +30,11 @@ def get_backend(backend: str | None = None):
             if sys.platform == "darwin":
                 raise ImportError(
                     "CUDA backend unavailable on macOS. Apple Silicon wheels provide CPU OpenMP; "
+                    "use get_backend('cpu')."
+                ) from exc
+            if sys.platform == "linux" and platform.machine().lower() in {"aarch64", "arm64"}:
+                raise ImportError(
+                    "CUDA backend unavailable. Published Linux ARM64 wheels provide CPU OpenMP; "
                     "use get_backend('cpu')."
                 ) from exc
             raise ImportError(

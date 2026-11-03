@@ -12,7 +12,7 @@ import tempfile
 import urllib.request
 import zipfile
 
-from build_native import CUDA_RELEASE, CUDA_ROOT
+from build_native import CUDA_RELEASE, CUDA_ROOT, host_architecture
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,8 +21,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--destination", type=Path, default=CUDA_ROOT)
     parser.add_argument("--platform", choices=("linux-x86_64", "windows-x86_64"),
-                        default=platform.system().lower() + "-x86_64")
+                        help="Target toolkit platform; defaults to the native x86-64 host")
     args = parser.parse_args()
+    if args.platform is None:
+        if platform.system() not in {"Linux", "Windows"} or host_architecture() != "x64":
+            parser.error("Pinned CUDA tools support Linux/Windows x86-64 only; ARM64 builds use CPU OpenMP")
+        args.platform = platform.system().lower() + "-x86_64"
     manifest_path = ROOT / f"cmake/cuda-{CUDA_RELEASE}.json"
     manifest_bytes = manifest_path.read_bytes()
     manifest = json.loads(manifest_bytes)

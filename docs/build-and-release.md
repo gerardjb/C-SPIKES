@@ -5,24 +5,25 @@ The release matrix targets CPython 3.11–3.14 on these platforms:
 | Platform | Minimum OS / architecture | PGAS backends |
 |---|---|---|
 | Linux | manylinux_2_28, x86-64 | CPU OpenMP and CUDA |
+| Linux | manylinux_2_28, aarch64 (ARM64) | CPU OpenMP |
 | Windows | x86-64 | CPU OpenMP and CUDA |
 | macOS | 14.0 or newer, arm64 (Apple Silicon) | CPU OpenMP |
 
 Every wheel includes CPU OASIS. CPU execution works without an NVIDIA driver.
-CUDA execution on Linux/Windows is selected explicitly and requires a compatible
-driver, but no system CUDA toolkit. Intel Macs, Linux/Windows ARM64, musllinux
+CUDA execution on Linux/Windows x86-64 is selected explicitly and requires a compatible
+driver, but no system CUDA toolkit. Intel Macs, Windows ARM64, musllinux
 and free-threaded Python remain outside this matrix.
 
-`build_wheels.py` defaults to combined wheels on Linux/Windows and CPU-only wheels
-on macOS. Source-checkout `uv sync` builds an editable CPU package on all three
-platforms. See [combined wheels](combined-wheels.md) for backend isolation.
+`build_wheels.py` defaults to combined wheels on Linux/Windows x86-64 and CPU-only
+wheels on Linux/macOS ARM64. Source-checkout `uv sync` builds an editable CPU
+package on every supported platform. See [combined wheels](combined-wheels.md) for backend isolation.
 
 ## Build inputs
 
 - scikit-build-core builds the existing CMake project. CMake defaults to CPU.
 - uv manages Python environments using the committed `uv.lock`.
 - `vcpkg.json` pins GSL 2.8, JsonCpp 1.9.6, serial LP64 OpenBLAS 0.3.29 and
-  reference LAPACK 3.11.0. The triplets use CORE2 on x86-64 and ARMV8 on Apple Silicon, so distributable
+  reference LAPACK 3.11.0. The triplets use CORE2 on x86-64 and ARMV8 on Linux/macOS ARM64, so distributable
   wheels do not depend on the build runner's CPU-specific instructions.
 - The bootstrap pins vcpkg tooling separately from its package baseline. Windows
   explicitly enables vcpkg's MinGW Fortran provider and uses MSVC for C++. A small
@@ -61,6 +62,7 @@ Scientific acceptance of these dependency changes remains a separate release gat
 
 Install Git and uv. On Linux install GCC/G++, gfortran, pkg-config, curl, zip and
 unzip (Ubuntu: `sudo apt-get install build-essential gfortran pkg-config curl zip unzip`).
+Linux ARM64 uses the same commands and selects `arm64-linux-csp` automatically.
 Kokkos 5 requires C++20; use GCC 10.4 or newer (the manylinux build uses GCC 12).
 On Windows install Visual Studio 2022 C++ build tools and an x64 Windows SDK. Use
 a native Windows checkout and PowerShell for Windows builds, and a Linux checkout
@@ -247,17 +249,25 @@ implementation and its validation are preserved at `eb4c7a2` on
 
 `.github/workflows/build.yml` runs on pull requests, main/master pushes and
 manual dispatch. `release.yml` also calls it for a version-tag release. It
-builds/tests CPU development installs and native C++ checks on Ubuntu, Windows
-and Apple Silicon with Python 3.14. It creates an sdist, tests release validation
-and platform selection, and builds Python 3.11–3.14 wheels on all three systems.
-Linux/Windows wheels contain both backends; macOS wheels contain CPU only.
+builds/tests CPU development installs and native C++ checks on Ubuntu x86-64 and
+ARM64, Windows x86-64 and Apple Silicon with Python 3.14. It creates an sdist, tests release validation
+and platform selection, and builds Python 3.11–3.14 wheels for all four platform/architecture combinations.
+Linux/Windows x86-64 wheels contain both backends; Linux/macOS ARM64 wheels contain CPU only.
 
 Every wheel is repaired and runs installed CPU/import/regression tests
 on hosted runners, including lazy loading and unavailable-CUDA behavior. CUDA
 execution still requires the separate hardware checks; hosted builds inspect the
 GPU code images without executing kernels.
 
-The manylinux job uses the `manylinux_2_28` image selected by the pinned cibuildwheel
+Linux ARM64 jobs use native `ubuntu-24.04-arm` runners for both source installs and
+all four wheel ABIs; no QEMU emulation is used. ARM wheels target baseline ARMv8
+and glibc 2.28 or newer, with auditwheel bundling the required OpenMP and Fortran
+runtimes. These builds cover 64-bit ARM Linux, not 32-bit ARM or musl-based Linux.
+CUDA on ARM servers and Jetson remains a separate qualification task: the pinned
+CUDA component manifest currently supplies only x86-64 tools, and no ARM GPU
+runtime has been tested. The build scripts reject ARM CUDA requests explicitly.
+
+The manylinux jobs use the `manylinux_2_28` image selected by the pinned cibuildwheel
 version and GCC toolset 12, including Fortran. Linux wheels built directly on
 Ubuntu/WSL have that system's glibc baseline; they are local validation artifacts,
 not replacements for the manylinux job. Auditwheel must succeed for portable
@@ -295,10 +305,9 @@ labels. It runs the same CTest and installed-wheel CUDA execution checks as the
 local script, including forced-PTX smoke checks. `PORTABLE` is its default profile.
 No runner registration is performed by this change.
 
-`wheels.yml` is reused by both CI and tagged releases. Only the combined
-`wheels-Linux-cuda`, `wheels-Windows-cuda`, `wheels-macOS-cpu` artifacts
-and the sdist are admitted
-to PyPI; native development wheels are never selected for publishing.
+`wheels.yml` is reused by both CI and tagged releases. The selected artifacts are
+`wheels-Linux-X64-cuda`, `wheels-Windows-X64-cuda`, `wheels-Linux-ARM64-cpu`,
+`wheels-macOS-ARM64-cpu` and `sdist`. Only these are admitted to PyPI; native development wheels are never selected for publishing.
 
 ## CUDA GPU coverage
 
@@ -403,12 +412,13 @@ upload. A pull request or ordinary branch push cannot publish.
 1. Validate the tag (no development/local suffix) and require the tagged commit
    to belong to `main` history.
 2. Run the same full build/test workflow used by PRs, producing eight combined
-   Linux/Windows wheels, four CPU-only macOS arm64 wheels and one sdist. All build jobs must succeed before preparing a release.
-3. Download the four exact artifact names from that same workflow run. Validate
-   all twelve CPython/platform slots, public version and metadata, the required
+   Linux/Windows x86-64 wheels, eight CPU-only Linux/macOS ARM64 wheels and one sdist. All build jobs must succeed before preparing a release.
+3. Download the five exact artifact names from that same workflow run. Validate
+   all sixteen CPython/platform/architecture slots, public version and metadata, the required
    PGAS backends for each platform, the lazy loader, and absence of NVIDIA drivers.
    macOS requires the `macosx_14_0_arm64` tag and CPU only. Linux requires
-   manylinux_2_28 or older; local Ubuntu wheels are rejected.
+   manylinux_2_28 or older, CPU only on aarch64, and CPU+CUDA on x86-64; local
+   Ubuntu wheels and mixed-architecture platform tags are rejected.
 4. Record the source SHA, run identity and each distribution's SHA-256 in
    `release-manifest.json`, then upload the validated set as `pypi-distributions`.
 5. In a separate job using the `pypi` environment, verify those hashes and publish
@@ -416,7 +426,7 @@ upload. A pull request or ordinary branch push cannot publish.
    `id-token: write`; it does not check out or build package code.
 
 A `v0.2.0` tag produces version `0.2.0` for every platform, with CPU OpenMP on
-macOS and both CPU/CUDA backends on Linux/Windows.
+Linux/macOS ARM64 and both CPU/CUDA backends on Linux/Windows x86-64.
 Prerelease tags retain prerelease semantics on PyPI. The publisher refuses
 existing filenames rather than silently skipping a possibly different build.
 After a failure before any upload, use **Re-run failed jobs** to reuse successful

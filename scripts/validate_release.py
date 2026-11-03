@@ -12,7 +12,8 @@ import tarfile
 import zipfile
 
 PYTHONS = {"cp311", "cp312", "cp313", "cp314"}
-BACKENDS = {"Linux": ("cpu", "gpu"), "Windows": ("cpu", "gpu"), "macOS": ("cpu",)}
+BACKENDS = {"Linux-x86_64": ("cpu", "gpu"), "Linux-aarch64": ("cpu",),
+            "Windows-x86_64": ("cpu", "gpu"), "macOS-arm64": ("cpu",)}
 NUMBER = r"(?:0|[1-9]\d*)"
 TAG = re.compile(rf"v({NUMBER}\.{NUMBER}\.{NUMBER}(?:(?:a|b|rc){NUMBER})?(?:\.post{NUMBER})?)\Z")
 
@@ -39,7 +40,7 @@ def validate_bundle(directory, version):
     files = sorted(Path(directory).iterdir())
     require(len(files) == len(PYTHONS) * len(BACKENDS) + 1
             and all(p.is_file() and not p.is_symlink() for p in files),
-            "Require exactly twelve wheels and one sdist")
+            "Require exactly sixteen wheels and one sdist")
     seen, sdists, hashes = set(), 0, {}
     for path in files:
         with path.open("rb") as stream:
@@ -51,16 +52,19 @@ def validate_bundle(directory, version):
             _, _, python, abi, platform = parts
             require(python in PYTHONS and abi == python, "Unexpected Python/ABI tag")
             if platform == "win_amd64":
-                system, suffix = "Windows", "pyd"
+                system, suffix = "Windows-x86_64", "pyd"
             elif platform.startswith("macosx_"):
                 require(platform == "macosx_14_0_arm64", "Require macOS 14.0 arm64 wheels")
-                system, suffix = "macOS", "so"
+                system, suffix = "macOS-arm64", "so"
             else:
+                architectures = set()
                 for tag in platform.split("."):
-                    match = re.fullmatch(r"manylinux_2_(\d+)_x86_64", tag)
+                    match = re.fullmatch(r"manylinux_2_(\d+)_(x86_64|aarch64)", tag)
                     require(match is not None and int(match[1]) <= 28,
-                            "Require x86-64 manylinux_2_28 or older wheels")
-                system, suffix = "Linux", "so"
+                            "Require x86-64/aarch64 manylinux_2_28 or older wheels")
+                    architectures.add(match[2])
+                require(len(architectures) == 1, "Mixed Linux architectures in one wheel")
+                system, suffix = "Linux-" + architectures.pop(), "so"
             require((system, python) not in seen, "Duplicate platform/Python wheel")
             seen.add((system, python))
             with zipfile.ZipFile(path) as wheel:

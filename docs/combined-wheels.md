@@ -1,14 +1,14 @@
 # Combined CPU/CUDA wheels
 
-Linux/Windows release wheels bundle independent CPU and CUDA PGAS extensions in one
+Linux/Windows x86-64 release wheels bundle independent CPU and CUDA PGAS extensions in one
 `c-spikes` distribution. Once published, install with `uv pip install c-spikes`,
 or a normal dependency followed by `uv sync` in a consumer project.
 See [tagged publishing](build-and-release.md#publishing-tagged-releases-to-pypi)
 for release triggers and the one-time Trusted Publisher setup.
 
-Apple Silicon macOS wheels use the same package name and version with the CPU
+Linux ARM64 and Apple Silicon macOS wheels use the same package name and version with the CPU
 OpenMP backend and OASIS only. Explicit CUDA selection there raises an error
-explaining that macOS wheels are CPU-only.
+explaining that these platforms' wheels are CPU-only.
 
 ## Implementation
 
@@ -81,7 +81,7 @@ Combined wheels use the ordinary source version, without the legacy `+cu129`
 suffix. Install one repaired wheel in a fresh environment for local validation.
 The public package and import names remain `c-spikes` and `c_spikes`.
 
-CI builds combined wheels by default for Linux/Windows CPython 3.11–3.14.
+CI builds combined wheels by default for Linux/Windows x86-64 CPython 3.11–3.14.
 All wheels run installed CPU smoke and regression tests on hosted runners. The
 GPU image inspector verifies that CPU has no device code and GPU has the complete
 portable target set. The combined smoke checks lazy imports and clean failure of
@@ -90,8 +90,8 @@ in both import orders and runs the first model again after the other backend.
 
 Source-checkout `uv sync` and `build_native.py` still default to CPU development
 builds. `build_native.py --backend cuda` selects independent CPU/CUDA builds;
-`build_wheels.py` defaults to that combined profile on Linux/Windows and CPU on
-macOS, with `--backend cpu` available
+`build_wheels.py` defaults to that combined profile on Linux/Windows x86-64 and CPU on
+Linux/macOS ARM64, with `--backend cpu` available
 for CPU-only artifacts. No extra `--combined` option is needed.
 
 The former GitHub Pages release-index implementation is preserved at `eb4c7a2`
