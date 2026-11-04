@@ -25,6 +25,8 @@ uv pip install c-spikes
 ```
 
 For a consumer uv project, use `uv add c-spikes`, then `uv sync` as usual.
+Run `c-spikes --help` in the installed environment, or `uv run c-spikes --help`
+in a uv project, to see the batch inference options.
 No extra index or CUDA-specific version suffix is needed. See the
 [build and release guide](https://github.com/gerardjb/C-SPIKES/blob/main/docs/build-and-release.md) for driver requirements,
 CI and tag-triggered publishing, and the
@@ -141,7 +143,8 @@ savemat("my_recording.mat", {
 
 Inspect GUI inputs with `python scripts/validate_gui_mat.py --data-dir /path/to/data --deep`.
 With the `gui` extra installed, launch the desktop interface with
-`python -m c_spikes.gui`; use its Edge Selection tab to choose windows.
+`c-spikes-gui` (or `uv run --extra gui c-spikes-gui` from this checkout);
+use its Edge Selection tab to choose windows.
 The GUI uses packaged PGAS parameters, or project-specific files discovered
 through the checkout or `C_SPIKES_PROJECT_ROOT`.
 
@@ -153,7 +156,7 @@ they are not supplied by these parameter defaults.
 
 | Task | Entry point / guide |
 |---|---|
-| Batch inference and evaluation | `python -m c_spikes.cli.run --help` or `python run_pipeline.py --help`; [detailed workflows](https://github.com/gerardjb/C-SPIKES/blob/main/docs/usage-guide.md) |
+| Batch inference and evaluation | `c-spikes --help` or `python -m c_spikes.cli.run --help`; [detailed workflows](https://github.com/gerardjb/C-SPIKES/blob/main/docs/usage-guide.md) |
 | Programmatic inference | [workflow.py](https://github.com/gerardjb/C-SPIKES/blob/main/src/c_spikes/inference/workflow.py), [configuration/results](https://github.com/gerardjb/C-SPIKES/blob/main/src/c_spikes/inference/types.py) |
 | GPU modes and reproducibility | [GPU PGAS options](https://github.com/gerardjb/C-SPIKES/blob/main/docs/pgas_gpu_options.md), [validation limits](https://github.com/gerardjb/C-SPIKES/blob/main/docs/pgas_gpu_validation.md) |
 | Synthetic generation and model training | [BiophysML pipeline](https://github.com/gerardjb/C-SPIKES/blob/main/src/c_spikes/biophys_ml/pipeline.py), `scripts/demo_pgas_to_ens2.py`, `scripts/pgas_to_ens2.py`, `scripts/pgas_to_cascade.py`; [examples](https://github.com/gerardjb/C-SPIKES/blob/main/docs/usage-guide.md) |
