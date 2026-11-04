@@ -16,6 +16,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from c_spikes._resources import DEFAULT_GPARAM, DEFAULT_PGAS_CONSTANTS
 from c_spikes.inference.cascade import CASCADE_RESAMPLE_FS
 from c_spikes.inference.cache import get_cache_root
 from c_spikes.inference.pgas import (
@@ -56,8 +57,8 @@ class RunConfig:
     trial_selection_path: Optional[Path] = None
     bm_sigma_spike_gap: float = 0.15
     corr_sigma_ms: float = 50.0
-    pgas_constants: Path = Path("parameter_files/constants_GCaMP8_soma.json")
-    pgas_gparam: Path = Path("src/c_spikes/pgas/20230525_gold.dat")
+    pgas_constants: Path = DEFAULT_PGAS_CONSTANTS
+    pgas_gparam: Path = DEFAULT_GPARAM
     pgas_output_root: Path = Path("results/pgas_output/comparison")
     pgas_resample_fs: Optional[float] = None
     cascade_resample_fs: Optional[float] = None  # None => use input sampling rate (no forced resample)

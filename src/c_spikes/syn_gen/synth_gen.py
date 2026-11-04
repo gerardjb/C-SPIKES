@@ -27,6 +27,7 @@ import numpy as np
 import scipy.io as sio
 from scipy.stats import norm
 
+from c_spikes._resources import DEFAULT_GPARAM
 
 class synth_gen():
   def __init__(self, spike_rate=2, spike_params=[5, 0.5],cell_params=[30e-6, 10e2, 1e-5, 5, 30, 10],
@@ -69,8 +70,7 @@ class synth_gen():
       import c_spikes.pgas.pgas_bound as pgas
 
       # Default GCaMP parameter file colocated with the PGAS module
-      gparam_path = Path(__file__).resolve().parents[1] / "pgas" / "20230525_gold.dat"
-      Gparams = np.loadtxt(gparam_path)
+      Gparams = np.loadtxt(DEFAULT_GPARAM)
       self.gcamp = pgas.GCaMP(Gparams, np.array(cell_params, dtype=np.float64, copy=True))
     else:
       self.gcamp = GCaMP_model
@@ -375,7 +375,7 @@ if __name__ == "__main__":
   # Make a gcamp object
   import numpy as np
   import c_spikes.pgas.pgas_bound as pgas
-  Gparam_file="src/c_spikes/pgas/20230525_gold.dat"
+  Gparam_file=str(DEFAULT_GPARAM)
   Gparams = np.loadtxt(Gparam_file)
   Cparams=np.array([30e-6, 10e2, 1e-5, 5, 30, 10])
   gcamp = pgas.GCaMP(Gparams,Cparams)

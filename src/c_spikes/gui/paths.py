@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Mapping, MutableMapping, Optional, Union
 
+from c_spikes._resources import PGAS_CONSTANTS_DIR, PGAS_GPARAM_DIR
 
 PROJECT_ROOT_ENV = "C_SPIKES_PROJECT_ROOT"
 PathInput = Union[str, Path]
@@ -50,4 +51,14 @@ def resolve_project_root(
     return working_dir.expanduser().resolve()
 
 
-__all__ = ["PROJECT_ROOT_ENV", "configure_project_root", "resolve_project_root"]
+def resolve_pgas_parameter_dirs(project_root: Path) -> tuple[Path, Path]:
+    """Use project-specific PGAS inputs when present, otherwise bundled inputs."""
+    constants = project_root / "parameter_files"
+    gparams = project_root / "src" / "c_spikes" / "pgas"
+    return (
+        constants if constants.is_dir() else PGAS_CONSTANTS_DIR,
+        gparams if gparams.is_dir() else PGAS_GPARAM_DIR,
+    )
+
+
+__all__ = ["PROJECT_ROOT_ENV", "configure_project_root", "resolve_project_root", "resolve_pgas_parameter_dirs"]

@@ -188,6 +188,9 @@ if(_pgas_build_gpu)
 endif()
 
 install(TARGETS pgas_bound_cpu DESTINATION ${SKBUILD_PROJECT_NAME}/pgas COMPONENT CSPPython)
+install(DIRECTORY parameter_files/
+    DESTINATION ${SKBUILD_PROJECT_NAME}/pgas/constants COMPONENT CSPPython
+    FILES_MATCHING PATTERN "*.json")
 if(_pgas_build_gpu)
     install(TARGETS pgas_bound_gpu DESTINATION ${SKBUILD_PROJECT_NAME}/pgas COMPONENT CSPPython)
 endif()

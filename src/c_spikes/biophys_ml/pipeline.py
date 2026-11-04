@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
+from c_spikes._resources import DEFAULT_GPARAM
 from c_spikes.syn_gen import build_synthetic_ground_truth_batch
 
 
@@ -18,7 +19,7 @@ def default_synthetic_config() -> Dict[str, object]:
         "noise_seed_start": 0,
         "noise_seed_stride": 1000,
         "noise_dir": None,
-        "gparam_path": "src/c_spikes/pgas/20230525_gold.dat",
+        "gparam_path": str(DEFAULT_GPARAM),
         "force_synth": False,
         "seed_spikes": True,
         "synth_tag_prefix": "bio_ml",
@@ -122,7 +123,7 @@ def generate_synthetic_bundles(
     tag_prefix = _sanitize_token(synthetic_config.get("synth_tag_prefix", "bio_ml"))
     seed_start = int(synthetic_config.get("noise_seed_start", 0))
     seed_stride = int(synthetic_config.get("noise_seed_stride", 1000))
-    gparam_path = Path(str(synthetic_config.get("gparam_path", "src/c_spikes/pgas/20230525_gold.dat")))
+    gparam_path = Path(str(synthetic_config.get("gparam_path", DEFAULT_GPARAM)))
     noise_dir_val = synthetic_config.get("noise_dir")
     noise_dir = None if noise_dir_val in (None, "", "null") else Path(str(noise_dir_val))
 

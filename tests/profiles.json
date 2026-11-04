@@ -1,5 +1,6 @@
 {
   "native_core": [
+    "tests/test_packaged_defaults.py",
     "tests/test_oasis_deconvolution.py",
     "tests/test_oasis_numerical_contract.py",
     "tests/test_oasis_parity.py",

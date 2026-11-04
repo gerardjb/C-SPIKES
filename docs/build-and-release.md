@@ -432,6 +432,20 @@ The modules can coexist; existing Analyzer objects remain on their original
 backend. An explicit CUDA request fails with an actionable error when the driver
 or GPU is unavailable. See [combined wheels](combined-wheels.md).
 
+The wheel includes the PGAS constants JSON files and GCaMP parameter files. The
+batch CLI, synthetic-generation helpers, and GUI can resolve these defaults from
+any working directory. Supply `--pgas-constants` / `--pgas-gparam` (or Python API
+arguments) to use different sensor parameters. Editable installs use the canonical
+constants in the checkout's `parameter_files/`; CMake copies those same files into
+`c_spikes/pgas/constants/` for wheels.
+
+Install the `gui` extra and launch with `python -m c_spikes.gui`. The GUI uses
+packaged PGAS inputs when a project directory has no overrides, and generated
+Slurm commands invoke `python -m c_spikes.cli.run` in the job's Python environment.
+`C_SPIKES_PROJECT_ROOT` still selects project assets and custom parameter files.
+Recordings, pretrained ENS2/CASCADE models, and training templates must be provided
+separately; output paths remain relative to the chosen working/project directory.
+
 ## Publishing tagged releases to PyPI
 
 One-time setup by the repository/PyPI owner:

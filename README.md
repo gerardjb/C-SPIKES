@@ -140,9 +140,16 @@ savemat("my_recording.mat", {
 ```
 
 Inspect GUI inputs with `python scripts/validate_gui_mat.py --data-dir /path/to/data --deep`.
-Launch the desktop interface with `python scripts/c_spikes_gui.py`; use its Edge
-Selection tab to choose windows. The GUI launcher locates assets through the
-checkout or `C_SPIKES_PROJECT_ROOT`.
+With the `gui` extra installed, launch the desktop interface with
+`python -m c_spikes.gui`; use its Edge Selection tab to choose windows.
+The GUI uses packaged PGAS parameters, or project-specific files discovered
+through the checkout or `C_SPIKES_PROJECT_ROOT`.
+
+The batch CLI and synthetic-generation API also load their default GCaMP
+parameters from the installed package. Override them with `--pgas-constants` /
+`--pgas-gparam` on the CLI or the corresponding Python arguments for your sensor.
+Input recordings, pretrained models, and output directories are user-managed;
+they are not supplied by these parameter defaults.
 
 | Task | Entry point / guide |
 |---|---|
