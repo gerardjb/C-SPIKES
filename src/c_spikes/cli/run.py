@@ -18,6 +18,7 @@ import math
 from pathlib import Path
 from typing import List, Optional, Sequence
 
+from c_spikes._resources import DEFAULT_GPARAM, DEFAULT_PGAS_CONSTANTS
 from c_spikes.tensorflow_env import preload_tensorflow_quietly
 
 preload_tensorflow_quietly()
@@ -177,14 +178,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--pgas-constants",
         type=Path,
-        default=Path("parameter_files/constants_GCaMP8_soma.json"),
-        help="PGAS base constants JSON (sensor-specific).",
+        default=DEFAULT_PGAS_CONSTANTS,
+        help="PGAS base constants JSON (default: bundled GCaMP8 soma constants).",
     )
     parser.add_argument(
         "--pgas-gparam",
         type=Path,
-        default=Path("src/c_spikes/pgas/20230525_gold.dat"),
-        help="PGAS GCaMP parameter file (sensor-specific).",
+        default=DEFAULT_GPARAM,
+        help="PGAS GCaMP parameter file (default: bundled 20230525_gold.dat).",
     )
     parser.add_argument(
         "--pgas-output-root",

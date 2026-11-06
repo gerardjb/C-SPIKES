@@ -51,7 +51,7 @@ from c_spikes.gui.models import (
     list_cascade_local_models,
     list_ens2_model_dirs,
 )
-from c_spikes.gui.paths import resolve_project_root
+from c_spikes.gui.paths import resolve_pgas_parameter_dirs, resolve_project_root
 from c_spikes.gui.plotting import METHOD_ORDER, plot_epoch
 from c_spikes.gui.slurm import default_slurm_profile, normalize_slurm_profile, render_sbatch_script
 from c_spikes.gui.smc_viz import (
@@ -76,8 +76,7 @@ REPO_ROOT = resolve_project_root(module_file=__file__)
 CASCADE_ROOT = REPO_ROOT / "Pretrained_models" / "CASCADE"
 ENS2_ROOT = REPO_ROOT / "Pretrained_models" / "ENS2"
 BIOPHYS_ROOT = REPO_ROOT / "Pretrained_models" / "BiophysML"
-PGAS_PARAMS_ROOT = REPO_ROOT / "parameter_files"
-PGAS_GPARAM_ROOT = REPO_ROOT / "src" / "c_spikes" / "pgas"
+PGAS_PARAMS_ROOT, PGAS_GPARAM_ROOT = resolve_pgas_parameter_dirs(REPO_ROOT)
 
 
 def _parse_oasis_g(text: str, ar_order: int) -> Tuple[Optional[float], ...]:
@@ -2458,7 +2457,8 @@ class MainWindow(QtWidgets.QMainWindow):
     ) -> str:
         args: List[str] = [
             "python",
-            str(REPO_ROOT / "run_pipeline.py"),
+            "-m",
+            "c_spikes.cli.run",
             "--data-root",
             str(context.data_dir),
             "--method",

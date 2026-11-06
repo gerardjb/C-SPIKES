@@ -13,10 +13,25 @@ name = "c-spikes"
 license.file = "LICENSE"
 requires-python = ">=3.11"
 description = "End-to-end fluorescence to spike inference procedure"
+readme = "README.md"
 authors = [
     { name = "Gerard Joey Broussard", email = "gerardjb@princeton.edu" },
 ]
 dynamic = ["version"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 dependencies = [
     "numpy",
     "scipy",
@@ -25,6 +40,17 @@ dependencies = [
     "ruamel.yaml",
     "tqdm == 4.64.0"    # Also ENS2-specific. Works, but may want to relax pin at some point
 ]
+
+[project.urls]
+Repository = "https://github.com/gerardjb/C-SPIKES"
+Documentation = "https://github.com/gerardjb/C-SPIKES/blob/main/docs/usage-guide.md"
+Issues = "https://github.com/gerardjb/C-SPIKES/issues"
+
+[project.scripts]
+c-spikes = "c_spikes.cli.run:main"
+
+[project.gui-scripts]
+c-spikes-gui = "c_spikes.gui.app:main"
 
 # invoked via, e.g., "pip install -e .[test]"
 [project.optional-dependencies]

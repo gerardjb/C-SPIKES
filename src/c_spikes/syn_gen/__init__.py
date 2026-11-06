@@ -5,6 +5,7 @@ from typing import Dict, Iterable, Optional, Sequence, Union
 
 import numpy as np
 
+from c_spikes._resources import DEFAULT_GPARAM
 from c_spikes.inference.pgas_cache import load_pgas_samples_from_cache
 
 from .synth_gen import synth_gen
@@ -14,7 +15,7 @@ from .state_history import simulate_state_history, simulate_state_occupancies
 def build_synthetic_ground_truth_from_pgas(
     param_samples_path: Path | str,
     *,
-    gparam_path: Path | str = Path("src/c_spikes/pgas/20230525_gold.dat"),
+    gparam_path: Path | str = DEFAULT_GPARAM,
     burnin: int = 100,
     spike_rate: float = 2.0,
     spike_params: Sequence[float] = (5.0, 0.5),
@@ -191,7 +192,7 @@ def _load_pgas_parameter_samples(
 def build_synthetic_ground_truth_batch(
     param_specs: Sequence[Dict[str, object]],
     *,
-    gparam_path: Path | str = Path("src/c_spikes/pgas/20230525_gold.dat"),
+    gparam_path: Path | str = DEFAULT_GPARAM,
     output_root: Path | str = Path("results"),
     manifest_path: Optional[Path | str] = None,
     manifest_model_name: Optional[str] = None,

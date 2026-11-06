@@ -25,10 +25,12 @@ uv pip install c-spikes
 ```
 
 For a consumer uv project, use `uv add c-spikes`, then `uv sync` as usual.
+Run `c-spikes --help` in the installed environment, or `uv run c-spikes --help`
+in a uv project, to see the batch inference options.
 No extra index or CUDA-specific version suffix is needed. See the
-[build and release guide](docs/build-and-release.md) for driver requirements,
+[build and release guide](https://github.com/gerardjb/C-SPIKES/blob/main/docs/build-and-release.md) for driver requirements,
 CI and tag-triggered publishing, and the
-[combined backend design](docs/combined-wheels.md) for runtime isolation and tests.
+[combined backend design](https://github.com/gerardjb/C-SPIKES/blob/main/docs/combined-wheels.md) for runtime isolation and tests.
 
 From a complete source checkout with the native compiler prerequisites installed:
 
@@ -79,8 +81,8 @@ gpu = get_backend("cuda")  # Linux/Windows: requires a working NVIDIA GPU and co
 # Use cpu.Analyzer(...) or gpu.Analyzer(...); existing objects keep their backend.
 ```
 
-The [historical Linux provider](docs/numerical-provider-linux.md) and
-[native-core installation](docs/native-core-installation.md) still require the
+The [historical Linux provider](https://github.com/gerardjb/C-SPIKES/blob/main/docs/numerical-provider-linux.md) and
+[native-core installation](https://github.com/gerardjb/C-SPIKES/blob/main/docs/native-core-installation.md) still require the
 original hash-qualified dependency bundle. Selecting them does not restore the
 handoff's older Kokkos version. The new provider and Kokkos upgrade need separate
 scientific acceptance; passing build and regression checks does not establish
@@ -108,7 +110,7 @@ an explicit threshold.
 The command and sample path are present in this source. A fresh end-to-end runtime
 and numerical reference output for this exact demo command have not yet been
 recorded; no completion-time promise is made. This demonstration is separate from
-GPU PGAS inference and full BiophysML training. See [detailed workflows](docs/usage-guide.md)
+GPU PGAS inference and full BiophysML training. See [detailed workflows](https://github.com/gerardjb/C-SPIKES/blob/main/docs/usage-guide.md)
 for those entrypoints and required inputs.
 
 ## Use with your own data
@@ -140,19 +142,27 @@ savemat("my_recording.mat", {
 ```
 
 Inspect GUI inputs with `python scripts/validate_gui_mat.py --data-dir /path/to/data --deep`.
-Launch the desktop interface with `python scripts/c_spikes_gui.py`; use its Edge
-Selection tab to choose windows. The GUI launcher locates assets through the
-checkout or `C_SPIKES_PROJECT_ROOT`.
+With the `gui` extra installed, launch the desktop interface with
+`c-spikes-gui` (or `uv run --extra gui c-spikes-gui` from this checkout);
+use its Edge Selection tab to choose windows.
+The GUI uses packaged PGAS parameters, or project-specific files discovered
+through the checkout or `C_SPIKES_PROJECT_ROOT`.
+
+The batch CLI and synthetic-generation API also load their default GCaMP
+parameters from the installed package. Override them with `--pgas-constants` /
+`--pgas-gparam` on the CLI or the corresponding Python arguments for your sensor.
+Input recordings, pretrained models, and output directories are user-managed;
+they are not supplied by these parameter defaults.
 
 | Task | Entry point / guide |
 |---|---|
-| Batch inference and evaluation | `python -m c_spikes.cli.run --help` or `python run_pipeline.py --help`; [detailed workflows](docs/usage-guide.md) |
-| Programmatic inference | [workflow.py](src/c_spikes/inference/workflow.py), [configuration/results](src/c_spikes/inference/types.py) |
-| GPU modes and reproducibility | [GPU PGAS options](docs/pgas_gpu_options.md), [validation limits](docs/pgas_gpu_validation.md) |
-| Synthetic generation and model training | [BiophysML pipeline](src/c_spikes/biophys_ml/pipeline.py), `scripts/demo_pgas_to_ens2.py`, `scripts/pgas_to_ens2.py`, `scripts/pgas_to_cascade.py`; [examples](docs/usage-guide.md) |
+| Batch inference and evaluation | `c-spikes --help` or `python -m c_spikes.cli.run --help`; [detailed workflows](https://github.com/gerardjb/C-SPIKES/blob/main/docs/usage-guide.md) |
+| Programmatic inference | [workflow.py](https://github.com/gerardjb/C-SPIKES/blob/main/src/c_spikes/inference/workflow.py), [configuration/results](https://github.com/gerardjb/C-SPIKES/blob/main/src/c_spikes/inference/types.py) |
+| GPU modes and reproducibility | [GPU PGAS options](https://github.com/gerardjb/C-SPIKES/blob/main/docs/pgas_gpu_options.md), [validation limits](https://github.com/gerardjb/C-SPIKES/blob/main/docs/pgas_gpu_validation.md) |
+| Synthetic generation and model training | [BiophysML pipeline](https://github.com/gerardjb/C-SPIKES/blob/main/src/c_spikes/biophys_ml/pipeline.py), `scripts/demo_pgas_to_ens2.py`, `scripts/pgas_to_ens2.py`, `scripts/pgas_to_cascade.py`; [examples](https://github.com/gerardjb/C-SPIKES/blob/main/docs/usage-guide.md) |
 | Downsampled MAT export | `scripts/export_downsampled_mat_dir.py --help` |
-| External prediction import | `scripts/import_matlab_cache.py --help`, [import API](src/c_spikes/inference/import_external.py) |
-| Plots and cached results | [visualization notebook](notebooks/trialwise_visualizations.ipynb), [cache comparison notebook](notebooks/inference_cache_compare.ipynb) |
+| External prediction import | `scripts/import_matlab_cache.py --help`, [import API](https://github.com/gerardjb/C-SPIKES/blob/main/src/c_spikes/inference/import_external.py) |
+| Plots and cached results | [visualization notebook](https://github.com/gerardjb/C-SPIKES/blob/main/notebooks/trialwise_visualizations.ipynb), [cache comparison notebook](https://github.com/gerardjb/C-SPIKES/blob/main/notebooks/inference_cache_compare.ipynb) |
 
 Model assets use nested directories: `Pretrained_models/ENS2/ens2_published` and
 `Pretrained_models/CASCADE/Cascade_Universal_30Hz`. Some older CLI defaults use a
@@ -166,24 +176,24 @@ currently supplied or qualified interfaces.
 
 ## Tests, license, and citation/publication
 
-[Test profiles](tests/README.md) separate native-core regression, Python adapters
+[Test profiles](https://github.com/gerardjb/C-SPIKES/blob/main/tests/README.md) separate native-core regression, Python adapters
 and optional application tests. A passing native profile does not certify every
 backend, model or installation environment. Optional
-[observational diagnostics](docs/observational-diagnostics.md) are a build-time
+[observational diagnostics](https://github.com/gerardjb/C-SPIKES/blob/main/docs/observational-diagnostics.md) are a build-time
 choice, separate from mandatory correctness protections.
 
-The repository includes the [GNU GPL v3 license](LICENSE). Retain applicable
-third-party notices; [OASIS provenance](src/c_spikes/oasis/PROVENANCE.md) documents
+The repository includes the [GNU GPL v3 license](https://github.com/gerardjb/C-SPIKES/blob/main/LICENSE). Retain applicable
+third-party notices; [OASIS provenance](https://github.com/gerardjb/C-SPIKES/blob/main/src/c_spikes/oasis/PROVENANCE.md) documents
 its source attribution and local changes. Model/data licensing and attribution
 must be considered separately from the code license.
 
 When reporting results, identify the software version/revision, inference method,
 model and parameter settings, and cite the associated publication and data/software
-records as appropriate. The [publication reference](docs/PUBLICATION_REFERENCE.md)
+records as appropriate. The [publication reference](https://github.com/gerardjb/C-SPIKES/blob/main/docs/PUBLICATION_REFERENCE.md)
 links the existing archived materials and explains their relationship to this code.
 
 The [Code Ocean capsule](https://codeocean.com/capsule/0036463/tree) provides the
 publication's runnable workflow; associated materials are on
 [Figshare](https://doi.org/10.6084/m9.figshare.28550441). This repository is not
 claimed to be identical to that capsule or to reproduce every manuscript result.
-See the [publication reference](docs/PUBLICATION_REFERENCE.md).
+See the [publication reference](https://github.com/gerardjb/C-SPIKES/blob/main/docs/PUBLICATION_REFERENCE.md).

@@ -1,9 +1,11 @@
 # Test profiles
 
 Run `python -m pytest` for `native_core`, after building the CPU extensions for the
-current source and interpreter. This selects seven files covering OASIS numerical
+current source and interpreter. This selects eight files covering OASIS numerical
 behavior, tiny seeded PGAS smoke, state-history ownership and synthetic-writer
-contracts. It does not run GPU inference or establish inference accuracy.
+contracts, plus default parameter loading outside a checkout. The latter checks
+run against installed wheels in CI, including native initialization through the
+synthetic-generation entrypoints. It does not run GPU inference or establish inference accuracy.
 
 Use `python -m pytest --csp-profile=python_contracts` for ten adapter, cache,
 windowing, noise-calibration and orchestration files. These may require NumPy,

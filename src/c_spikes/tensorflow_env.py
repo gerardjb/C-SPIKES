@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import logging
 import os
 import sys
@@ -33,13 +34,16 @@ def _suppress_stderr_fd():
 
 
 def preload_tensorflow_quietly() -> None:
-    """Import TensorFlow once while temporarily silencing early C++ startup logs."""
+    """Preload optional TensorFlow, when installed, while silencing startup logs."""
     configure_tensorflow_environment()
 
     if "tensorflow" in sys.modules:
         return
 
     if os.environ.get("C_SPIKES_TF_QUIET_IMPORT", "1") != "1":
+        return
+
+    if importlib.util.find_spec("tensorflow") is None:
         return
 
     try:
